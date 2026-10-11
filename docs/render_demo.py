@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'docs/assets'
-W, H, FPS, RATE = 1280, 720, 24, 48000
+W, H, FPS, RATE = 720, 450, 24, 48000
 INTRO_SECONDS = .5
 STEP_SECONDS = 2.3
 PHRASES = json.loads((ROOT / "code-gossip/configs/phrases.defaults.json").read_text())
@@ -40,21 +40,15 @@ MANIFEST = json.loads((ROOT / 'code-gossip/data/sounds.json').read_text())
 NARRATION = json.loads((ROOT / 'docs/demo-narration.json').read_text())['phrases']
 PROFILES = {
     'default': {
-        'badge': 'DEFAULT', 'label': 'DEFAULT / EFFECTS', 'output': 'THE SOUND',
-        'engine': 'MACOS SYSTEM SOUNDS', 'note': 'Shipped Default sound mappings.',
-        'footer': 'Illustrated scenario. Sound effects, no speech.',
+        'label': 'DEFAULT / EFFECTS',
         'stem': 'demo-default', 'step': 2.3, 'accent': '#91C7FF',
     },
     'narrator': {
-        'badge': 'NARRATOR', 'label': 'LLM NARRATOR', 'output': 'THE COMMENTARY',
-        'engine': f'KOKORO  /  {VOICE.upper()}', 'note': 'AI-written, voiced with Kokoro.',
-        'footer': 'Illustrated scenario. AI commentary prepared for this demo.',
+        'label': 'LLM NARRATOR',
         'stem': 'demo-narrator', 'step': 3.1, 'accent': '#FFBC7C',
     },
     'senior': {
-        'badge': 'SENIOR', 'label': 'SENIOR / VOICE', 'output': 'THE VOICE',
-        'engine': f'KOKORO  /  {VOICE.upper()}', 'note': 'Shipped phrases. Real speech.',
-        'footer': 'Illustrated scenario. Fixed phrases, no LLM.',
+        'label': 'SENIOR / VOICE',
         'stem': 'demo', 'step': STEP_SECONDS, 'accent': '#A5F3CB',
     },
 }
@@ -71,8 +65,8 @@ def cue(profile, index):
     return NARRATION[event] if profile == 'narrator' else phrase
 
 
-BG, PANEL, LINE = '#0C141E', '#14202E', '#2A3C4D'
-WHITE, MUTED, GREEN, ORANGE = '#F0F5F8', '#91A6BB', '#A5F3CB', '#FFBC7C'
+BG, LINE = '#0C141E', '#2A3C4D'
+WHITE, MUTED = '#F0F5F8', '#91A6BB'
 
 
 def font(size, bold=False):
@@ -88,8 +82,8 @@ def font(size, bold=False):
     raise SystemExit('Set DEMO_FONT and DEMO_FONT_BOLD to installed TTF font paths.')
 
 
-FONTS = {size: font(size) for size in (16, 18, 20, 22, 24)}
-BOLD = {size: font(size, True) for size in (20, 26, 30, 36, 52)}
+FONTS = {24: font(24)}
+BOLD = {size: font(size, True) for size in (26, 36)}
 
 
 def audio_track(profile):
@@ -139,75 +133,12 @@ for event, phrase in request['phrases']:
     return samples
 
 
-def draw_quote(draw, text, y):
-    words = ('“' + text + '”').split()
-    line = ''
-    for word in words:
-        candidate = (line + ' ' + word).strip()
-        if draw.textlength(candidate, font=BOLD[30]) > 402 and line:
-            draw.text((790, y), line, font=BOLD[30], fill=WHITE)
-            y += 40
-            line = word
-        else:
-            line = candidate
-    draw.text((790, y), line, font=BOLD[30], fill=WHITE)
-
-
-def frame(t, audio, profile):
-    settings = PROFILES[profile]
-    step = settings["step"]
-    image = Image.new('RGB', (W, H), BG)
-    d = ImageDraw.Draw(image)
-    active = min(4, int((t - INTRO_SECONDS) / step)) if t >= INTRO_SECONDS else -1
-    d.text((56, 32), 'CODE GOSSIP', font=BOLD[20], fill=GREEN)
-    d.text((1060, 32), settings['badge'], font=FONTS[18], fill=ORANGE)
-    d.text((56, 78), 'Fix the login timeout.', font=BOLD[52], fill=WHITE)
-    d.text((58, 150), 'One bug fix. From the first search to the handoff.', font=FONTS[22], fill=MUTED)
-    d.text((60, 214), '01   THE EVENT', font=BOLD[20], fill=MUTED)
-    d.text((780, 214), '02   ' + settings['output'], font=BOLD[20], fill=MUTED)
-    for i, (event, title, _phrase) in enumerate(EVENTS):
-        y = 256 + i * 65
-        current = i == active
-        d.rounded_rectangle((56, y, 690, y + 56), radius=12,
-                            fill='#203B39' if current else PANEL,
-                            outline=GREEN if current else LINE, width=2 if current else 1)
-        d.ellipse((76, y + 20, 90, y + 34), fill=GREEN if i <= active else LINE)
-        d.text((110, y + 12), title, font=BOLD[26] if current else FONTS[24], fill=WHITE if current else MUTED)
-        box = d.textbbox((0, 0), event, font=FONTS[18])
-        d.text((670 - (box[2] - box[0]), y + 19), event, font=FONTS[18], fill=GREEN if current else MUTED)
-    d.rounded_rectangle((762, 256, 1224, 572), radius=18, fill=PANEL, outline=LINE)
-    d.text((790, 282), settings['engine'], font=FONTS[18], fill=GREEN)
-    sound = cue(profile, active) if active >= 0 else 'Listen for the cue'
-    draw_quote(d, sound, 336)
-    start = int(t * RATE)
-    window = audio[start:start + RATE // FPS]
-    rms = math.sqrt(sum(v * v for v in window) / max(1, len(window))) / 32768
-    level = min(1, rms * 9)
-    for b in range(31):
-        height = 8 + int(96 * level * (0.35 + 0.65 * abs(math.sin(b * 0.83 + t * 9))))
-        x = 791 + b * 13
-        d.rounded_rectangle((x, 458 - height / 2, x + 6, 458 + height / 2), radius=3,
-                            fill=GREEN if level > 0.015 else LINE)
-    d.text((790, 529), settings['note'], font=FONTS[18], fill=MUTED)
-    if active >= 0:
-        phase = min(1, max(0, (t - (INTRO_SECONDS + active * step)) / .3))
-        source_y = 284 + active * 65
-        d.line((704, source_y, 748, 416), fill=LINE, width=2)
-        dot_y = source_y + phase * (416 - source_y)
-        d.ellipse((700 + phase * 41, dot_y - 4, 708 + phase * 41, dot_y + 4), fill=GREEN)
-    d.line((56, 618, 1224, 618), fill=LINE, width=2)
-    d.line((56, 618, 56 + int(1168 * t / duration(profile)), 618), fill=GREEN, width=3)
-    d.text((56, 649), settings['footer'], font=FONTS[22], fill=WHITE)
-    d.text((1008, 652), 'code-gossip  /  macOS', font=FONTS[18], fill=MUTED)
-    return image
-
-
 def compact_frame(t, audio, profile):
     settings = PROFILES[profile]
     accent = settings['accent']
     active = min(len(EVENTS) - 1, max(0, int((t - INTRO_SECONDS) / settings['step'])))
     event, action, _phrase = EVENTS[active]
-    image = Image.new('RGB', (720, 450), BG)
+    image = Image.new('RGB', (W, H), BG)
     d = ImageDraw.Draw(image)
     d.text((32, 28), settings['label'], font=BOLD[26], fill=accent)
     d.text((621, 30), f'{active + 1} / 5', font=FONTS[24], fill=MUTED)
@@ -259,7 +190,7 @@ def render(profile):
             str(movie)], stdin=subprocess.PIPE)
         try:
             for i in range(round(duration(profile) * FPS)):
-                encoder.stdin.write(frame(i / FPS, audio, profile).tobytes())
+                encoder.stdin.write(compact_frame(i / FPS, audio, profile).tobytes())
             encoder.stdin.close()
             if encoder.wait() != 0:
                 raise SystemExit('Video encoding failed.')

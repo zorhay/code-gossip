@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Fixed
+
+- README demos play inline through native GitHub video attachments, replacing silent GIF links to MP4 file pages. Compact video layouts remain readable in the three-column showcase; the caption explains GitHub's default mute control.
+
 ### Added
 
 - Recommended “Install with your agent” option in README, with a copyable prompt for Codex, Claude Code, or Cursor; manual and development instructions remain foldable.
