@@ -10,6 +10,8 @@
 
 ## Installation
 
+**Upgrading to 0.5.0?** This is a breaking release with a new installation layout and no automatic migration. Follow the [upgrade steps](CHANGELOG.md#050---2026-10-11) before installing.
+
 <details>
 <summary><strong>Install Code Gossip</strong></summary>
 

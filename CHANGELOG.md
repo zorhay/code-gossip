@@ -4,6 +4,17 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-11
+
+### Breaking changes
+
+**0.5.0 is a breaking release.** The installation layout and entrypoints have changed; legacy paths, settings formats, and automatic migration are no longer supported.
+
+- All agents now share `~/.code-gossip/`, with hooks in `hooks/`, playback in `engine/`, and the mixer in `soundbar/`. Scripts or shortcuts targeting the old `~/.claude/soundbar/` layout must be updated.
+- Separate agent installers are replaced by `install.sh` and `uninstall.sh` with agent selection. The root `SKILL.md` has moved to `dev-skills/sound-design/SKILL.md`.
+- To upgrade an older installation: save any settings or custom audio you want to reference, use that version's uninstaller to remove its hooks and runtime, then install 0.5.0 using the [current instructions](README.md#installation). Recreate preferences in Soundbar; old settings files are not imported. Review changed Codex hooks in `/hooks` and start new agent sessions.
+- Existing dev installations must be reinstalled from the new checkout layout. If already using `~/.code-gossip/` with the current layout, repeat the installer in the same mode; it preserves current-format settings.
+
 ### Added
 
 - One installer and uninstaller for Codex, Cursor, and Claude, with interactive multi-selection, explicit `--agents`, `--all`, dry-run previews, and development mode.
