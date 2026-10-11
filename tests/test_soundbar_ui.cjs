@@ -12,7 +12,7 @@ const manifest = read('data/sounds.json');
 const state = {
   ...defaults,
   tts_engines: { say: { name: 'macOS speech' }, kokoro: { name: 'Kokoro' } },
-  effects_profiles: Object.fromEntries(Object.keys(manifest.effects).map(key => [key, {}])),
+  effects_profiles: Object.fromEntries(Object.keys(manifest.effects).sort().map(key => [key, {}])),
   voice_profiles: {}, voice_profile_names: ['senior', 'generals', 'narrator'],
   phrases: read('configs/phrases.defaults.json'), events: ['edit', 'test', 'stop'], dialogue_events: [], voices: [],
   narrator_styles: read('configs/narrator_styles.defaults.json'),
@@ -59,6 +59,8 @@ const server = http.createServer((req, res) => {
     if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: path.join(process.env.SCREENSHOT_DIR, 'soundbar-welcome.png') });
     await page.getByRole('button', { name: 'Let’s try it' }).click();
     assert.equal(await page.locator('.tip-item').count(), 5);
+    assert.equal(await page.locator('#effectsProfile option').first().getAttribute('value'), 'default');
+    assert.equal(await page.locator('#effectsProfile option[value=ambient], #effectsProfile option[value=organic]').count(), 0);
     const appearance = await page.locator('.tip-item').first().evaluate(el => {
       const s = getComputedStyle(el);
       return [s.backgroundColor, s.backdropFilter, s.boxShadow];

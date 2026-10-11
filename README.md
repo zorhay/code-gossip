@@ -88,7 +88,7 @@ At [localhost:8111](http://localhost:8111), choose profiles, enable channels, se
 | **Narrator** | Describes the current event in a chosen style | Select a provider/model, save credentials if needed, then use **Check connection** and **Test narration**. |
 | **Speech engine** | Speaks Senior phrases and narrator text | Use built-in macOS speech, or select Kokoro and click **Install Kokoro**. |
 
-Effects and Voice mix independently. A fresh install enables system effects and leaves Voice off. Repeat reduction skips rapid duplicate cues; previews bypass it. Codex approval audio has its own toggle.
+Effects and Voice mix independently. Default appears first in the Effects profile list. A fresh install enables system effects and leaves Voice off. Repeat reduction skips rapid duplicate cues; previews bypass it. Codex approval audio has its own toggle.
 
 The narrator supports Claude CLI, Anthropic, Gemini, OpenAI, and Ollama. It sends event context to the selected provider, which may charge for usage. Fixed phrases and sound effects need no LLM.
 

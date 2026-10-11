@@ -1,31 +1,31 @@
 {
   "effects": {
-    "ambient": {
+    "default": {
       "events": {
-        "session_start": {"sox": "synth 0.8 pluck 330 synth 0.8 pluck 440 synth 0.8 pluck 550 reverb 60 fade 0.05 0.8 0.5"},
-        "edit":          {"sox": "synth 0.25 pluck 500 reverb 30 fade 0.01 0.25 0.15"},
-        "bash":          {"sox": "synth 0.3 sine 300 fade 0.05 0.3 0.2 reverb 40"},
-        "search":        {"sox": "synth 0.15 triangle 700 reverb 25 fade 0.01 0.15 0.1"},
-        "permission":    {"sox": "synth 0.3 pluck 440:660 reverb 50 fade 0.01 0.3 0.2"},
-        "error":         {"sox": "synth 0.4 sine 400:200 reverb 60 fade 0.02 0.4 0.3"},
-        "subagent_start": {"sox": "synth 0.3 sine 300:600 reverb 50 fade 0.01 0.3 0.15 tremolo 4"},
-        "subagent_stop":  {"sox": "synth 0.25 sine 600:350 reverb 45 fade 0.01 0.25 0.15"},
-        "compact":       {"sox": "synth 0.5 pinknoise vol 0.2 fade 0.05 0.5 0.4 reverb 50"},
-        "stop":          {"sox": "synth 0.8 sine 220:330 reverb 60 fade 0.05 0.8 0.4"},
-        "user_prompt": {"sox": "synth 0.8 pluck 330 synth 0.8 pluck 440 synth 0.8 pluck 550 reverb 60 fade 0.05 0.8 0.5"},
-        "read": {"sox": "synth 0.15 triangle 700 reverb 25 fade 0.01 0.15 0.1"},
-        "tool": {"sox": "synth 0.3 sine 300 fade 0.05 0.3 0.2 reverb 40"},
-        "plan": {"sox": "synth 0.25 pluck 500 reverb 30 fade 0.01 0.25 0.15"},
-        "test": {"sox": "synth 0.3 sine 300 fade 0.05 0.3 0.2 reverb 40"},
-        "build": {"sox": "synth 0.3 sine 300 fade 0.05 0.3 0.2 reverb 40"},
-        "git": {"sox": "synth 0.3 sine 300 fade 0.05 0.3 0.2 reverb 40"},
-        "git_status": {"sox": "synth 0.15 triangle 700 reverb 25 fade 0.01 0.15 0.1"},
-        "git_history": {"sox": "synth 0.15 triangle 700 reverb 25 fade 0.01 0.15 0.1"},
-        "git_commit": {"sox": "synth 0.3 sine 300 fade 0.05 0.3 0.2 reverb 40"},
-        "git_push": {"sox": "synth 0.3 sine 300 fade 0.05 0.3 0.2 reverb 40"},
-        "pre_compact": {"sox": "synth 0.5 pinknoise vol 0.2 fade 0.05 0.5 0.4 reverb 50"},
-        "session_end": {"sox": "synth 0.8 sine 220:330 reverb 60 fade 0.05 0.8 0.4"},
-        "interrupt": {"sox": "synth 0.3 pluck 440:660 reverb 50 fade 0.01 0.3 0.2"}
+        "session_start": {"file": "/System/Library/Sounds/Glass.aiff"},
+        "edit":          {"file": "/System/Library/Sounds/Frog.aiff"},
+        "bash":          {"file": "/System/Library/Sounds/Submarine.aiff"},
+        "search":        {"file": "/System/Library/Sounds/Pop.aiff"},
+        "permission":    {"file": "/System/Library/Sounds/Funk.aiff"},
+        "error":         {"file": "/System/Library/Sounds/Basso.aiff"},
+        "subagent_start": {"file": "/System/Library/Sounds/Bottle.aiff"},
+        "subagent_stop":  {"file": "/System/Library/Sounds/Ping.aiff"},
+        "compact":       {"file": "/System/Library/Sounds/Purr.aiff"},
+        "stop":          {"file": "/System/Library/Sounds/Hero.aiff"},
+        "user_prompt": {"file": "/System/Library/Sounds/Glass.aiff"},
+        "read": {"file": "/System/Library/Sounds/Pop.aiff"},
+        "tool": {"file": "/System/Library/Sounds/Submarine.aiff"},
+        "plan": {"file": "/System/Library/Sounds/Frog.aiff"},
+        "test": {"file": "/System/Library/Sounds/Tink.aiff"},
+        "build": {"file": "/System/Library/Sounds/Morse.aiff"},
+        "git": {"file": "/System/Library/Sounds/Submarine.aiff"},
+        "git_status": {"file": "/System/Library/Sounds/Pop.aiff"},
+        "git_history": {"file": "/System/Library/Sounds/Pop.aiff"},
+        "git_commit": {"file": "/System/Library/Sounds/Submarine.aiff"},
+        "git_push": {"file": "/System/Library/Sounds/Submarine.aiff"},
+        "pre_compact": {"file": "/System/Library/Sounds/Purr.aiff"},
+        "session_end": {"file": "/System/Library/Sounds/Hero.aiff"},
+        "interrupt": {"file": "/System/Library/Sounds/Funk.aiff"}
       }
     },
     "attention": {
@@ -63,34 +63,6 @@
         "interrupt": {"file": "whistle.mp3"}
       }
     },
-    "default": {
-      "events": {
-        "session_start": {"file": "/System/Library/Sounds/Glass.aiff"},
-        "edit":          {"file": "/System/Library/Sounds/Frog.aiff"},
-        "bash":          {"file": "/System/Library/Sounds/Submarine.aiff"},
-        "search":        {"file": "/System/Library/Sounds/Pop.aiff"},
-        "permission":    {"file": "/System/Library/Sounds/Funk.aiff"},
-        "error":         {"file": "/System/Library/Sounds/Basso.aiff"},
-        "subagent_start": {"file": "/System/Library/Sounds/Bottle.aiff"},
-        "subagent_stop":  {"file": "/System/Library/Sounds/Ping.aiff"},
-        "compact":       {"file": "/System/Library/Sounds/Purr.aiff"},
-        "stop":          {"file": "/System/Library/Sounds/Hero.aiff"},
-        "user_prompt": {"file": "/System/Library/Sounds/Glass.aiff"},
-        "read": {"file": "/System/Library/Sounds/Pop.aiff"},
-        "tool": {"file": "/System/Library/Sounds/Submarine.aiff"},
-        "plan": {"file": "/System/Library/Sounds/Frog.aiff"},
-        "test": {"file": "/System/Library/Sounds/Tink.aiff"},
-        "build": {"file": "/System/Library/Sounds/Morse.aiff"},
-        "git": {"file": "/System/Library/Sounds/Submarine.aiff"},
-        "git_status": {"file": "/System/Library/Sounds/Pop.aiff"},
-        "git_history": {"file": "/System/Library/Sounds/Pop.aiff"},
-        "git_commit": {"file": "/System/Library/Sounds/Submarine.aiff"},
-        "git_push": {"file": "/System/Library/Sounds/Submarine.aiff"},
-        "pre_compact": {"file": "/System/Library/Sounds/Purr.aiff"},
-        "session_end": {"file": "/System/Library/Sounds/Hero.aiff"},
-        "interrupt": {"file": "/System/Library/Sounds/Funk.aiff"}
-      }
-    },
     "minimal": {
       "events": {
         "session_start": {"sox": "synth 0.3 sine 440 vol 0.25 fade 0.03 0.3 0.2"},
@@ -117,34 +89,6 @@
         "pre_compact": {"sox": "synth 0.15 sine 600:400 vol 0.15 fade 0.02 0.15 0.1"},
         "session_end": {"sox": "synth 0.2 sine 660 vol 0.3 fade 0.02 0.2 0.15"},
         "interrupt": {"sox": "synth 0.06 sine 700 vol 0.25 fade 0.01 0.06 0.04 : synth 0.08 sine 750 vol 0.2 fade 0.01 0.08 0.05"}
-      }
-    },
-    "organic": {
-      "events": {
-        "session_start": {"sox": "synth 0.6 pluck 375 synth 0.6 pluck 485 synth 0.6 pluck 595 chorus 0.7 0.9 55 0.4 0.3 2 reverb 40"},
-        "edit":          {"sox": "synth 0.2 pluck 650 chorus 0.5 0.9 40 0.3 0.2 2 fade 0.01 0.2 0.1"},
-        "bash":          {"sox": "synth 0.25 pluck 375 reverb 20"},
-        "search":        {"sox": "synth 0.12 pluck 850 fade 0.01 0.12 0.05"},
-        "permission":    {"sox": "synth 0.2 pluck 700 : synth 0.2 pluck 550 chorus 0.6 0.9 50 0.4 0.25 2 reverb 25"},
-        "error":         {"sox": "synth 0.15 pluck 200 synth 0.15 noise vol 0.3 fade 0 0.15 0.1"},
-        "subagent_start": {"sox": "synth 0.15 pluck 400 : synth 0.15 pluck 550 : synth 0.15 pluck 700 reverb 20"},
-        "subagent_stop":  {"sox": "synth 0.2 pluck 650 : synth 0.2 pluck 430 chorus 0.5 0.8 40 0.3 0.2 2 reverb 20"},
-        "compact":       {"sox": "synth 0.3 pluck 300:200 vol 0.2 reverb 35 fade 0.02 0.3 0.25"},
-        "stop":          {"sox": "synth 0.5 pluck 450 synth 0.5 pluck 550 synth 0.5 pluck 650 chorus 0.6 0.9 50 0.4 0.25 2 reverb 30"},
-        "user_prompt": {"sox": "synth 0.6 pluck 375 synth 0.6 pluck 485 synth 0.6 pluck 595 chorus 0.7 0.9 55 0.4 0.3 2 reverb 40"},
-        "read": {"sox": "synth 0.12 pluck 850 fade 0.01 0.12 0.05"},
-        "tool": {"sox": "synth 0.25 pluck 375 reverb 20"},
-        "plan": {"sox": "synth 0.2 pluck 650 chorus 0.5 0.9 40 0.3 0.2 2 fade 0.01 0.2 0.1"},
-        "test": {"sox": "synth 0.25 pluck 375 reverb 20"},
-        "build": {"sox": "synth 0.25 pluck 375 reverb 20"},
-        "git": {"sox": "synth 0.25 pluck 375 reverb 20"},
-        "git_status": {"sox": "synth 0.12 pluck 850 fade 0.01 0.12 0.05"},
-        "git_history": {"sox": "synth 0.12 pluck 850 fade 0.01 0.12 0.05"},
-        "git_commit": {"sox": "synth 0.25 pluck 375 reverb 20"},
-        "git_push": {"sox": "synth 0.25 pluck 375 reverb 20"},
-        "pre_compact": {"sox": "synth 0.3 pluck 300:200 vol 0.2 reverb 35 fade 0.02 0.3 0.25"},
-        "session_end": {"sox": "synth 0.5 pluck 450 synth 0.5 pluck 550 synth 0.5 pluck 650 chorus 0.6 0.9 50 0.4 0.25 2 reverb 30"},
-        "interrupt": {"sox": "synth 0.2 pluck 700 : synth 0.2 pluck 550 chorus 0.6 0.9 50 0.4 0.25 2 reverb 25"}
       }
     },
     "paper": {

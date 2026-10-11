@@ -754,7 +754,7 @@ function shortLabel(cmd) {
 
 function renderEffectsChannel() {
   const el = document.getElementById('effectsChannel');
-  const profiles = Object.keys(S.effects_profiles || {});
+  const profiles = Object.keys(S.effects_profiles || {}).sort((a, b) => Number(b === 'default') - Number(a === 'default'));
   const opts = profiles.map(n => `<option value="${n}" ${n === S.effects_profile ? 'selected' : ''}>${n}</option>`).join('');
 
   const evol = S.effects_volume ?? 100;

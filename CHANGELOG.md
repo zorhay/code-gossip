@@ -8,7 +8,7 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Breaking changes
 
-- Removed the `chiptune` and `factory` effects profiles. If either is selected in your saved settings, choose another Effects profile in Soundbar after updating; those profiles no longer produce cues.
+- Removed the `ambient`, `organic`, `chiptune`, and `factory` effects profiles. If any is selected in your saved settings, choose another Effects profile in Soundbar after updating; those profiles no longer produce cues.
 
 ### Added
 
@@ -18,6 +18,7 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
+- Default appears first in the Effects profile selector and CLI profile list.
 - Refined Construction and Paper samples and softened the Sci-fi tones.
 - Reinstallation restarts the owned panel process so updated UI assets and server endpoints load together; ordinary panel opening reuses an existing server.
 
