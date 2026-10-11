@@ -6,6 +6,7 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Added
 
+- Recommended “Install with your agent” option in README, with a copyable prompt for Codex, Claude Code, or Cursor; manual and development instructions remain foldable.
 - Default sound-effects and AI-written narrator demos alongside the Senior demo, in a compact three-column README showcase. Each follows the same login-fix scenario with a silent GIF preview and a video with sound.
 
 ### Changed

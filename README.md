@@ -13,10 +13,18 @@ One login fix, three ways to hear it. Click a demo for sound; GIF previews are s
 
 ## Installation
 
+### Install with your agent
+
+**Recommended:** paste this into **Codex, Claude Code, or Cursor** on your Mac:
+
+```text
+Install https://github.com/zorhay/code-gossip for this agent. Follow the README and verify the installation.
+```
+
 **Upgrading to 0.5.0?** This is a breaking release with a new installation layout and no automatic migration. Follow the [upgrade steps](CHANGELOG.md#050---2026-10-11) before installing.
 
 <details>
-<summary><strong>Install Code Gossip</strong></summary>
+<summary><strong>Manual installation</strong></summary>
 
 Requires macOS, Python 3, and jq. SoX enables generated effects.
 

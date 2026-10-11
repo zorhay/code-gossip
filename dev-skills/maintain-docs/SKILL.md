@@ -23,7 +23,7 @@ For a new document, choose its audience and purpose before adding it. Link it fr
 
 ## Preserve the presentation
 
-**README:** Start with two sharp sentences, then the demo, a single feature line, and installation in foldable sections. Keep the usage section short: components, how to use them, and useful commands. Name it for the activity (currently “Using Code Gossip”), not “Product guide”. Move detailed internals to architecture or a focused supporting document.
+**README:** Start with two sharp sentences, then the demo, a single feature line, and installation. Lead installation with a short, copyable “Install with your agent” prompt for Codex, Claude Code, or Cursor; keep manual and development setup in foldable sections. Keep the usage section short: components, how to use them, and useful commands. Name it for the activity (currently “Using Code Gossip”), not “Product guide”. Move detailed internals to architecture or a focused supporting document.
 
 **Architecture:** Prefer readable Mermaid flows, sequences, state diagrams, package maps, and compact tables over long prose. Describe shipped behavior; future proposals belong in local TASKS. Keep agent differences and important limitations visible. Link source for volatile lists and defaults instead of duplicating every value.
 
