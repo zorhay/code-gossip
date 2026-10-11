@@ -6,10 +6,12 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Fixed
 
-- README demos play inline through native GitHub video attachments, replacing silent GIF links to MP4 file pages. Compact video layouts remain readable in the three-column showcase; the caption explains GitHub's default mute control.
+- Reserved turn/session ending cues for completion: tests and builds no longer reuse them across 10 effects profiles. Default now uses Tink for tests and Morse for builds; its demo is refreshed to match.
+- Moved demo playback to GitHub Pages: clean players without filename bars, sound enabled on Play, and only one demo playing at a time. README previews link directly to each player; redundant captions are removed.
 
 ### Added
 
+- Responsive demo page on GitHub Pages, serving repository videos directly with native controls and generated preview posters.
 - Recommended “Install with your agent” option in README, with a copyable prompt for Codex, Claude Code, or Cursor; manual and development instructions remain foldable.
 - Default sound-effects and AI-written narrator demos alongside the Senior demo, in a compact three-column README showcase. Each follows the same login-fix scenario with a silent GIF preview and a video with sound.
 

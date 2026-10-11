@@ -74,7 +74,7 @@ code-gossip/                         installed as ~/.code-gossip/
 └── uninstall.sh                    installed removal entrypoint
 ```
 
-The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package; development installation symlinks it.
+The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package; development installation symlinks it. GitHub Pages publishes `docs/` from `main`: `index.html`, `player.css`, and `player.js` present the demo media in `docs/assets/`. Playback is local to the visitor’s browser and independent of the installed Soundbar.
 
 Python modules resolve package locations through [`paths.py`](code-gossip/paths.py). Shell entrypoints derive their package root from their own location. User preferences belong in `configs/`, writable runtime files in `state/`, and relative sound paths resolve against `data/`.
 
@@ -100,7 +100,7 @@ The [mixer's `EVENTS` list](code-gossip/soundbar/server.py) defines 24 categorie
 | Git | `git`, `git_status`, `git_history`, `git_commit`, `git_push` |
 | Attention | `permission`, `error` |
 
-A `stop` cue means **the current turn ended**, not that the entire task is complete.
+A `stop` cue means **the current turn ended**, not that the entire task is complete. Shipped sound profiles reserve ending cues for `stop`/`session_end`; tests, builds, and other work use distinct non-ending cues.
 
 ### Routing by agent
 

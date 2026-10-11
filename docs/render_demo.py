@@ -5,7 +5,7 @@ Does not change installed preferences. DEMO_KOKORO_PYTHON overrides the speech i
 
 Run from the checkout: python3 docs/render_demo.py
 Use --profiles default narrator to render a subset.
-Outputs: docs/assets/demo[-default|-narrator].mp4 and compact silent GIF previews.
+Outputs: docs/assets/demo[-default|-narrator].mp4, silent GIFs, and WebP posters for GitHub Pages.
 """
 import argparse
 from array import array
@@ -207,6 +207,7 @@ def render(profile):
         # Replace finished outputs only; failed synthesis/encoding preserves prior assets.
         shutil.copyfile(movie, OUT / (settings['stem'] + '.mp4'))
         shutil.copyfile(preview, OUT / (settings['stem'] + '.gif'))
+        compact_frame(0, audio, profile).save(OUT / (settings['stem'] + '.webp'), quality=90)
     print(f"Rendered {profile}: {duration(profile):g}s MP4 with audio + compact GIF.", flush=True)
 
 

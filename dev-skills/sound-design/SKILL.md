@@ -27,7 +27,7 @@ Read the actual manifest for the current mapping format. The mixer event vocabul
 
 ## Design an event palette
 
-Start from the scenario the user wants to hear. Give routine work a quieter texture, make approval and errors recognizable, and use completion cues for a clear handoff. Preserve any requested profile, voice, or theme. For a demo, follow one scenario and label the agent actions alongside the exact phrases or sounds being played.
+Start from the scenario the user wants to hear. Give routine work a quieter texture, make approval and errors recognizable, and reserve ending cues for `stop`/`session_end`. Tests, builds, and other work must not reuse those ending cues, including any randomly selected sample or complete sequence variant. Preserve any requested profile, voice, or theme. For a demo, follow one scenario and label the agent actions alongside the exact phrases or sounds being played.
 
 ## Create or change a profile
 

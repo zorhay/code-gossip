@@ -170,3 +170,33 @@ class TestProfileNameConsistency:
             assert name in known, (
                 f"Manifest voice profile '{name}' not in server.py VOICE_PROFILES"
             )
+
+
+class TestEndingCueIdentity:
+    """Reserve complete ending cues for turn/session completion, not routine work."""
+
+    @staticmethod
+    def variants(spec):
+        # Ignore rate and gap: changing those does not make a reused cue distinct.
+        if "sox" in spec:
+            return {("sox", " ".join(spec["sox"].split()))}
+        if "file" in spec:
+            return {(spec["file"],)}
+        if "files" in spec:
+            return {(name,) for name in spec["files"]}
+        return {tuple(sequence) for sequence in spec.get("sequence", [])}
+
+    def test_ending_cues_are_not_reused_by_work(self, sounds_json):
+        endings = {"stop", "session_end"}
+        for layer, profiles in sounds_json.items():
+            for name, profile in profiles.items():
+                events = profile["events"]
+                reserved = set()
+                for event in endings:
+                    reserved.update(self.variants(events.get(event, {})))
+                for event, spec in events.items():
+                    if event in endings:
+                        continue
+                    assert not reserved.intersection(self.variants(spec)), (
+                        f"{layer}/{name}/{event} reuses an ending cue"
+                    )
