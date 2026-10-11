@@ -46,6 +46,7 @@ bash ./install.sh --dry-run              # preview changes
 
 For Codex, review and trust the commands in the CLI's `/hooks`, then start a new chat. Start a new session in your other selected agents too. Use the same `CODEX_HOME` when installing, updating, and removing a custom Codex setup.
 
+Installation starts Soundbar in the background and opens it in your browser. Use `--no-panel` for unattended installs or to configure it later.
 Everything lives in `~/.code-gossip/`. The installer preserves settings and unrelated hooks; repeat installs do not duplicate integrations.
 
 </details>

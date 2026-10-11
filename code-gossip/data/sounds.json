@@ -34,34 +34,6 @@
         "stop":       {"sox": "synth 0.9 sine 290:260 vol 0.13 fade 0.2 0.9 0.6 reverb 70"}
       }
     },
-    "chiptune": {
-      "events": {
-        "session_start": {"sox": "synth 0.1 square 523 : synth 0.1 square 659 : synth 0.1 square 784 : synth 0.2 square 1047 : synth 0.1 square 784 : synth 0.15 square 1047"},
-        "edit":          {"sox": "synth 0.06 square 1000 : synth 0.06 square 1150"},
-        "bash":          {"sox": "synth 0.1 square 200 : synth 0.05 square 250 : synth 0.05 square 300"},
-        "search":        {"sox": "synth 0.05 square 1250"},
-        "permission":    {"sox": "synth 0.08 square 600 : synth 0.08 square 800 : synth 0.12 square 600"},
-        "error":         {"sox": "synth 0.1 square 200 : synth 0.1 square 150 : synth 0.15 square 100"},
-        "subagent_start": {"sox": "synth 0.05 square 400 : synth 0.05 square 600 : synth 0.05 square 800 : synth 0.05 square 1000"},
-        "subagent_stop":  {"sox": "synth 0.05 square 1000 : synth 0.05 square 800 : synth 0.05 square 600 : synth 0.05 square 400"},
-        "compact":       {"sox": "synth 0.08 square 800 : synth 0.08 square 400 : synth 0.08 square 200"},
-        "stop":          {"sox": "synth 0.08 square 523 : synth 0.08 square 659 : synth 0.08 square 784 : synth 0.15 square 1047"},
-        "user_prompt": {"sox": "synth 0.1 square 523 : synth 0.1 square 659 : synth 0.1 square 784 : synth 0.2 square 1047 : synth 0.1 square 784 : synth 0.15 square 1047"},
-        "read": {"sox": "synth 0.05 square 1250"},
-        "tool": {"sox": "synth 0.1 square 200 : synth 0.05 square 250 : synth 0.05 square 300"},
-        "plan": {"sox": "synth 0.06 square 1000 : synth 0.06 square 1150"},
-        "test": {"sox": "synth 0.1 square 200 : synth 0.05 square 250 : synth 0.05 square 300"},
-        "build": {"sox": "synth 0.1 square 200 : synth 0.05 square 250 : synth 0.05 square 300"},
-        "git": {"sox": "synth 0.1 square 200 : synth 0.05 square 250 : synth 0.05 square 300"},
-        "git_status": {"sox": "synth 0.05 square 1250"},
-        "git_history": {"sox": "synth 0.05 square 1250"},
-        "git_commit": {"sox": "synth 0.1 square 200 : synth 0.05 square 250 : synth 0.05 square 300"},
-        "git_push": {"sox": "synth 0.1 square 200 : synth 0.05 square 250 : synth 0.05 square 300"},
-        "pre_compact": {"sox": "synth 0.08 square 800 : synth 0.08 square 400 : synth 0.08 square 200"},
-        "session_end": {"sox": "synth 0.08 square 523 : synth 0.08 square 659 : synth 0.08 square 784 : synth 0.15 square 1047"},
-        "interrupt": {"sox": "synth 0.08 square 600 : synth 0.08 square 800 : synth 0.12 square 600"}
-      }
-    },
     "construction": {
       "dir": "sounds/construction",
       "events": {
@@ -117,34 +89,6 @@
         "pre_compact": {"file": "/System/Library/Sounds/Purr.aiff"},
         "session_end": {"file": "/System/Library/Sounds/Hero.aiff"},
         "interrupt": {"file": "/System/Library/Sounds/Funk.aiff"}
-      }
-    },
-    "factory": {
-      "events": {
-        "session_start": {"sox": "synth 0.6 sawtooth 60:180 tremolo 8 vol 0.35 fade 0.02 0.6 0.3 : synth 0.2 noise vol 0.15 fade 0.01 0.2 0.15"},
-        "edit":          {"sox": "synth 0.04 square 140 synth 0.04 noise vol 0.5 fade 0 0.04 0.03 : synth 0.15 sine 420 vol 0.15 fade 0 0.15 0.12"},
-        "bash":          {"sox": "synth 0.2 brownnoise vol 0.4 fade 0.01 0.2 0.1 : synth 0.1 sawtooth 120:60 vol 0.3 fade 0.01 0.1 0.05"},
-        "search":        {"sox": "synth 0.08 sine 1500 vol 0.3 fade 0.005 0.08 0.06 repeat 1 reverb 50"},
-        "permission":    {"sox": "synth 0.1 square 300 vol 0.35 : synth 0.05 noise vol 0.2 : synth 0.1 square 350 vol 0.35 fade 0.01 0.25 0.05"},
-        "error":         {"sox": "synth 0.2 sawtooth 200:80 vol 0.4 : synth 0.1 noise vol 0.3 fade 0.01 0.3 0.1"},
-        "subagent_start": {"sox": "synth 0.25 sawtooth 80:200 tremolo 15 vol 0.3 fade 0.01 0.25 0.1"},
-        "subagent_stop":  {"sox": "synth 0.2 sawtooth 200:60 tremolo 10 vol 0.25 fade 0.01 0.2 0.12"},
-        "compact":       {"sox": "synth 0.15 brownnoise vol 0.3 : synth 0.1 square 100:50 vol 0.25 fade 0.01 0.25 0.1"},
-        "stop":          {"sox": "synth 0.15 noise vol 0.4 fade 0.01 0.15 0.05 : synth 0.4 square 180:160 tremolo 25 vol 0.3 fade 0.01 0.4 0.2"},
-        "user_prompt": {"sox": "synth 0.6 sawtooth 60:180 tremolo 8 vol 0.35 fade 0.02 0.6 0.3 : synth 0.2 noise vol 0.15 fade 0.01 0.2 0.15"},
-        "read": {"sox": "synth 0.08 sine 1500 vol 0.3 fade 0.005 0.08 0.06 repeat 1 reverb 50"},
-        "tool": {"sox": "synth 0.2 brownnoise vol 0.4 fade 0.01 0.2 0.1 : synth 0.1 sawtooth 120:60 vol 0.3 fade 0.01 0.1 0.05"},
-        "plan": {"sox": "synth 0.04 square 140 synth 0.04 noise vol 0.5 fade 0 0.04 0.03 : synth 0.15 sine 420 vol 0.15 fade 0 0.15 0.12"},
-        "test": {"sox": "synth 0.2 brownnoise vol 0.4 fade 0.01 0.2 0.1 : synth 0.1 sawtooth 120:60 vol 0.3 fade 0.01 0.1 0.05"},
-        "build": {"sox": "synth 0.2 brownnoise vol 0.4 fade 0.01 0.2 0.1 : synth 0.1 sawtooth 120:60 vol 0.3 fade 0.01 0.1 0.05"},
-        "git": {"sox": "synth 0.2 brownnoise vol 0.4 fade 0.01 0.2 0.1 : synth 0.1 sawtooth 120:60 vol 0.3 fade 0.01 0.1 0.05"},
-        "git_status": {"sox": "synth 0.08 sine 1500 vol 0.3 fade 0.005 0.08 0.06 repeat 1 reverb 50"},
-        "git_history": {"sox": "synth 0.08 sine 1500 vol 0.3 fade 0.005 0.08 0.06 repeat 1 reverb 50"},
-        "git_commit": {"sox": "synth 0.2 brownnoise vol 0.4 fade 0.01 0.2 0.1 : synth 0.1 sawtooth 120:60 vol 0.3 fade 0.01 0.1 0.05"},
-        "git_push": {"sox": "synth 0.2 brownnoise vol 0.4 fade 0.01 0.2 0.1 : synth 0.1 sawtooth 120:60 vol 0.3 fade 0.01 0.1 0.05"},
-        "pre_compact": {"sox": "synth 0.15 brownnoise vol 0.3 : synth 0.1 square 100:50 vol 0.25 fade 0.01 0.25 0.1"},
-        "session_end": {"sox": "synth 0.15 noise vol 0.4 fade 0.01 0.15 0.05 : synth 0.4 square 180:160 tremolo 25 vol 0.3 fade 0.01 0.4 0.2"},
-        "interrupt": {"sox": "synth 0.1 square 300 vol 0.35 : synth 0.05 noise vol 0.2 : synth 0.1 square 350 vol 0.35 fade 0.01 0.25 0.05"}
       }
     },
     "minimal": {
@@ -286,30 +230,30 @@
     },
     "sci-fi": {
       "events": {
-        "session_start": {"sox": "synth 0.6 sine 100:800 tremolo 3 reverb 40 fade 0.02 0.6 0.3"},
-        "edit":          {"sox": "synth 0.15 sine 1100:550 fade 0.01 0.15 0.08"},
-        "bash":          {"sox": "synth 0.2 sawtooth 150:300 tremolo 10 fade 0.01 0.2 0.1"},
-        "search":        {"sox": "synth 0.1 sine 1400:900 fade 0.01 0.1 0.05"},
-        "permission":    {"sox": "synth 0.1 sine 800:1200 : synth 0.1 sine 1200:800 tremolo 8 fade 0.01 0.2 0.08"},
-        "error":         {"sox": "synth 0.3 sawtooth 600:100 tremolo 20 vol 0.4 fade 0.01 0.3 0.1"},
-        "subagent_start": {"sox": "synth 0.2 sine 200:1000 tremolo 6 fade 0.01 0.2 0.08 reverb 30"},
-        "subagent_stop":  {"sox": "synth 0.2 sine 1000:300 fade 0.01 0.2 0.1 reverb 25"},
+        "session_start": {"sox": "synth 0.6 sine 100:700 tremolo 3 reverb 40 fade 0.02 0.6 0.3 vol 0.7"},
+        "edit":          {"sox": "synth 0.15 sine 900:500 fade 0.01 0.15 0.08 vol 0.7"},
+        "bash":          {"sox": "synth 0.2 sine 150:300 tremolo 10 fade 0.01 0.2 0.1 vol 0.7"},
+        "search":        {"sox": "synth 0.1 sine 1000:700 fade 0.01 0.1 0.05 vol 0.7"},
+        "permission":    {"sox": "synth 0.1 sine 700:950 : synth 0.1 sine 950:700 tremolo 8 fade 0.01 0.2 0.08 vol 0.7"},
+        "error":         {"sox": "synth 0.3 sine 500:120 tremolo 20 vol 0.28 fade 0.01 0.3 0.1"},
+        "subagent_start": {"sox": "synth 0.2 sine 200:850 tremolo 6 fade 0.01 0.2 0.08 reverb 30 vol 0.7"},
+        "subagent_stop":  {"sox": "synth 0.2 sine 850:300 fade 0.01 0.2 0.1 reverb 25 vol 0.7"},
         "compact":       {"sox": "synth 0.3 sine 800:200 tremolo 12 vol 0.3 fade 0.01 0.3 0.15"},
-        "stop":          {"sox": "synth 0.5 sine 300:900 fade 0.01 0.5 0.2 tremolo 6 reverb 40"},
-        "user_prompt": {"sox": "synth 0.6 sine 100:800 tremolo 3 reverb 40 fade 0.02 0.6 0.3"},
-        "read": {"sox": "synth 0.1 sine 1400:900 fade 0.01 0.1 0.05"},
-        "tool": {"sox": "synth 0.2 sawtooth 150:300 tremolo 10 fade 0.01 0.2 0.1"},
-        "plan": {"sox": "synth 0.15 sine 1100:550 fade 0.01 0.15 0.08"},
-        "test": {"sox": "synth 0.2 sawtooth 150:300 tremolo 10 fade 0.01 0.2 0.1"},
-        "build": {"sox": "synth 0.2 sawtooth 150:300 tremolo 10 fade 0.01 0.2 0.1"},
-        "git": {"sox": "synth 0.2 sawtooth 150:300 tremolo 10 fade 0.01 0.2 0.1"},
-        "git_status": {"sox": "synth 0.1 sine 1400:900 fade 0.01 0.1 0.05"},
-        "git_history": {"sox": "synth 0.1 sine 1400:900 fade 0.01 0.1 0.05"},
-        "git_commit": {"sox": "synth 0.2 sawtooth 150:300 tremolo 10 fade 0.01 0.2 0.1"},
-        "git_push": {"sox": "synth 0.2 sawtooth 150:300 tremolo 10 fade 0.01 0.2 0.1"},
+        "stop":          {"sox": "synth 0.5 sine 300:750 fade 0.01 0.5 0.2 tremolo 6 reverb 40 vol 0.7"},
+        "user_prompt": {"sox": "synth 0.6 sine 100:700 tremolo 3 reverb 40 fade 0.02 0.6 0.3 vol 0.7"},
+        "read": {"sox": "synth 0.1 sine 1000:700 fade 0.01 0.1 0.05 vol 0.7"},
+        "tool": {"sox": "synth 0.2 sine 150:300 tremolo 10 fade 0.01 0.2 0.1 vol 0.7"},
+        "plan": {"sox": "synth 0.15 sine 900:500 fade 0.01 0.15 0.08 vol 0.7"},
+        "test": {"sox": "synth 0.2 sine 150:300 tremolo 10 fade 0.01 0.2 0.1 vol 0.7"},
+        "build": {"sox": "synth 0.2 sine 150:300 tremolo 10 fade 0.01 0.2 0.1 vol 0.7"},
+        "git": {"sox": "synth 0.2 sine 150:300 tremolo 10 fade 0.01 0.2 0.1 vol 0.7"},
+        "git_status": {"sox": "synth 0.1 sine 1000:700 fade 0.01 0.1 0.05 vol 0.7"},
+        "git_history": {"sox": "synth 0.1 sine 1000:700 fade 0.01 0.1 0.05 vol 0.7"},
+        "git_commit": {"sox": "synth 0.2 sine 150:300 tremolo 10 fade 0.01 0.2 0.1 vol 0.7"},
+        "git_push": {"sox": "synth 0.2 sine 150:300 tremolo 10 fade 0.01 0.2 0.1 vol 0.7"},
         "pre_compact": {"sox": "synth 0.3 sine 800:200 tremolo 12 vol 0.3 fade 0.01 0.3 0.15"},
-        "session_end": {"sox": "synth 0.5 sine 300:900 fade 0.01 0.5 0.2 tremolo 6 reverb 40"},
-        "interrupt": {"sox": "synth 0.1 sine 800:1200 : synth 0.1 sine 1200:800 tremolo 8 fade 0.01 0.2 0.08"}
+        "session_end": {"sox": "synth 0.5 sine 300:750 fade 0.01 0.5 0.2 tremolo 6 reverb 40 vol 0.7"},
+        "interrupt": {"sox": "synth 0.1 sine 700:950 : synth 0.1 sine 950:700 tremolo 8 fade 0.01 0.2 0.08 vol 0.7"}
       }
     },
     "submarine": {
