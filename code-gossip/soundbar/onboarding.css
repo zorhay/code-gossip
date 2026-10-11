@@ -1,0 +1,50 @@
+/* First visit and optional, two-step control tours. */
+.quick-tips {
+  position: fixed; top: 68px; right: 24px; z-index: 90;
+  display: flex; flex-direction: column; align-items: stretch; gap: 8px;
+  width: 180px; max-width: calc(100vw - 32px); pointer-events: none;
+}
+.quick-tips > .quick-tips-label { align-self: flex-end; margin: 0 4px 2px; color: #f2c66d; font-weight: 600; }
+body.tour-active .quick-tips { visibility: hidden; }
+.quick-tips-label { font-size: 11px; color: var(--fg2); margin-right: 2px; }
+.tip-item {
+  display: flex; align-items: center; pointer-events: auto;
+  border: 1px solid rgba(224, 160, 48, .45); border-radius: 10px;
+  background: rgba(132, 92, 24, .5); box-shadow: none;
+  animation: tip-arrive .25s ease-out both;
+}
+.tip-item:nth-child(3) { animation-delay: .04s; }
+.tip-item:nth-child(4) { animation-delay: .08s; }
+.tip-item:nth-child(5) { animation-delay: .12s; }
+.tip-item:nth-child(6) { animation-delay: .16s; }
+.tip-item button:first-child { flex: 1; text-align: left; }
+@keyframes tip-arrive { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .tip-item { animation: none; } }
+.tip-item button, .guide-button { font: inherit; cursor: pointer; color: var(--fg); }
+.tip-item button { color: #fff0cc; font-size: 11px; background: transparent; border: 0; padding: 10px 12px; border-radius: 9px; }
+.tip-item .tip-dismiss { padding-left: 5px; color: #f2c66d; }
+.tip-item button:hover { color: #fff; background: transparent; }
+.tip-item button:focus-visible, .guide-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.welcome-dialog { margin: auto; width: min(440px, calc(100% - 32px)); padding: 28px; border: 1px solid var(--border); border-radius: 16px; background: var(--bg2); color: var(--fg); box-shadow: 0 20px 80px #0008; }
+.welcome-dialog::backdrop { background: #080812b8; }
+.guide-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+.welcome-dialog h1 { font-size: 25px; margin-bottom: 14px; }
+.welcome-dialog p, .tour-card p { font-size: 13px; line-height: 1.6; color: var(--fg2); }
+.welcome-dialog p + p { margin-top: 12px; }
+.welcome-dialog .guide-actions { margin-top: 22px; }
+.guide-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; }
+.guide-button { font-size: 12px; border: 1px solid var(--border); background: var(--bg3); padding: 9px 12px; border-radius: 7px; }
+.guide-button.primary { background: var(--accent); color: #241900; border-color: var(--accent); font-weight: 600; }
+.guide-button:disabled { opacity: .45; cursor: default; }
+.tour-card { position: fixed; width: min(330px, calc(100vw - 32px)); z-index: 110; border: 1px solid var(--accent); border-radius: 12px; background: var(--bg2); padding: 18px; box-shadow: 0 8px 40px #0008; }
+.tour-card h2 { font-size: 16px; margin-bottom: 8px; }
+.tour-highlight { position: fixed; z-index: 100; pointer-events: none; border: 2px solid var(--accent); border-radius: 7px; box-shadow: 0 0 0 4px #e0a03025; }
+.tour-card[hidden], .tour-highlight[hidden], .quick-tips[hidden] { display: none; }
+body.tour-active { padding-bottom: 300px; }
+@media (max-width: 700px) {
+  .quick-tips { top: 112px; right: 16px; width: 165px; }
+}
+
+.close-soundbar { margin-left: auto; font-size: 10px; letter-spacing: .6px; }
+.close-error { color: var(--red); font-size: 12px; width: 100%; text-align: right; }
+.closed-dialog code { display: block; margin-top: 14px; font-size: 11px; overflow-wrap: anywhere; }

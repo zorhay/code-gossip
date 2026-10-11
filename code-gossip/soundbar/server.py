@@ -4,6 +4,7 @@
 API:
   GET  /                  → ui.html
   GET  /api/status        → full state (config + profiles + phrases + voices)
+  POST /api/shutdown      → stop this panel server (same-origin UI request)
   POST /api/config        → update config (any subset of keys)
   POST /api/phrases       → update phrases for one event
   POST /api/play          → play a specific profile+event sound directly
@@ -536,6 +537,16 @@ class Handler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(UI_FILE.read_bytes())
 
+            elif path == "/api/health":
+                self.json_response({"app": "code-gossip", "root": str(UI_FILE.resolve().parents[1])})
+
+            elif path in ("/onboarding.js", "/onboarding.css"):
+                asset = UI_FILE.parent / path[1:]
+                self.send_response(200)
+                self.send_header("Content-Type", "text/javascript" if path.endswith(".js") else "text/css")
+                self.end_headers()
+                self.wfile.write(asset.read_bytes())
+
             elif path == "/api/status":
                 self.json_response(get_status())
 
@@ -547,6 +558,18 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/shutdown":
+            port = self.server.server_port
+            origins = {f"http://localhost:{port}", f"http://127.0.0.1:{port}"}
+            if (self.headers.get("Origin") not in origins
+                    or self.headers.get("X-Soundbar-Request") != "ui"):
+                self.send_error(403, "Shutdown requires a Soundbar UI request")
+                return
+            self.json_response({"ok": True})
+            self.wfile.flush()
+            # shutdown() must run outside the serve_forever thread.
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
         body = self.read_body()
         try:
             self._handle_post(path, body)

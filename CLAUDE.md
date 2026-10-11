@@ -60,7 +60,7 @@ User settings live in `configs/config.json`, `configs/phrases.json`, and `config
 
 **Panel:** `server.py` plays sounds directly (no shell script) — resolves manifest specs and runs `afplay`/`play`/`say` via subprocess. Volume is locale-safe (pure integer math). Narrator settings panel shows provider/model/key/style configuration with live connection status.
 
-**Panel lifecycle:** `panel.sh` runs `server.py` in foreground, opens browser. Ctrl+C stops it.
+**Panel lifecycle:** `panel.sh` delegates to `soundbar/launcher.py`, reuses an existing healthy server, or starts one and opens the browser after readiness. Manual starts run in the foreground; installation uses `--background` unless `--no-panel` is set. Reinstallation restarts the owned panel process to load updated server code. Ctrl+C stops a foreground server. First-visit welcome and dismissible two-step tours live in `onboarding.js`/`onboarding.css`; browser localStorage records completion, independently of sound preferences.
 
 **Install/Uninstall:** Shell entrypoints call `code-gossip/installer.py`; selection and hook merge planning are shared by preview and execution.
 - `install.sh` — detects agents, accepts multiple selections, copies shared files, creates user config, and merges selected hooks (backup + validate)
@@ -137,3 +137,14 @@ echo '{"hook_event_name":"PreToolUse","tool_name":"Edit","tool_input":{"file_pat
 - `python3` — for web control panel and narrator engine
 - LLM provider (narrator only): one of Claude CLI, Anthropic API key, Google Gemini key, OpenAI key, or local Ollama
 - `kokoro` + `soundfile` — optional, for Kokoro neural TTS engine (`pip install kokoro soundfile`)
+
+### Browser regression checks
+
+With Node and Playwright installed (Chromium available through Playwright or `CHROMIUM_PATH`):
+
+```bash
+node tests/test_soundbar_ui.cjs   # mocked APIs: tours, mobile layout, shutdown UI
+node tests/test_soundbar_e2e.cjs  # real normal/dev installs, APIs, browser, uninstall
+```
+
+The end-to-end runner requires macOS, Python 3, and jq. Set `E2E_PYTHON` to select a Python executable. It uses disposable homes/checkouts and intercepts only the OS browser opener; Playwright visits the recorded URL. It does not install Kokoro, call an LLM, or change personal sound settings.

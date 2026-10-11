@@ -57,7 +57,7 @@ code-gossip/                         installed as ~/.code-gossip/
 │   └── integrations.py             Python detection and Kokoro installation
 │
 ├── soundbar/                       configuration interface
-│   ├── panel.sh                    launch server and open browser
+│   ├── panel.sh / launcher.py      launch/reuse server and open browser
 │   ├── server.py                   local HTTP API and previews
 │   ├── ui.html                     mixer frontend
 │   └── mockups/                    standalone design explorations
@@ -223,7 +223,9 @@ flowchart LR
     Config -.-> Live[Live hook engine]
 ```
 
-`panel.sh` starts the foreground server and opens the browser. The Python server binds to `127.0.0.1`, writes `state/.server.pid` after binding, and removes its own PID file on shutdown. Closing the panel does not remove agent hooks.
+`panel.sh` uses `launcher.py` to reuse a ready server or start one, then opens the browser. Manual launches run in the foreground; installation uses `--background` after hook setup, unless `--no-panel` was passed. Reinstallation restarts only the recorded, identity-checked panel process to load updated Python code. The launcher checks `/api/health` for the application and resolved runtime path before opening the UI. Startup/browser failures report a manual-open command without undoing installation. The Python server binds to `127.0.0.1`, writes `state/.server.pid` after binding, and removes its own PID file on shutdown. The **CLOSE SOUNDBAR** button sends a same-origin `POST /api/shutdown`; the server responds before stopping its request loop, closes the socket, and removes its PID file. The UI shows a closed state with reopening instructions. Closing the browser tab alone does not stop the server. Agent hooks and the separate Kokoro process remain active.
+
+`onboarding.js` and `onboarding.css` provide the first-visit welcome and five optional two-step tours. Highlights follow the live controls without changing settings. Welcome completion and dismissed/completed suggestions are stored in browser localStorage (`code-gossip.soundbar.onboarding.v1`), independently of audio configuration.
 
 The UI reads current status, saves preferences, edits phrases/styles, and requests previews. `server.py` has its own manifest preview dispatcher; previews bypass live-hook spacing and do not need an agent event.
 
@@ -233,6 +235,8 @@ The UI reads current status, saves preferences, edits phrases/styles, and reques
 | Method | Endpoint | Purpose |
 |---|---|---|
 | GET | `/`, `/ui` | Mixer HTML |
+| GET | `/api/health` | Panel identity and resolved runtime path |
+| POST | `/api/shutdown` | Same-origin UI request to stop the panel and clean up its PID file |
 | GET | `/api/status` | Settings, profiles, events, voices, and provider metadata |
 | POST | `/api/config` | Save recognized settings keys |
 | POST | `/api/phrases` | Save phrases for an event |

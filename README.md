@@ -20,7 +20,7 @@
 Install https://github.com/zorhay/code-gossip for this agent. Follow the README and verify the installation.
 ```
 
-**Upgrading to 0.5.0?** This is a breaking release with a new installation layout and no automatic migration. Follow the [upgrade steps](CHANGELOG.md#050---2026-10-11) before installing.
+**Upgrading from before 0.5.0?** The installation layout changed in 0.5.0, with no automatic migration. Follow the [upgrade steps](CHANGELOG.md#050---2026-10-11) before installing.
 
 <details>
 <summary><strong>Manual installation</strong></summary>
@@ -46,7 +46,8 @@ bash ./install.sh --dry-run              # preview changes
 
 For Codex, review and trust the commands in the CLI's `/hooks`, then start a new chat. Start a new session in your other selected agents too. Use the same `CODEX_HOME` when installing, updating, and removing a custom Codex setup.
 
-Installation starts Soundbar in the background and opens it in your browser. Use `--no-panel` for unattended installs or to configure it later.
+Installation starts Soundbar in the background and opens it in your browser. Reinstallation restarts its existing panel to load updates. Use `--no-panel` for unattended installs or to configure it later.
+
 Everything lives in `~/.code-gossip/`. The installer preserves settings and unrelated hooks; repeat installs do not duplicate integrations.
 
 </details>
@@ -72,17 +73,17 @@ bash ./test-install.sh                    # validate the installed runtime
 
 ### Soundbar
 
-Open the local mixer:
+Installation opens the local mixer automatically. To open it again:
 
 ```bash
 ~/.code-gossip/soundbar/panel.sh
 ```
 
-At [localhost:8111](http://localhost:8111), choose profiles, enable channels, set volumes, edit phrases, and preview events. Settings apply to all connected agents. Closing the mixer leaves hook audio running.
+At [localhost:8111](http://localhost:8111), choose profiles, enable channels, set volumes, edit phrases, and preview events. Settings apply to all connected agents. A first-visit welcome introduces the mixer. Floating amber tips with 50% background opacity at the top-right offer two short highlights each for profiles, layers, Narrator, Kokoro installation, and settings; finish or dismiss them to hide them permanently in that browser. **CLOSE SOUNDBAR** stops the panel server; closing the browser tab alone leaves it running. Hook audio continues either way.
 
 | Component | What it does | How to use it |
 |---|---|---|
-| **Effects** | System sounds, sampled audio, or generated tones | Pick a profile such as `paper`, `construction`, or `chiptune`; enable Effects. Generated profiles need SoX. |
+| **Effects** | System sounds, sampled audio, or generated tones | Pick a profile such as `paper`, `construction`, or `sci-fi`; enable Effects. Generated profiles need SoX. |
 | **Voice** | Spoken cues or commentary | Choose `senior` for editable phrases, `generals` for game-style clips, or `narrator` for AI commentary; enable Voice. |
 | **Narrator** | Describes the current event in a chosen style | Select a provider/model, save credentials if needed, then use **Check connection** and **Test narration**. |
 | **Speech engine** | Speaks Senior phrases and narrator text | Use built-in macOS speech, or select Kokoro and click **Install Kokoro**. |

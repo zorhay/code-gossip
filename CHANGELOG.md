@@ -4,6 +4,29 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-11
+
+### Breaking changes
+
+- Removed the `chiptune` and `factory` effects profiles. If either is selected in your saved settings, choose another Effects profile in Soundbar after updating; those profiles no longer produce cues.
+
+### Added
+
+- **CLOSE SOUNDBAR** stops the panel server from the UI, cleans up its PID file, and keeps agent hook audio running.
+- Installation starts Soundbar in the background and opens its ready UI; `--no-panel` skips it for unattended setup. Reopening the panel reuses an existing server.
+- First-visit welcome and a floating stack of dismissible amber tips with 50% background opacity and two-step highlights for profiles, mixer layers, Narrator LLM setup, Kokoro installation, and settings. Completed/dismissed suggestions stay hidden in the same browser.
+
+### Changed
+
+- Refined Construction and Paper samples and softened the Sci-fi tones.
+- Reinstallation restarts the owned panel process so updated UI assets and server endpoints load together; ordinary panel opening reuses an existing server.
+
+### Fixed
+
+- Panel launch waits for a healthy server and reports startup/browser failures without undoing installation. Shutdown cleans up the listening socket and PID file.
+
+## [0.5.1] - 2026-10-11
+
 ### Fixed
 
 - Reserved turn/session ending cues for completion: tests and builds no longer reuse them across 10 effects profiles. Default now uses Tink for tests and Morse for builds; its demo is refreshed to match.

@@ -30,6 +30,8 @@ def sandbox(tmp_path, repo_root):
         path = Path(script)
         if not path.is_absolute():
             path = repo_root / path
+        if path.name == "install.sh":
+            args = (*args, "--no-panel")
         result = subprocess.run(["/bin/bash", str(path), *args], env=env,
                                 input=selection or "", text=True, capture_output=True)
         if success:

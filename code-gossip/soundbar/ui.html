@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Code Gossip — Soundbar</title>
+<link rel="stylesheet" href="/onboarding.css">
+<script src="/onboarding.js" defer></script>
 <style>
   :root {
     --bg: #1c1c26;
@@ -557,7 +559,11 @@
 <div class="header">
   <span class="brand">Code Gossip</span>
   <span class="tagline">Soundbar · Sound configuration</span>
+  <button class="guide-button close-soundbar" id="closeSoundbar" onclick="closeSoundbar()">CLOSE SOUNDBAR</button>
+  <span class="close-error" id="closeSoundbarError" role="alert" hidden></span>
 </div>
+
+<nav class="quick-tips" id="quickTips" aria-label="Soundbar suggestions" hidden></nav>
 
 <!-- Channel strips -->
 <div class="channels">
@@ -597,6 +603,25 @@
   </div>
 </div>
 
+<dialog class="welcome-dialog closed-dialog" id="closedDialog" aria-labelledby="closedTitle" aria-describedby="closedText" oncancel="event.preventDefault()">
+  <h1 id="closedTitle" tabindex="-1">Soundbar is closed</h1>
+  <p id="closedText">The panel server has stopped. Your agent’s sounds keep working. You can close this tab.</p>
+  <p>To open Soundbar again:</p>
+  <code>~/.code-gossip/soundbar/panel.sh</code>
+</dialog>
+<dialog class="welcome-dialog" id="welcomeDialog" aria-labelledby="welcomeTitle" aria-describedby="welcomeText">
+  <div class="guide-eyebrow">Your agent, with sound</div>
+  <h1 id="welcomeTitle">Welcome to Soundbar</h1>
+  <p id="welcomeText">This is Code Gossip’s mixer. Turn agent activity into sound effects and spoken cues, so you can hear progress without watching every step.</p>
+  <p>Mix Effects and Voice, preview any event, and make it yours. Changes save automatically and apply to your connected agents.</p>
+  <div class="guide-actions"><span class="quick-tips-label">Short tips are at the top right.</span><button class="guide-button primary" id="welcomeStart" autofocus>Let’s try it</button></div>
+</dialog>
+<div class="tour-highlight" id="tourHighlight" hidden aria-hidden="true"></div>
+<section class="tour-card" id="tourCard" hidden role="region" aria-labelledby="tourTitle">
+  <div aria-live="polite"><div class="guide-eyebrow" id="tourProgress"></div><h2 id="tourTitle"></h2><p id="tourText"></p></div>
+  <div class="guide-actions"><button class="guide-button" id="tourClose">Close tip</button><button class="guide-button primary" id="tourNext">Next</button></div>
+</section>
+
 <script>
 const ORIGIN_ICONS = {
   system:    '&#x1F5A5;',  // 🖥
@@ -620,6 +645,28 @@ async function api(method, path, body) {
   return (await fetch(path, opts)).json();
 }
 
+async function closeSoundbar() {
+  const button = document.getElementById('closeSoundbar');
+  const error = document.getElementById('closeSoundbarError');
+  button.disabled = true;
+  button.textContent = 'CLOSING…';
+  error.hidden = true;
+  try {
+    const response = await fetch('/api/shutdown', {
+      method: 'POST', headers: { 'X-Soundbar-Request': 'ui' },
+    });
+    if (!response.ok || !(await response.json()).ok) throw new Error('Shutdown failed');
+    document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+    document.getElementById('closedDialog').showModal();
+    document.getElementById('closedTitle').focus();
+  } catch (_) {
+    button.disabled = false;
+    button.textContent = 'CLOSE SOUNDBAR';
+    error.textContent = 'Could not stop Soundbar. Try again.';
+    error.hidden = false;
+  }
+}
+
 async function load() {
   S = await api('GET', '/api/status');
   render();
@@ -633,6 +680,7 @@ function render() {
   renderMixer();
   renderPhrasesVisibility();
   renderNarratorVisibility();
+  document.dispatchEvent(new Event('soundbar:render'));
 }
 
 function renderSpacingSettings() {
@@ -713,8 +761,8 @@ function renderEffectsChannel() {
   el.innerHTML = `
     <div class="channel-top">
       <span class="channel-label">Effects</span>
-      <label class="toggle"><input type="checkbox" id="effectsOn" ${S.effects_on ? 'checked' : ''}><span class="toggle-track"></span></label>
-      <select class="profile-select" id="effectsProfile">${opts}</select>
+      <label class="toggle"><input type="checkbox" id="effectsOn" aria-label="Enable Effects" ${S.effects_on ? 'checked' : ''}><span class="toggle-track"></span></label>
+      <select class="profile-select" id="effectsProfile" aria-label="Effects profile">${opts}</select>
     </div>
     <div class="volume-row">
       <span class="volume-label">Vol</span>
@@ -769,7 +817,7 @@ function renderVoiceChannel() {
     if (isKokoro) {
       ttsHTML += `
         <div class="kokoro-info">
-          <div class="kokoro-install-row">
+          <div class="kokoro-install-row" id="kokoroSetup">
             <button class="kokoro-install-btn" id="kokoroInstallBtn" onclick="installKokoro()">Install Kokoro</button>
             <span class="kokoro-install-msg" id="kokoroInstallMsg"></span>
           </div>
@@ -821,8 +869,8 @@ function renderVoiceChannel() {
   el.innerHTML = `
     <div class="channel-top">
       <span class="channel-label">Voice</span>
-      <label class="toggle"><input type="checkbox" id="voiceOn" ${S.voice_on ? 'checked' : ''}><span class="toggle-track"></span></label>
-      <select class="profile-select" id="voiceProfile">${opts}</select>
+      <label class="toggle"><input type="checkbox" id="voiceOn" aria-label="Enable Voice" ${S.voice_on ? 'checked' : ''}><span class="toggle-track"></span></label>
+      <select class="profile-select" id="voiceProfile" aria-label="Voice profile">${opts}</select>
     </div>
     <div class="volume-row">
       <span class="volume-label">Vol</span>
@@ -1573,7 +1621,7 @@ async function previewNarrVoice() {
   }
 }
 
-load();
+window.addEventListener('DOMContentLoaded', load);
 </script>
 </body>
 </html>

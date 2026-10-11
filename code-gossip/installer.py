@@ -13,6 +13,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 
 from hooks import codex, cursor
 
@@ -203,6 +204,7 @@ def stop_process(pid, script):
         return
     try:
         os.kill(pid, signal.SIGTERM)
+        return True
     except ProcessLookupError:
         pass
 
@@ -247,6 +249,34 @@ def remove_files(dest, purge):
                 child.unlink()
         if not any(dest.iterdir()):
             dest.rmdir()
+
+
+def open_panel(dest):
+    try:
+        # Reinstallation replaces Python code that an existing server has already
+        # imported. Restart only our recorded process so new API routes take effect.
+        pid_file = dest / "state/.server.pid"
+        if pid_file.exists():
+            try:
+                pid = int(pid_file.read_text().strip())
+            except ValueError:
+                pid = 0
+            if stop_process(pid, dest / "soundbar/server.py"):
+                for _ in range(50):
+                    process = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "stat="],
+                                             capture_output=True, text=True)
+                    if process.returncode != 0 or process.stdout.strip().startswith("Z"):
+                        break
+                    time.sleep(0.1)
+                else:
+                    raise OSError("The previous Soundbar process did not stop.")
+                if pid_file.exists() and pid_file.read_text().strip() == str(pid):
+                    pid_file.unlink()
+        subprocess.run([sys.executable, str(dest / "soundbar/launcher.py"), "--background"],
+                       check=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        print(f"Installation succeeded, but Soundbar could not open: {exc}", file=sys.stderr)
+        print(f"Open it later: {shlex.quote(str(dest / 'soundbar/panel.sh'))}", file=sys.stderr)
 
 
 def run(args):
@@ -302,6 +332,8 @@ def run(args):
         print(f"Panel: {dest / 'soundbar/panel.sh'}\nUninstall: {dest / 'uninstall.sh'}")
         if "codex" in selected:
             print("Open /hooks in Codex CLI to review and trust the commands, then start a new chat.")
+        if not args.no_panel:
+            open_panel(dest)
 
 
 def main():
@@ -312,8 +344,11 @@ def main():
     selection.add_argument("--all", action="store_true", help="skip questions; install detected agents or uninstall every integration")
     parser.add_argument("--dry-run", action="store_true", help="preview without changing files or processes")
     parser.add_argument("--dev", action="store_true", help="install using a symlink to this checkout")
+    parser.add_argument("--no-panel", action="store_true", help="install without starting Soundbar or opening a browser")
     parser.add_argument("--purge", action="store_true", help="delete user settings when the last integration is uninstalled")
     args = parser.parse_args()
+    if args.no_panel and args.action != "install":
+        parser.error("--no-panel applies only to install")
     if args.dev and args.action != "install" or args.purge and args.action != "uninstall":
         parser.error("--dev applies only to install; --purge applies only to uninstall")
     try:
