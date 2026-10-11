@@ -1,0 +1,11 @@
+{
+  "provenance": "AI-written by Codex for an illustrated login-timeout scenario; saved for reproducible playback, not a recording of a live provider response.",
+  "style": "pair_programmer",
+  "phrases": {
+    "search": "Tracing the login timeout.",
+    "edit": "Blocking expired sessions.",
+    "test": "Auth tests are green.",
+    "git_commit": "The timeout fix is committed.",
+    "stop": "Ready to review the fix."
+  }
+}

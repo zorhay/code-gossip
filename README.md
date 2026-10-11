@@ -2,9 +2,12 @@
 
 **Hear your agents work.** Code Gossip turns Claude Code, Codex, and Cursor events into sound effects, spoken cues, and live AI commentary.
 
-[![One coding scenario with the Senior voice profile: find a login bug, fix it, run tests, commit, and hand it back for review.](docs/assets/demo.gif)](docs/assets/demo.mp4)
+| Sound effects · Default | Senior | LLM narrator |
+| :---: | :---: | :---: |
+| [![Default sound effects following a login fix](docs/assets/demo-default.gif)](docs/assets/demo-default.mp4) | [![Senior voice cues following a login fix](docs/assets/demo.gif)](docs/assets/demo.mp4) | [![AI commentary following a login fix](docs/assets/demo-narrator.gif)](docs/assets/demo-narrator.mp4) |
+| System sound cues · **[Listen →](docs/assets/demo-default.mp4)** | Fixed phrases · **[Listen →](docs/assets/demo.mp4)** | Contextual commentary · **[Listen →](docs/assets/demo-narrator.mp4)** |
 
-**[Watch with sound →](docs/assets/demo.mp4)** · Senior + Kokoro · One bug fix in 12 seconds. The GIF is silent; the MP4 has speech.
+One login fix, three ways to hear it. Click a demo for sound; GIF previews are silent. Narrator commentary is AI-written for this illustrated scenario; both voice demos use Kokoro.
 
 **Shared agent hooks · Soundbar mixer · Effects + voice · Editable phrases · Optional AI narrator · macOS**
 
@@ -127,4 +130,4 @@ Only mapped events play. A completion cue means the current turn ended; it does 
 
 [Architecture](ARCHITECTURE.md) · [Sound-design skill](dev-skills/sound-design/SKILL.md) · [Docs skill](dev-skills/maintain-docs/SKILL.md) · [Changelog](CHANGELOG.md)
 
-Scripts: MIT. Sampled audio: CC0. Generals clips: generated with macOS speech. The demo uses shipped Senior phrases spoken by Kokoro; regenerate it with `python3 docs/render_demo.py` (Pillow, FFmpeg, and Kokoro installed in `code-gossip/state/.venv`; set `DEMO_KOKORO_PYTHON` for another location).
+Scripts: MIT. Bundled sampled audio: CC0. Default effects use macOS system sounds. Generals clips: generated with macOS speech. Demos use the shipped Default effects, AI-written narrator commentary, and Senior phrases; regenerate them with `python3 docs/render_demo.py` (Pillow, FFmpeg, and Kokoro installed in `code-gossip/state/.venv`; set `DEMO_KOKORO_PYTHON` for another location).

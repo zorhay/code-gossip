@@ -4,6 +4,14 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Added
+
+- Default sound-effects and AI-written narrator demos alongside the Senior demo, in a compact three-column README showcase. Each follows the same login-fix scenario with a silent GIF preview and a video with sound.
+
+### Changed
+
+- Demo generation supports individual profiles, reads Default cues from the shipped sound manifest, and voices saved narrator commentary with Kokoro. Compact previews show one event at a time for readability.
+
 ## [0.5.0] - 2026-10-11
 
 ### Breaking changes
