@@ -14,7 +14,7 @@ Keep documentation aligned with the implemented product and the reader's task. W
 | [README](../../README.md) | Product introduction, demo, installation, and a compact usage reference |
 | [ARCHITECTURE](../../ARCHITECTURE.md) | How the current implementation works: flows, boundaries, ownership, and data contracts |
 | [CHANGELOG](../../CHANGELOG.md) | Notable changes users need to know, grouped by release |
-| [CLAUDE](../../CLAUDE.md) | Concise contributor instructions and implementation conventions; link to deeper explanations |
+| [AGENTS](../../AGENTS.md) | Concise contributor instructions and implementation conventions; link to deeper explanations |
 | `TASKS.md` at the repository root | Local future work and ideas; keep gitignored and out of commits, releases, and public links |
 | `dev-skills/<skill-name>/SKILL.md` | Reusable instructions for a specific development activity; the folder name matches the frontmatter name |
 | `docs/` | Supporting documents and reproducible demo sources/assets that need their own space |

@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Changed
+
+- Replaced the Claude-specific contributor document with a shorter `AGENTS.md` for all coding agents, linking to the detailed architecture and development skills.
+
 ## [0.6.0] - 2026-10-11
 
 ### Breaking changes
