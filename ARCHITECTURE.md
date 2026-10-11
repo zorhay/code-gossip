@@ -1,731 +1,357 @@
-# Code Gossip — Architecture & Implementation Guide
+# Code Gossip architecture
 
-Comprehensive reference for Code Gossip, the Claude Code and Codex audio feedback system. Soundbar is its web UI for sound configuration. Covers all components, their connections, data flows, and planned features.
+A map of the current runtime: **three agent integrations, two audio channels, one shared installation**.
 
----
+[Runtime](#runtime-at-a-glance) · [Package](#package-map) · [Events](#agent-events) · [Playback](#playback-and-spacing) · [Narrator](#narration-and-speech) · [Soundbar](#soundbar-and-its-api) · [Installation](#installation-and-removal) · [Data](#data-contracts)
 
-## 1. System Overview
+For setup and everyday use, see the [usage guide](README.md#using-code-gossip). For release history, see [CHANGELOG.md](CHANGELOG.md). This document describes implemented behavior.
 
-Code Gossip adds audio feedback to Claude Code and local Codex sessions through three independent, mixable layers:
+## Runtime at a glance
 
-```
-Claude Code                    Code Gossip
-┌──────────┐    hook event    ┌──────────────────────────────────────────┐
-│ Action   │ ──────────────→  │ play.sh <event>                          │
-│ (edit,   │    stdin JSON     │                                          │
-│  bash,   │                  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ │
-│  stop..) │                  │  │ LAYER 1  │ │ LAYER 2  │ │ LAYER 3  │ │
-│          │                  │  │ Voice    │ │ Effects  │ │ Narrator │ │
-│          │                  │  │ TTS/aiff │ │ sox/mp3  │ │ LLM+TTS │ │
-└──────────┘                  │  └────┬─────┘ └────┬─────┘ └────┬─────┘ │
-                              │       │ parallel    │  parallel  │       │
-                              │       └──────┬──────┴────────────┘       │
-                              │              ▼                           │
-                              │          speakers                        │
-                              └──────────────────────────────────────────┘
-```
-
-Codex events pass through `codex.py` before reaching the same `play.sh` dispatcher.
-Both integrations share the installation, sound manifest, mixer settings, and audio assets in `~/.code-gossip/`.
-
-Enabled layers run in parallel (backgrounded subshells) for events with a profile mapping. The voice layer covers both voice profiles (senior, generals) and the narrator profile — selected by `voice_profile` config key.
-
-### Package layout
-
-```
-code-gossip/                       → ~/.code-gossip/
-├── hooks/                         # Agent adapters and Claude hook definitions
-├── engine/                        # Playback, narration, spacing, Kokoro integration
-├── soundbar/                      # Panel launcher, server, UI, and mockups
-├── data/
-│   ├── sounds.json                # Shipped sound manifest
-│   └── sounds/                    # Audio assets and Generals generator
-├── configs/                       # Shipped defaults and gitignored user settings
-├── state/                         # Gitignored logs, sockets, caches, optional .venv
-├── paths.py                       # Shared Python path definitions
-├── installer.py                   # Unified install and uninstall
-├── switch.sh                      # CLI controls
-└── uninstall.sh                   # Installed uninstall entrypoint
+```mermaid
+flowchart TB
+    Claude[Claude Code] --> CH[Claude hook definitions]
+    Codex[Codex] --> CX[Codex adapter]
+    Cursor[Cursor] --> CU[Cursor adapter]
+    CH --> Play[play.sh]
+    CX --> Play
+    CU --> Play
+    Config[(Shared settings)] -.-> Play
+    Play --> Gate[Playback gate]
+    Gate --> Effects[Effects]
+    Gate --> Voice[Voice]
+    Effects --> FX[Samples or SoX]
+    Voice --> Senior[Senior: saved phrases]
+    Voice --> Generals[Generals: recorded clips]
+    Voice --> Narrator[Narrator: LLM commentary]
+    Senior --> Speech[macOS say or Kokoro]
+    Narrator --> Speech
+    FX --> Speakers[Speakers]
+    Generals --> Speakers
+    Speech --> Speakers
+    classDef agent fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e
+    classDef channel fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef output fill:#fef3c7,stroke:#d97706,color:#78350f
+    class Claude,Codex,Cursor agent
+    class Effects,Voice channel
+    class Speakers output
 ```
 
-`paths.py` defines shared locations for Python modules. Shell entrypoints derive the same package root from their own location. User configuration stays in `configs/`; runtime files stay in `state/`. The shipped manifest at `data/sounds.json` may be overridden by `configs/sounds.json`, with asset paths still relative to `data/`.
+**Effects and Voice can play together.** Voice selects one of `senior`, `generals`, or `narrator`. The narrator is inside the Voice channel. Soundbar configures and previews audio; live hooks work without its server running.
 
-## 2. Components
+## Package map
 
-### 2.1 play.sh — Sound Engine
-
-**Purpose:** Core audio engine. Receives an event name, reads config and sound manifest, plays sounds from both layers.
-
-**Invocation:** Called directly by Claude Code hooks, or by the Codex adapter: `~/.code-gossip/engine/play.sh <event>`
-
-**Input:**
-- `$1` — event name (one of 24 events across both integrations)
-- `stdin` — hook JSON from Claude Code or normalized by the Codex adapter. Captured immediately into `$STDIN_DATA` (~1ms). Consumed by the narrator profile (piped to `narrate.py`); drained and discarded for all other profiles.
-
-**Config reading:** Single `jq` call extracts all config values as TSV for speed:
-```
-config.json → jq → EFFECTS_ON, EFFECTS_PROFILE, EFFECTS_VOL,
-                    VOICE_ON, VOICE_PROFILE, VOICE_VOL,
-                    VOICE, SUBVOICE, TTS_ENGINE, KOKORO_VOICE
-```
-
-**Sound dispatch:** Generic `play_sound()` function reads `sounds.json` via one `jq` call per layer, dispatching by spec type:
-- `file` → `afplay -v <vol> [-r <rate>] <path>`
-- `files` → random pick, then `afplay`
-- `sox` → `play -qn <args> vol <vol>`
-- `sequence` → random sequence from array, play in order with gap
-
-**Rate variation:** Specs with `"rate": [min, max]` randomize `afplay -r` per play. The rate range is extracted as centisimal integers (e.g., `0.92` → `92`) and a random value within the range is computed via `$RANDOM` — pure bash, no `awk`. Not applied to sox specs.
-
-**Volume:** Locale-safe integer math (`printf -v '%d.%02d'`). Applied as `afplay -v` for files, `vol` effect for sox, render-to-temp + `afplay -v` for TTS.
-
-**Voice profile dispatch:** Three code paths based on `VOICE_PROFILE`:
-- `narrator` → pipes `$STDIN_DATA` to `narrate.py` (LLM commentary)
-- `senior` → reads `phrases.json`, speaks via `say` or `narrate.py --speak` (depending on `TTS_ENGINE`)
-- anything else → `play_sound "voice" ...` (reads manifest like effects)
-
-**Structure:**
-```bash
-# Capture stdin + event
-# Background wrapper { ... } &
-# Config read (single jq call)
-# Volume calculation (0-100 → 0.00-1.00, pure bash)
-# play_sound() — generic manifest dispatcher
-# LAYER 1: VOICE — narrator (narrate.py) / senior (phrases.json) / play_sound()
-# LAYER 2: EFFECTS — play_sound()
+```text
+code-gossip/                         installed as ~/.code-gossip/
+│
+├── hooks/                          agent-specific input
+│   ├── claude-hooks.json           Claude event → engine command
+│   ├── codex.py                    normalize Codex events and tool results
+│   └── cursor.py                   normalize Cursor events
+│
+├── engine/                         shared audio behavior
+│   ├── play.sh                     background dispatcher
+│   ├── playback_gate.py            cross-process spacing and cooldowns
+│   ├── narrate.py                  context → words → speech
+│   ├── kokoro_server.py            warm local speech model
+│   └── integrations.py             Python detection and Kokoro installation
+│
+├── soundbar/                       configuration interface
+│   ├── panel.sh                    launch server and open browser
+│   ├── server.py                   local HTTP API and previews
+│   ├── ui.html                     mixer frontend
+│   └── mockups/                    standalone design explorations
+│
+├── data/                           shipped content
+│   ├── sounds.json                 profile/event manifest
+│   └── sounds/                     sampled audio and Generals generator
+│
+├── configs/                        defaults + gitignored user preferences
+├── state/                          gitignored logs, sockets, caches, .venv
+├── paths.py                        shared Python path definitions
+├── installer.py                    installation and removal for all agents
+├── switch.sh                       command-line controls
+└── uninstall.sh                    installed removal entrypoint
 ```
 
-**Preview mode:** Environment variables override config for manual testing:
-- `FORCE_LAYER=effects|voice` — play only one layer
-- `FORCE_EFFECTS_PROFILE=<name>` — override effects profile
-- `FORCE_VOICE_PROFILE=<name>` — override voice profile
+The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package; development installation symlinks it.
 
-**Playback spacing:**
+Python modules resolve package locations through [`paths.py`](code-gossip/paths.py). Shell entrypoints derive their package root from their own location. User preferences belong in `configs/`, writable runtime files in `state/`, and relative sound paths resolve against `data/`.
 
-Before dispatching live hook audio, `play.sh` calls `playback_gate.py` to reserve
-effects and voice independently. The gate uses an interprocess `flock` and an
-atomic state-file replacement in `state/playback/` inside this installation.
-Lock acquisition waits at most 100 ms, then allows playback rather than holding
-up a cue behind a stalled process.
-Timestamps use `clock_gettime(CLOCK_MONOTONIC)`, which is shared across processes
-even on macOS Python 3.9; `time.monotonic()` on that version has process-local
-origins and cannot coordinate hook subprocesses correctly.
+## Agent events
 
-Ordinary events have a per-session/profile/sound repeat window (750 ms effects,
-3000 ms voice) plus a global per-layer spacing budget (up to 150 ms effects,
-1500 ms voice). Shared sound specs deduplicate even when event names differ.
-`permission`, `error`, `stop`, and `interrupt` bypass the routine budget, with
-short event-specific repeat windows of up to 500/1000 ms. Only accepted cues
-advance timestamps; suppressed cues are dropped without queueing. Entries are
-pruned after 60 seconds. Missing sound mappings do not consume a playback budget.
-State contains hashed identifiers and timestamps, not hook context.
+| Agent | Registration file | Input path | Behavior |
+|---|---|---|---|
+| Claude Code | `~/.claude/settings.json` | [`hooks/claude-hooks.json`](code-gossip/hooks/claude-hooks.json) → `engine/play.sh` | Explicit lifecycle and tool matchers |
+| Codex | `$CODEX_HOME/hooks.json`, default `~/.codex/hooks.json` | [`hooks/codex.py`](code-gossip/hooks/codex.py) → engine | Lifecycle mapping, command classification, result normalization |
+| Cursor | `~/.cursor/hooks.json` | [`hooks/cursor.py`](code-gossip/hooks/cursor.py) → engine | Native version-1 user hooks; observational events only |
 
-Manual `FORCE_*` previews and the panel's direct playback bypass the gate. Users
-can disable or adjust spacing through the mixer. Config/state failures leave
-the original playback behavior available. This is a rate limit, not an audio
-queue or a guarantee that long speech cannot overlap. Burst tests cover actual
-concurrent subprocess reservations and the full shell playback path.
+Adapters discard playback output and make no permission decisions. Generated hook commands check for their entrypoint and tolerate playback failure, so cached hooks can finish quietly after removal. Codex hook trust remains managed by Codex.
 
-### 2.1.1 sounds.json — Sound Manifest
+### Event vocabulary
 
-**Purpose:** Single source of truth for all sound mappings. Read by both `play.sh` (hooks) and `server.py` (UI).
+The [mixer's `EVENTS` list](code-gossip/soundbar/server.py) defines 24 categories. Each agent emits a subset; a profile plays only categories it maps.
 
-**Structure:**
+| Family | Categories |
+|---|---|
+| Session | `session_start`, `session_end`, `user_prompt`, `stop`, `interrupt` |
+| Context and delegation | `pre_compact`, `compact`, `subagent_start`, `subagent_stop` |
+| Work | `edit`, `read`, `search`, `plan`, `tool`, `bash`, `test`, `build` |
+| Git | `git`, `git_status`, `git_history`, `git_commit`, `git_push` |
+| Attention | `permission`, `error` |
+
+A `stop` cue means **the current turn ended**, not that the entire task is complete.
+
+### Routing by agent
+
+| Integration | Routes |
+|---|---|
+| Claude lifecycle | Session start, prompt submission, stop, post-compaction, subagent start/stop, permission requests |
+| Claude tools | Edit/Write and Grep/Glob before execution; Bash after execution; StopFailure and PostToolUseFailure → `error` |
+| Codex lifecycle | Startup/resume/clear, session end, prompt, permission, pre/post compaction, subagent start/stop, stop, interrupt |
+| Codex tools | Non-shell categories before execution; shell completion and explicit failures afterward |
+| Cursor | Session start/end, file edits, completed shell/MCP operations, failures, subagent completion, pre-compaction, stop |
+
+<details>
+<summary>Codex command classification and limitations</summary>
+
+Compound commands prioritize push, commit, tests, builds, other Git operations, history, status, search, then reads. The adapter handles shell wrappers and Git global options such as `-C` and `-c`.
+
+- Commit and push cues require an explicit successful exit status. Dry runs use the neutral Git cue.
+- For `rg` and `grep`, exit code 1 means no matches; exit code 2 produces an error cue.
+- Pending shell sessions are not reported as complete. Polling and coordination tools stay quiet.
+- Explicit shell, patch, and MCP failures route to `error`.
+- Hosted web searches do not emit local tool hooks. Missing failure indicators cannot reliably produce error cues.
+- `codex_permission_sound_on: false` suppresses the entire approval-audio dispatch; it changes no permissions and does not affect other agents or manual previews.
+
+Normalized payloads carry `soundbar_agent` and `soundbar_event` so the narrator can describe the actual agent and event. Cursor shell completion supplies command/output context without inventing an exit code.
+
+</details>
+
+## Playback and spacing
+
+```mermaid
+flowchart TD
+    Input[Event plus hook JSON] --> Capture[Capture stdin]
+    Capture --> Background[Background audio work]
+    Background --> Settings[Read settings and mappings]
+    Settings --> Preview{Manual override?}
+    Preview -->|yes| Dispatch[Dispatch enabled channels]
+    Preview -->|no| Lock[Acquire shared playback lock]
+    Lock --> Budget[Check each channel's cooldown and budget]
+    Budget -->|admitted| Dispatch
+    Budget -->|suppressed| Drop[Drop cue; do not queue]
+    Dispatch --> Parallel[Effects and Voice run independently]
+```
+
+[`play.sh`](code-gossip/engine/play.sh) captures input before backgrounding; hook commands do not add another trailing `&`. It reads settings through `jq`, converts 0–100 volumes without locale-dependent arithmetic, and uses the manifest to dispatch samples or generated effects.
+
+| Gate rule | Current behavior |
+|---|---|
+| Persistence | `state/playback/lock` and atomically replaced `state.json` |
+| Clock | `CLOCK_MONOTONIC`, shared across processes |
+| Lock wait | At most 100 ms; a gate error lets audio proceed |
+| Repeat defaults | Effects: 750 ms; Voice: 3000 ms; adjustable from 0–10000 ms |
+| Repeat identity | Channel, session, profile, and mapped sound; important cues use event identity |
+| Burst budget | Shared across sessions per channel; routine spacing capped at 150 ms for Effects and 1500 ms for Voice |
+| Important cues | Permission, error, stop, interrupt, Git commit/push bypass the routine budget; duplicate suppression remains |
+| Preview | `FORCE_LAYER`, `FORCE_EFFECTS_PROFILE`, or `FORCE_VOICE_PROFILE` bypass the gate |
+
+The gate drops repeated cues; it does not schedule audio or wait for clips to finish. Narration also has a separate overlap lock at `state/narrator.lock`.
+
+## Narration and speech
+
+```mermaid
+sequenceDiagram
+    participant Hook as Engine
+    participant N as narrate.py
+    participant C as Session context
+    participant L as Selected LLM
+    participant T as Speech engine
+    Hook->>N: Event JSON
+    N->>N: Acquire narrator lock and build event context
+    opt Deep context enabled
+        N->>C: Read summary and recent moments
+        C-->>N: Session memory
+    end
+    N->>L: Style + speech rules + event context
+    L-->>N: Short spoken commentary
+    N->>T: Speak with selected voice and volume
+    opt Deep context enabled
+        N->>C: Append moment and compress when needed
+    end
+    N->>N: Release lock
+```
+
+| Concern | Implementation |
+|---|---|
+| Providers | Claude CLI, Anthropic, Gemini, OpenAI, Ollama; provider/model defaults live in the source |
+| Style | `{label, prompt}` objects in `configs/narrator_styles.json`, falling back to shipped defaults |
+| Speech clarity | `build_system_prompt()` appends rules for plain, speakable prose |
+| Deep context | Optional per-session summary/recent moments in `state/session_context/` |
+| Compression | When recent moments exceed 10, fold older entries into the summary and retain the newest 4 |
+| Cleanup | Session files older than 7 days are pruned |
+| Privacy boundary | Narrator event context goes to the selected provider; basic effects and fixed phrases need no LLM |
+
+### Kokoro lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Absent
+    Absent --> Installed: Install from Soundbar
+    Installed --> Loading: First speech request
+    Loading --> Warm: Model ready
+    Warm --> Warm: Speech over Unix socket
+    Warm --> Installed: 10 minutes idle
+```
+
+[`integrations.py`](code-gossip/engine/integrations.py) detects a compatible Python, creates `state/.venv`, installs dependencies and the language model, and verifies importability. Installation progress is held in memory; cached Python discovery and installation flags live in `state/integrations.json`.
+
+The daemon listens on `state/kokoro.sock` with mode `0600`. It caches pipelines per language and serializes inference. `narrate.py` starts it on demand. macOS `say` is the built-in alternative; `senior` and `narrator` both use the selected speech engine. Generals plays generated clips directly.
+
+## Soundbar and its API
+
+```mermaid
+flowchart LR
+    Browser[Soundbar browser UI] <-->|localhost:8111| Server[server.py]
+    CLI[switch.sh] --> Config[(configs/)]
+    Server <--> Config
+    Manifest[(data/sounds.json)] --> Server
+    Server --> Preview[Preview audio]
+    Server --> Narrator[narrate.py subprocess]
+    Server --> Setup[Kokoro installation thread]
+    Config -.-> Live[Live hook engine]
+```
+
+`panel.sh` starts the foreground server and opens the browser. The Python server binds to `127.0.0.1`, writes `state/.server.pid` after binding, and removes its own PID file on shutdown. Closing the panel does not remove agent hooks.
+
+The UI reads current status, saves preferences, edits phrases/styles, and requests previews. `server.py` has its own manifest preview dispatcher; previews bypass live-hook spacing and do not need an agent event.
+
+<details>
+<summary>HTTP endpoint reference</summary>
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | `/`, `/ui` | Mixer HTML |
+| GET | `/api/status` | Settings, profiles, events, voices, and provider metadata |
+| POST | `/api/config` | Save recognized settings keys |
+| POST | `/api/phrases` | Save phrases for an event |
+| POST | `/api/play` | Preview a profile/event |
+| POST | `/api/say` | Preview a voice/phrase |
+| POST | `/api/tts-check` | Check the selected speech engine |
+| POST | `/api/kokoro-install` | Start background installation |
+| POST | `/api/kokoro-status` | Read installation progress/status |
+| POST | `/api/narrator-style` | Create, update, or rename a style |
+| POST | `/api/narrator-style-delete` | Delete a style |
+| POST | `/api/narrator-style-reset` | Restore shipped styles |
+| POST | `/api/narrator-check` | Check provider connectivity |
+| POST | `/api/narrator-test` | Generate and speak test commentary |
+
+The endpoint definitions and request fields live in [`server.py`](code-gossip/soundbar/server.py). Responses are JSON except for the UI routes.
+
+</details>
+
+## Installation and removal
+
+```mermaid
+flowchart TD
+    Entry[install.sh or uninstall.sh] --> Select[Detect and select agents]
+    Select --> Validate[Validate hook documents and plan changes]
+    Validate --> Dry{Dry run?}
+    Dry -->|yes| Report[Print plan; no mutation]
+    Dry -->|no| Action{Action}
+    Action -->|install| Files[Copy package or create dev symlink]
+    Files --> Hooks[Back up changed files; merge hooks atomically]
+    Action -->|uninstall| Remove[Remove selected handlers]
+    Remove --> Remaining{Other integrations remain?}
+    Remaining -->|yes| Keep[Keep shared runtime and processes]
+    Remaining -->|no| Cleanup[Stop owned processes; remove installation]
+```
+
+| Contract | Behavior |
+|---|---|
+| Detection | CLI executables, agent config directories, macOS application bundles |
+| Selection | All, names, or menu numbers; multiple selections accepted |
+| Automation | `--agents` skips selection; install `--all` means detected agents; uninstall `--all` means every supported integration |
+| Validation | Install checks selected hook documents; uninstall checks all supported documents before deciding whether the runtime is unused |
+| Merge | Remove only Code Gossip handlers, including those in shared groups; preserve unrelated JSON |
+| Backup | Changed hook files get a `.code-gossip-backup` copy; unchanged reinstalls leave backups alone |
+| Normal install | Copy shipped files; preserve user settings; seed missing defaults; record Python path; generate Generals clips when `say` exists |
+| Dev install | `~/.code-gossip` links to the checkout's `code-gossip/`; settings and state stay in the checkout |
+| Full removal | Stop the panel/Kokoro after checking process identity; keep user settings in `configs/` unless `--purge` |
+| Dev removal | Remove only the installation symlink, never checkout content, even with `--purge` |
+
+Custom Codex homes require the same `CODEX_HOME` for installation and removal. A normal installation and a dev symlink cannot overwrite each other; uninstall before changing modes. The installer supports only the current package layout.
+
+## Data contracts
+
+### Files and ownership
+
+| Location under `~/.code-gossip/` | Role | Owner |
+|---|---|---|
+| `configs/*.defaults.json` | Shipped settings, phrases, and styles | Repository |
+| `configs/config.json` | Channel preferences, TTS, narrator settings, API key | User; mixer/CLI |
+| `configs/phrases.json` | Senior phrases by event | User; mixer |
+| `configs/narrator_styles.json` | Narrator labels and prompts | User; mixer |
+| `configs/sounds.json` | Optional full manifest override | User; [sound-design skill](dev-skills/sound-design/SKILL.md)/manual edits |
+| `data/sounds.json` | Shipped effects and recorded-voice mappings | Repository |
+| `data/sounds/` | Audio assets and Generals generator | Shipped samples; generated/custom files |
+| `state/integrations.json` | Optional-engine installation metadata | Integration manager |
+| `state/.venv/` | Kokoro dependencies | Integration manager |
+| `state/` logs, sockets, locks, session files | Runtime coordination and diagnostics | Runtime processes |
+
+User settings and runtime state are gitignored. API keys saved through Soundbar are stored in `configs/config.json`. Read [`config.defaults.json`](code-gossip/configs/config.defaults.json) for current defaults instead of duplicating them here.
+
+### Sound manifest
+
+The optional `configs/sounds.json` **replaces the shipped manifest as a whole**. Start a custom manifest by copying `data/sounds.json`; retain unrelated profiles. The server chooses its manifest path at startup, so restart Soundbar after creating an override for the first time.
+
 ```json
 {
   "effects": {
-    "<profile>": {
-      "dir": "sounds/<name>",
+    "custom": {
+      "dir": "sounds/custom",
       "events": {
-        "<event>": {"file": "name.mp3"},
-        "<event>": {"files": ["a.mp3", "b.mp3"]},
-        "<event>": {"sox": "synth 0.3 sine 440 fade 0.01 0.3 0.2"},
-        "<event>": {
-          "sequence": [["a.aiff","b.aiff"], ["c.aiff"]],
-          "gap": 0.15,
-          "rate": [0.95, 1.05]
-        }
+        "edit": {"files": ["pencil-a.mp3", "pencil-b.mp3"], "rate": [0.95, 1.05]},
+        "permission": {"file": "bell.mp3"},
+        "stop": {"sequence": [["page.mp3", "close.mp3"]], "gap": 0.2}
       }
     }
   },
-  "voice": { ... }
+  "voice": {}
 }
 ```
 
-**Spec types:**
-
-| Type | Key | Playback | Volume | Rate variation |
-|------|-----|----------|--------|----------------|
-| Single file | `file` | `afplay -v <vol> [-r <rate>] <path>` | `afplay -v` | Yes |
-| Random file | `files` | Pick one, `afplay` | `afplay -v` | Yes |
-| Sox generated | `sox` | `play -qn <args> vol <vol>` | `vol` effect | No |
-| Sequence | `sequence` | Random sequence from array, play with gap | `afplay -v` | Yes |
-
-**Rate variation:** Any file-based spec (file, files, sequence) can include `"rate": [min, max]`. On each play, a random rate within the range is passed as `afplay -r <rate>`. Standard game audio technique — even a narrow range like `[0.95, 1.05]` prevents the "broken record" effect of hearing the exact same sound repeatedly. Wider range = more variety. Not applied to sox specs (sox has its own pitch/speed controls).
-
-**Sequence spec:** The `sequence` array contains sub-arrays of variable length. One sub-array is picked at random per play. Files in the sub-array are played in order with `gap` seconds between them. Examples: `[["a.mp3"]]` (single file), `[["a.mp3", "b.mp3"]]` (two files), `[["a.mp3", "b.mp3"], ["c.mp3"]]` (randomly pick between a two-file and one-file sequence).
-
-**Why not parse play.sh?** Previously, `server.py` regex-parsed play.sh's case blocks to discover profiles. This broke whenever command format changed (e.g., adding `-v` flags). The manifest eliminates this fragile coupling.
-
-### 2.2 narrate.py — Narrator Engine
-
-**Purpose:** LLM-powered narrator for live coding sessions. Receives hook event JSON, calls an LLM provider for a one-sentence commentary, speaks it via TTS.
-
-**Invocation:** Called by `play.sh` when `voice_profile` is `narrator`:
-```bash
-echo "$STDIN_DATA" | python3 "$SND/narrate.py"
-```
-Also called directly for TTS dispatch:
-```bash
-python3 narrate.py --speak "text to speak"
-```
-
-**Providers:** Five providers, all via raw HTTP (`urllib.request`) — no SDK dependencies:
-
-| Provider | Auth | Default model | Timeout |
-|----------|------|---------------|---------|
-| `claude_cli` | Existing Claude Code auth | `haiku` | 15s |
-| `anthropic` | API key | `claude-haiku-4-5-20251001` | 5s |
-| `gemini` | API key | `gemini-2.5-flash` | 5s |
-| `openai` | API key | `gpt-4o-mini` | 5s |
-| `ollama` | None (local) | `qwen3.5:4b` | 10s |
-
-**Styles:** Five narrator personalities, each a system prompt:
-- `pair_programmer` — friendly, supportive, sometimes amused
-- `sports` — enthusiastic play-by-play commentator
-- `documentary` — Attenborough-style nature documentary
-- `noir` — hardboiled detective narrating a noir film
-- `haiku_poet` — responds only with a 5-7-5 haiku
-
-**Context extraction:** `build_context(data)` parses hook JSON and returns a short narration-relevant string. Handles all hook event types — tool use (Edit/Write, Bash, Grep/Glob, Read, Agent), session events (start, stop, compact), sub-agent events, permission requests, errors. Extracts file paths (shortened to last 2 components), command descriptions, search patterns.
-
-**Concurrency:** Lock file (`state/narrator.lock`) prevents overlapping narrations. If a narration is in progress, new events are silently dropped. Lock stores PID; stale locks from dead processes are cleaned up.
-
-**TTS dispatch:** `speak(text, engine, voice, volume)` routes to the configured engine:
-- `say` → `speak_say()`: render to temp `.aiff` via `say -v <voice> -r 190`, play with `afplay -v <vol>`, delete temp
-- `kokoro` → `speak_kokoro()`: sends `speak` command to Kokoro daemon over Unix socket. Falls back to `say` (voice "Tara") if daemon unavailable.
-
-**CLI modes:**
-```
-narrate.py                 # normal: read stdin JSON, call LLM, speak
-narrate.py --check         # test provider connectivity, print JSON result
-narrate.py --check-tts     # test TTS engine availability, print JSON result
-narrate.py --speak "text"  # speak text via configured TTS engine
-narrate.py --dry-run       # read stdin JSON, call LLM, print text (no speech)
-```
-
-### 2.3 kokoro_server.py — Kokoro TTS Daemon
-
-**Purpose:** Keeps the Kokoro-82M model warm in memory for fast TTS (~100-200ms latency vs. 3-5s cold start). Runs as a background daemon from the Kokoro venv.
-
-**Socket:** `~/.code-gossip/state/kokoro.sock` (Unix stream socket, mode `0600`)
-
-**Protocol:** Newline-delimited JSON over Unix stream socket. One request-response per connection.
-
-Requests:
-```json
-{"cmd": "health"}
-{"cmd": "speak", "text": "Hello world", "voice": "af_heart", "volume": 100}
-```
-
-Responses:
-```json
-{"ok": true, "ready": true, "loaded": ["a"], "idle": 42}
-{"ok": true}
-{"ok": false, "error": "no text"}
-```
-
-**Model management:** `ModelManager` lazily loads and caches `KPipeline` instances per language code. American English (`"a"`) is preloaded on startup. British voices (prefix `b`) trigger loading of the British pipeline on first use.
-
-**Threading model:** `ThreadingMixIn` accepts concurrent connections, but an `inference_lock` serializes all TTS inference — the Kokoro model is not thread-safe. Socket I/O and audio playback happen outside the lock.
-
-**Audio pipeline:** Generate PCM via Kokoro → concatenate numpy chunks → clip to `[-1, 1]` → convert to int16 → write WAV (24kHz, mono, 16-bit) to temp file → `afplay -v <vol>` → delete temp.
-
-**Lifecycle:**
-- Auto-started by `narrate.py` on first `speak_kokoro()` call (`_ensure_kokoro_daemon()`)
-- Auto-shuts down after 10 minutes idle (`IDLE_TIMEOUT = 600`)
-- Idle watcher thread polls every 30 seconds
-- SIGTERM handler cleans up socket file
-- Stale sockets detected and removed on startup and by clients
-
-**Setup:**
-```bash
-python3 -m venv ~/.code-gossip/state/.venv
-~/.code-gossip/state/.venv/bin/pip install kokoro soundfile
-```
-
-**Run:** `~/.code-gossip/state/.venv/bin/python3 kokoro_server.py`
-
-### 2.4 server.py — Panel HTTP Backend
-
-**Purpose:** Serves the control panel UI and provides a REST API for config/playback.
-
-**Lifecycle:** Started by `panel.sh`, runs in foreground, killed by Ctrl+C. Stateless — all state lives in JSON files on disk.
-
-**API:**
-
-| Method | Path | Body | Description |
-|--------|------|------|-------------|
-| GET | `/` | — | Serve ui.html |
-| GET | `/api/status` | — | Full state: config + profiles + phrases + voices + TTS engines + narrator providers |
-| POST | `/api/config` | `{key: value, ...}` | Update config (whitelisted keys only) |
-| POST | `/api/phrases` | `{event, phrases}` | Update phrases for one event |
-| POST | `/api/play` | `{layer, profile, event}` | Play a sound directly (no play.sh) |
-| POST | `/api/say` | `{voice, phrase, rate, engine}` | Preview a TTS voice (say or kokoro) |
-| POST | `/api/tts-check` | — | Test TTS engine availability (delegates to `narrate.py --check-tts`) |
-| POST | `/api/kokoro-install` | — | Start Kokoro venv + pip install (background thread), or return status if already running/done |
-| POST | `/api/kokoro-status` | — | Poll Kokoro install progress: `idle` / `running` / `done` / `error` |
-| POST | `/api/narrator-check` | — | Test narrator provider connectivity (delegates to `narrate.py --check`) |
-| POST | `/api/narrator-test` | `{event}` | Generate and speak a test narration via `narrate.py --dry-run` + `--speak` |
-
-**Config key whitelist (14 keys):** `effects_on`, `effects_profile`, `effects_volume`, `voice_on`, `voice_profile`, `voice_volume`, `voice_main`, `voice_sub`, `tts_engine`, `kokoro_voice`, `narrator_provider`, `narrator_model`, `narrator_api_key`, `narrator_style`
-
-**Profile discovery:** Reads `sounds.json` manifest. Three profile sources:
-- `parse_effects_profiles()` — reads `effects` section of manifest
-- `parse_voice_profiles()` — three sources:
-  - `senior` — built from `phrases.json` (TTS phrases, not in manifest)
-  - `narrator` — synthetic entries: all events show `"LLM narration"` with `api` origin
-  - Others (e.g. `generals`) — from `voice` section of manifest
-
-**Origin detection** (derived from spec structure):
-
-| Origin | Rule | Icon |
-|--------|------|------|
-| system | file path starts with `/System/` | system |
-| sampled | `.mp3` extension | sampled |
-| recorded | `.aiff` extension | recorded |
-| generated | has `sox` key | generated |
-| tts | senior profile | tts |
-| api | narrator profile | api |
-
-**Playback:** `/api/play` executes audio commands directly — `afplay` for files, `play` (sox) for generated, TTS for senior profile (say or kokoro depending on `tts_engine`), rate variation applied when spec has `rate` range. No shell script in the playback path. Volume computed in Python (locale-safe).
-
-**Kokoro install:** `/api/kokoro-install` creates a `.venv`, runs `pip install kokoro soundfile` in a background thread. Progress tracked in `_kokoro_install` dict (in-memory). `/api/kokoro-status` polls progress. On success, writes `kokoro_installed: true` to `integrations.json`.
-
-### 2.5 ui.html — Panel Frontend
-
-**Purpose:** Browser-based mixer UI for controlling all three layers.
-
-**Layout:**
-
-```
-┌─────────────────────────────────────────────────────┐
-│ SOUNDBAR  Claude Code audio mixer                   │
-├───────────────────────┬─────────────────────────────┤
-│ EFFECTS [on] [prof ▼] │ VOICE [off] [prof ▼]       │
-│ VOL ────────●── 100%  │ VOL ────────●── 100%       │
-│                       │ MAIN [voice▼] ▶             │
-│                       │ SUB  [voice▼] ▶             │
-│                       │ TTS ENGINE [say ▼]          │
-├───────────┬───────────┴─────────────────────────────┤
-│ EVENT     │ EFFECTS          │ VOICE                 │
-├───────────┼──────────────────┼───────────────────────┤
-│ session   │ synth sine    ▶  │ Hi there|...       ▶  │
-│ edit      │ synth sine    ▶  │ Writing co..       ▶  │
-│ ...       │                  │                       │
-└───────────┴──────────────────┴───────────────────────┘
-│ ► SENIOR PHRASES (collapsible)                       │
-├──────────────────────────────────────────────────────┤
-│ ► NARRATOR SETTINGS (collapsible)                    │
-│  ┌────────────────────┬──┬───────────────────────┐   │
-│  │ LLM Settings       │  │ Style & Voice         │   │
-│  │ Provider [claude▼] │  │ Style [pair_prog ▼]   │   │
-│  │ Model    [haiku ▼] │  │ TTS engine [say ▼]    │   │
-│  │ API Key  [****   ] │  │ Kokoro voice [heart▼] │   │
-│  │ Status   ● conn.   │  │ [Test Narration]      │   │
-│  └────────────────────┘  └───────────────────────┘   │
-└──────────────────────────────────────────────────────┘
-```
-
-**Components:**
-- **Channel strips** (top) — two equal-width cards, each with toggle, profile dropdown, volume slider. TTS engine selector shown when senior or narrator is the active voice profile.
-- **Mixer table** — fixed-layout table with 3 columns: Event, Effects sound, Voice sound. Each cell shows origin + label + play button.
-- **Phrases section** — collapsible, only shown when senior is the active voice profile. Editable phrase chips with inline contenteditable, dialogue pairs for subagent events.
-- **Narrator section** — collapsible, two-column layout. Left: LLM settings (provider, model, API key, connection status). Right: style & voice (narrator style, TTS engine, Kokoro voice, test narration button).
-
-**Data flow:**
-```
-load() → GET /api/status → S (state object) → render()
-toggle  → POST /api/config → update S → re-render affected sections
-play    → POST /api/play {layer, profile, event} → sound plays
-phrase edit → debounced POST /api/phrases → save to disk
-narrator config → POST /api/config → update S → re-check status
-```
-
-**State:** All UI state comes from the server on load. The `S` object is the single source of truth. Changes POST to the server first, then update `S` and re-render.
-
-### 2.6 switch.sh — CLI Control
-
-**Purpose:** Command-line interface for toggling layers and switching profiles without the panel.
-
-**Commands:**
-```
-switch.sh                        # show status
-switch.sh effects [on|off]       # toggle effects
-switch.sh effects-profile <name> # switch effects profile
-switch.sh voice [on|off]         # toggle voice
-switch.sh voice-profile <name>   # switch voice profile
-switch.sh main-voice <name>      # change main TTS voice
-switch.sh sub-voice <name>       # change subagent TTS voice
-switch.sh <profile-name>         # shorthand for effects-profile
-```
-
-**Config safety:** Validates jq output before writing to config.json. Empty/invalid output won't truncate the file.
-
-### 2.7 panel.sh — Panel Launcher
-
-**Purpose:** Starts the server and opens the browser. Single foreground process.
-
-**Flow:**
-1. Check if already running (curl to port 8111)
-2. Print URL and "Press Ctrl+C to stop"
-3. Background subshell: wait for server ready, then `open` URL
-4. `exec python3 server.py` — replaces shell with server process
-5. Ctrl+C kills the server directly (no orphans)
-
-### 2.8 install.sh and code-gossip/installer.py — Unified Installer
-
-`install.sh` invokes the shared Python installer. It detects Codex, Cursor, and Claude through CLI commands, configuration directories, and macOS app bundles, then prompts for all or multiple agent names/numbers. `--agents codex,cursor` selects explicitly without prompting; `--all` selects detected agents. `--dry-run` validates and previews without writes; `--dev` links the shared runtime to the checkout.
-
-The runtime lives at the agent-independent `~/.code-gossip/`. Only selected agents receive hooks. Claude definitions live in `code-gossip/hooks/claude-hooks.json`; Codex and Cursor definitions come from their adapters. Selected hook documents are validated before mutation, backed up when changed, and replaced atomically. Merging removes only Code Gossip handlers, preserving other handlers even in shared matcher groups. Repeat installs are idempotent.
-
-Normal installs copy shipped assets while excluding user settings, virtual environments, caches, logs, and runtime state. Existing user settings are kept, missing settings are created from defaults, and the Python path is recorded. Generals clips are generated using macOS TTS. Development settings live in the package’s gitignored `configs/` directory.
-
-### 2.9 uninstall.sh — Unified Uninstaller
-
-The installed script and the repository-root symlink invoke `installer.py uninstall`. Selection works like installation, but detection inspects Code Gossip hooks so agents can be removed even after their executable disappears. `--all` removes all three integrations without questions; `--purge` additionally removes saved settings when the last integration is removed. `--dry-run` previews without stopping processes or modifying files.
-
-Uninstall removes selected hooks first and retains shared files and processes if another integration still references them. When no integrations remain, it stops the panel/Kokoro processes and removes the runtime, preserving user files in `configs/` unless purged. Development uninstalls remove only the shared symlink, never the checkout. Cached hook commands check that their entrypoint exists and exit successfully after removal, allowing active chats to continue. Hook backups are retained. Orphan hooks can be removed using the repository script even if the runtime is missing.
-
-Unlike installation, removal validates every supported hook document before mutation, so invalid unrelated settings cannot cause a shared runtime to be deleted prematurely. Custom Codex homes require the same `CODEX_HOME` during installation and removal. The panel writes `state/.server.pid` after binding its port and removes it on normal shutdown; the uninstaller checks each candidate PID's command before signaling it, ignoring stale or invalid PID files.
-
-### 2.10 codex.py and cursor.py — Agent Adapters
-
-The unified installer configures Codex directly, with no prerequisite Claude integration. Both adapters only dispatch hook events; all installation and removal goes through the shared installer.
-
-Cursor uses native version-1 user hooks at `~/.cursor/hooks.json`. `cursor.py` maps observational lifecycle, file, shell/MCP completion, and failure events to shared playback, normalizes narrator payloads, and discards playback output. It never returns permission decisions or follow-up messages. Its hook commands use the installed Python interpreter and quoted absolute paths.
-
-The installer merges all 12 event groups into `$CODEX_HOME/hooks.json` (default
-`~/.codex/hooks.json`). It preserves unrelated handlers, including handlers in
-the same matcher group, and unrelated JSON fields. Changes use an atomic file
-replacement after backing up an existing file to `hooks.json.code-gossip-backup`.
-An unchanged reinstall does not duplicate hooks or replace the backup.
-`config.toml`, existing `notify` commands, and hook trust are not modified.
-
-The mixer preference `codex_permission_sound_on` defaults to `true`. On every
-`PermissionRequest`, the adapter reads Code Gossip's `config.json` and skips the
-entire playback dispatch only when the value is the JSON boolean `false`.
-Missing, unreadable, or invalid config keeps cues enabled. This filters audio
-before effects, voice, or narrator work starts; it emits no approval decision.
-The setting is shared by all Codex chats, applies on the next hook, and does
-not inspect Codex approval modes. Claude Code hooks and direct panel previews
-use the shared engine independently of this adapter preference.
-
-Hook commands use absolute, shell-quoted paths to Python and the installed
-adapter, with a five-second timeout (three seconds for `Interrupt`). Codex requires users to review and trust
-the definitions via `/hooks` before execution. Start a new chat after setup.
-
-| Codex hook | Matcher or condition | Code Gossip event |
-|------------|----------------------|----------------|
-| `SessionStart` | `startup`, `resume`, `clear` | `session_start` |
-| `UserPromptSubmit` | Any | `user_prompt` |
-| `SessionEnd` | Any | `session_end` |
-| `Interrupt` | Any | `interrupt` |
-| `PreCompact` | Any | `pre_compact` |
-| `PermissionRequest` | Any | `permission` |
-| `PostCompact` | Any | `compact` |
-| `SubagentStart` / `SubagentStop` | Any | `subagent_start` / `subagent_stop` |
-| `Stop` | Any | `stop` |
-| `PreToolUse` | File edit, read, search, plan, or other local/MCP tool | `edit`, `read`, `search`, `plan`, `tool` |
-| `PostToolUse` | Explicit shell/patch/MCP failure | `error` |
-| `PostToolUse` | Shell command category | `test`, `build`, `git`, `git_status`, `git_history`, `git_commit`, `git_push`, `search`, `read`, `bash` |
-
-Pre/post tool handlers match every tool, with classification in the adapter.
-Non-shell successes are announced before execution; post-tool hooks detect
-explicit error indicators without duplicating successful playback. Shell
-results normalize exit-code fields, model-facing text, and MCP content blocks.
-Pending unified-exec sessions are ignored until completion. `write_stdin`,
-agent spawning, and coordination waits are silent; lifecycle hooks cover agents.
-
-The shell classifier tokenizes compound commands, pipelines, newlines,
-environment assignments, shell `-c` wrappers, and `uv run`. Setup commands such
-as `cd` and `echo` are ignored. Categories prioritize push, commit, test, build, other Git operations, history,
-status, search, read, then generic shell. Git global options are skipped to find
-the subcommand. Commit/push cues require exit code 0; dry-run and help commands
-retain neutral Git audio. Commit and push cues bypass routine playback spacing. It never executes shell input. `rg`/`grep` exit 1 is
-classified as no matches when the command consists of searches/output filters;
-other nonzero statuses remain errors. Hosted tools have no local hook path.
-Failures without explicit result indicators remain undetectable. There are no
-Claude-only failure hook registrations, and compaction-triggered session starts
-are suppressed to avoid duplicate sound.
-
-For narration, the adapter maps patches to an `Edit` payload, normalizes shell
-command and response fields, and preserves session context. It tags payloads with `soundbar_agent: "codex"`
-and `soundbar_event` so narration distinguishes command categories, interrupted
-turns, session closure, and normal no-match searches. Turn completion uses the
-last assistant response rather than claiming the entire task is finished. Unknown lifecycle events are ignored; unknown local tool names use generic tool audio. Runtime failures produce no hook output or permission decision.
-The adapter calls `play.sh` with output streams redirected to `/dev/null`, so
-background playback cannot hold Codex's captured pipes open. Playback uses the
-existing layer toggles and volumes, including 42 Generals clips. Effects profiles
-reuse their existing semantic sounds for the new categories; attention and silent
-profiles retain their limited mappings. Missing senior phrase keys fall back to
-shipped defaults; explicit user phrases and empty lists take precedence.
-
-Run `python3 -m unittest tests.test_codex` for routing, dispatch, installation,
-backup, idempotence, and uninstall tests. Remove Codex hooks before running the
-base uninstaller, which manages only Claude Code hooks and shared files.
-
-## 3. Data Files
-
-### 3.1 config.json
-
-```json
-{
-  "effects_on": true,              // boolean — effects layer enabled
-  "effects_profile": "default",    // string — active effects profile name
-  "effects_volume": 100,           // int 0-100 — effects volume
-  "voice_on": false,               // boolean — voice layer enabled
-  "voice_profile": "senior",       // string — active voice profile name
-  "voice_volume": 100,             // int 0-100 — voice volume
-  "voice_main": "Tara",            // string — main TTS voice name (macOS say)
-  "voice_sub": "Aman",             // string — subagent TTS voice name (macOS say)
-  "tts_engine": "say",             // string — "say" or "kokoro"
-  "kokoro_voice": "af_heart",      // string — Kokoro voice ID
-  "narrator_provider": "claude_cli", // string — LLM provider for narrator
-  "narrator_model": "",            // string — model override (empty = provider default)
-  "narrator_api_key": "",          // string — API key for keyed providers
-  "narrator_style": "pair_programmer" // string — narrator personality style
-}
-```
-
-14 keys total. Read by `play.sh` (single jq call), `narrate.py`, `switch.sh`, and `server.py`. Written by `switch.sh` and `server.py`.
-
-### 3.2 phrases.json
-
-```json
-{
-  "stop": ["Done", "Finished", "All set"],
-  "edit": ["Writing code", "Implementing"],
-  "subagent_start": [["Look into this", "On it"], ["Hey, check this out", "I'm on it"]],
-  ...
-}
-```
-
-Each event maps to an array. Simple events: array of strings (random choice). Dialogue events (`subagent_start`, `subagent_stop`): array of `[speaker1, speaker2]` pairs.
-
-### 3.3 sounds.json
-
-Sound manifest — single source of truth for all profile-event-sound mappings. See section 2.1.1 for full spec documentation. Read by `play.sh` (hooks) and `server.py` (UI). Not user-editable in normal use; edited when adding/modifying profiles.
-
-### 3.4 integrations.json
-
-```json
-{
-  "kokoro_installed": true
-}
-```
-
-Stores integration state flags. Currently tracks whether the Kokoro TTS package has been installed in the `.venv`. Read and written by `server.py` (`read_integrations()` / `write_integration()`). Created automatically on first Kokoro install. Not user-editable.
-
-### 3.5 settings.json (Claude Code)
-
-Hooks are injected into `~/.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "Stop": [{"hooks": [{"type": "command", "command": "~/.code-gossip/engine/play.sh stop", "timeout": 5}]}],
-    "PreToolUse": [
-      {"matcher": "Edit|Write", "hooks": [{"type": "command", "command": "~/.code-gossip/engine/play.sh edit", "timeout": 5}]},
-      ...
-    ],
-    ...
-  }
-}
-```
-
-**Hook -> event mapping:**
-
-| Hook | Event |
-|------|-------|
-| Stop | stop |
-| StopFailure | error |
-| PermissionRequest | permission |
-| SessionStart | session_start |
-| PostCompact | compact |
-| SubagentStart | subagent_start |
-| SubagentStop | subagent_stop |
-| PostToolUseFailure | error |
-| PreToolUse (Edit\|Write) | edit |
-| PreToolUse (Bash) | bash |
-| PreToolUse (Grep\|Glob) | search |
-
-## 4. Profiles
-
-### 4.1 Effects Profiles
-
-| Profile | Type | Sound source | Volume control |
-|---------|------|-------------|----------------|
-| ambient | generated | sox synth | `vol` effect |
-| attention | generated | sox synth | `vol` effect |
-| chiptune | generated | sox synth | `vol` effect |
-| construction | sampled | mp3 files | `afplay -v` |
-| default | system | system .aiff | `afplay -v` |
-| factory | generated | sox synth | `vol` effect |
-| minimal | generated | sox synth | `vol` effect |
-| organic | generated | sox synth | `vol` effect |
-| paper | sampled | mp3 files | `afplay -v` |
-| sci-fi | generated | sox synth | `vol` effect |
-| submarine | generated | sox synth | `vol` effect |
-| silent | — | No sounds | — |
-
-### 4.2 Voice Profiles
-
-| Profile | Type | Sound source | Volume control | TTS engine |
-|---------|------|-------------|----------------|------------|
-| senior | TTS | `say -v` or Kokoro daemon | render to temp -> `afplay -v` | say / kokoro |
-| narrator | LLM + TTS | LLM provider -> `say -v` or Kokoro daemon | render to temp -> `afplay -v` | say / kokoro |
-| generals | pre-rendered | .aiff files | `afplay -v` | — |
-
-### 4.3 TTS Engines
-
-Both `senior` and `narrator` profiles respect the `tts_engine` config key:
-
-| Engine | Backend | Latency | Setup |
-|--------|---------|---------|-------|
-| `say` | macOS built-in TTS | ~200-500ms | None (built-in) |
-| `kokoro` | Kokoro-82M via `kokoro_server.py` daemon | ~100-200ms (warm) / ~3-5s (cold) | venv + pip install |
-
-When `tts_engine` is `kokoro`:
-- `play.sh` dispatches senior phrases via `narrate.py --speak` instead of `say`
-- `narrate.py` sends `speak` commands to the Kokoro daemon over Unix socket
-- Falls back to macOS `say` (voice "Tara") if daemon is unavailable
-
-## 5. Sound Assets
-
-```
-sounds/
-├── construction/    18 MP3 files (hammer, saw, drill, walkie-talkie...)
-├── generals/        29 AIFF files (pre-rendered TTS: commander + unit dialogue)
-└── paper/           23 MP3 files (paper, pencil, typewriter, book, bell...)
-```
-
-Total: 70 files. All CC0 (public domain) or generated via macOS TTS.
-
-Sources: bigsoundbank.com (CC0), soundjay.com (royalty-free). Generals generated via `say` command.
-
-## 6. Dependencies
-
-| Dependency | Required | Purpose | Install |
-|-----------|----------|---------|---------|
-| jq | Yes | Config reading, hook injection | `brew install jq` |
-| python3 | Yes | Panel server, narrator engine | Ships with macOS |
-| sox | No | Generated effects profiles (`play` command) | `brew install sox` |
-| afplay | — | macOS built-in for sampled/system playback | — |
-| say | — | macOS built-in for TTS (senior profile, fallback) | — |
-| kokoro + soundfile | No | Kokoro neural TTS engine | `pip install kokoro soundfile` (in `.venv`) |
-| LLM provider | No | Narrator profile only | One of: Claude CLI, Anthropic/Gemini/OpenAI key, local Ollama |
-
-Linux equivalents: `espeak-ng` for TTS, `paplay`/`pw-play`/`aplay` for playback.
-
-## 7. Connection Map
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                    sounds.json                                    │
-│                  (single source of truth)                         │
-│                    ^              ^                               │
-│                    |              |                               │
-│  Claude Code       |   Panel      |                              │
-│  settings.json -hooks-> play.sh   server.py --> ui.html          │
-│                    |      |  |       |   |                       │
-│                    |      |  |       |   v                       │
-│                    |      |  |  config.json <--+                 │
-│                    |      |  |       |         |                 │
-│                    |      v  |       v         |                 │
-│                    |  phrases.json   integrations.json            │
-│                    |      |                                       │
-│                    |      +-- narrate.py --+-- kokoro_server.py   │
-│                    |      |   (narrator)   |   (TTS daemon)      │
-│                    |      |               |                      │
-│                    |      |  kokoro.sock <-+                     │
-│                    |      |                                       │
-│                    v      v                                       │
-│              afplay / play (sox) / say / kokoro                   │
-│                                                                  │
-│  CLI: switch.sh --reads/writes--> config.json                    │
-│                                                                  │
-│  Install:                                                        │
-│  install.sh --copies--> code-gossip/ -> ~/.code-gossip/         │
-│             --merges--> settings.json (hooks)                    │
-│  test-install.sh --validates--> checks                           │
-│                                                                  │
-│  Kokoro setup:                                                   │
-│  .venv/bin/python3 <-- kokoro_server.py (daemon)                 │
-│  kokoro.sock       <-- Unix socket (auto-created)                │
-│  integrations.json <-- kokoro_installed flag                     │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-## 8. Plans — Not Yet Implemented
-
-### 8.1 Designer Mode (UI)
-
-Second mode in the panel alongside Live mode. For building custom profiles.
-
-**Planned features:**
-- Event assignment table — select audio file per event via file browser
-- Audio recorder — record sounds directly in browser (MediaRecorder API), with preview/keep/cancel
-- Sound trimming — set start/end points, fade in/out
-- Profile creation wizard — name, type (sampled/generated), assign sounds
-- Import from URL — download and assign sounds from web
-
-**Implementation direction:**
-- Tab-based UI: Live | Designer
-- Designer reads/writes profile case blocks in play.sh (or a structured profile format)
-- Recorder uses `navigator.mediaDevices.getUserMedia()` for capture, sends WAV to server for storage
-
-### ~~8.2 Profile Files~~ -> Done (sounds.json)
-
-Profiles are now defined in `sounds.json` (structured JSON manifest). `play.sh` is a thin dispatcher that reads the manifest via `jq`. Adding/editing profiles is a JSON edit — no shell code to touch.
-
-### 8.3 MCP Server
-
-Claude Code MCP integration for idiomatic settings interaction.
-
-**Planned resources:**
-- `soundbar://config` — current settings
-- `soundbar://profiles` — available profiles and their events
-
-**Planned tools:**
-- `switch_profile(layer, name)` — switch effects/voice profile
-- `toggle(layer, on/off)` — enable/disable layer
-- `test_event(event)` — play preview
-- `create_profile(name, type)` — create new profile
-
-**Benefits:** Claude can interact with soundbar through native tool use instead of shell commands. The `/sounds` skill would become an MCP client.
-
-### ~~8.4 Volume for Generated Profiles~~ -> Done
-
-Sox: `vol` effect appended to synth chain. TTS: render to temp file via `say -o`, play with `afplay -v`. All profile types now respect the volume slider.
-
-### 8.5 Linux Support
-
-Current state: macOS only (`afplay`, `say`). Planned:
-
-- Audio player detection: `paplay` -> `pw-play` -> `aplay` -> `mpv`
-- TTS: `espeak-ng` instead of `say`
-- System sounds: find Linux equivalents or skip `default` profile
-- Install script: detect platform, adjust dependency checks
-
-### 8.6 VS Code Extension
-
-Webview panel in VS Code sidebar. Reuses ui.html with minor adjustments. No separate server needed — the extension can read/write config files directly.
-
-### 8.7 `soundbar` Command in PATH
-
-Install script creates a symlink for easy access:
-```bash
-ln -sf ~/.code-gossip/soundbar/panel.sh /usr/local/bin/soundbar
-```
-User types `soundbar` from any terminal. Needs sudo or `~/.local/bin` alternative.
+This illustrates the schema; copy the full shipped manifest when creating an override.
+
+| Mapping | Dispatch |
+|---|---|
+| `file` | One sample through `afplay` |
+| `files` | Random sample from a list |
+| `sequence` | Random choice of a sequence; play its files in order with `gap` seconds between |
+| `sox` | Generated sound through `play -qn`, with the channel volume applied |
+| `rate: [min, max]` | Optional randomized playback rate for file-based mappings |
+
+Relative file names combine with the profile's `dir` under `data/`; absolute paths stay absolute. Manifest arguments and paths are trusted local configuration. Keep custom sound specs under your control.
+
+### Phrases and styles
+
+| Data | Shape |
+|---|---|
+| Ordinary senior phrases | `"edit": ["Writing code", "Making a change"]` |
+| Subagent dialogue | `"subagent_start": [["Check this", "On it"]]` |
+| Narrator style | `"pair_programmer": {"label": "Pair Programmer", "prompt": "..."}` |
+
+Missing senior events can use shipped phrases; an explicitly empty event array stays silent. Effects and Generals mappings have no sound when an event is unmapped.
+
+## Dependencies and verification
+
+| Layer | Dependencies |
+|---|---|
+| Core hooks, mixer, installer | Bash, Python 3 standard library, `jq` |
+| macOS playback and speech | `afplay`, `say` |
+| Generated effects | Optional SoX (`play`) |
+| Neural speech | Optional Kokoro environment managed separately in `state/.venv` |
+| Tests | `pytest`; Codex adapter unit tests also run with `unittest` |
+
+The project currently targets macOS. See [README installation instructions](README.md#installation) for test commands. Installer tests use isolated homes and cover selection, preservation of unrelated hooks, partial removal, dev mode, and cached hooks after uninstall.
