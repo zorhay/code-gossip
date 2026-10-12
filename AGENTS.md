@@ -1,6 +1,6 @@
 # Contributor guide
 
-Code Gossip adds audio feedback to Codex, Claude Code, and Cursor. Soundbar is its local mixer, with independent Effects and Voice channels.
+Code Gossip adds audio feedback to Codex, Claude Code, and Cursor. Soundbar is its local control panel; the runtime supports independent Effects and Voice channels.
 
 ## Where things live
 

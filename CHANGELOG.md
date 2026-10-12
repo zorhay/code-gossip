@@ -6,7 +6,14 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
+- Soundbar now organizes Effects, Clips, Phrases, and AI commentary into four tabs, with an explicit Use/Apply action and a separate active-selection indicator. Setup and previews operate on drafts without changing live preferences.
+- Previews identify and play the selected event and alternative. AI samples can be generated once and replayed; provider and speech checks are independent, and installation progress survives a panel reload.
+- Compact per-category setup replaces the mixer table and onboarding tours. Existing combined audio remains intact until a mode is explicitly activated.
 - Replaced the Claude-specific contributor document with a shorter `AGENTS.md` for all coding agents, linking to the detailed architecture and development skills.
+
+### Added
+
+- Independent main-agent and subagent Kokoro voices, including voice-correct draft previews.
 
 ## [0.6.0] - 2026-10-11
 

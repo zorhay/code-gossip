@@ -19,8 +19,10 @@ import os
 import random
 import re
 import shutil
+import shlex
 import subprocess
 import threading
+import tempfile
 import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import sys
@@ -30,7 +32,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from paths import CONFIGS, DATA, ENGINE, STATE, SOUNDBAR
+from paths import CONFIGS, DATA, ENGINE, STATE, SOUNDBAR, executable
 
 from engine.integrations import kokoro
 
@@ -57,12 +59,13 @@ EVENTS = [
 DIALOGUE_EVENTS = {"subagent_start", "subagent_stop"}
 VOICE_PROFILES = ["senior", "narrator", "generals"]
 
-CONFIG_KEYS = {"python3_path", "effects_on", "effects_profile", "effects_volume", "voice_on", "voice_profile", "voice_volume", "voice_main", "voice_sub", "tts_engine", "kokoro_voice", "narrator_provider", "narrator_model", "narrator_api_key", "narrator_style", "narrator_deep_context", "sound_spacing_on", "effects_cooldown_ms", "voice_cooldown_ms", "codex_permission_sound_on"}
+CONFIG_KEYS = {"soundbar_mode", "kokoro_voice_sub", "python3_path", "effects_on", "effects_profile", "effects_volume", "voice_on", "voice_profile", "voice_volume", "voice_main", "voice_sub", "tts_engine", "kokoro_voice", "narrator_provider", "narrator_model", "narrator_api_key", "narrator_style", "narrator_deep_context", "sound_spacing_on", "effects_cooldown_ms", "voice_cooldown_ms", "codex_permission_sound_on"}
 
 
 # ── Config ──
 
 DEFAULTS = {
+    "soundbar_mode": "effects", "kokoro_voice_sub": "am_adam",
     "python3_path": "/usr/bin/python3",
     "codex_permission_sound_on": True,
     "sound_spacing_on": True, "effects_cooldown_ms": 750, "voice_cooldown_ms": 3000,
@@ -346,7 +349,7 @@ def parse_voice_profiles():
 
 def get_voices():
     try:
-        out = subprocess.check_output(["say", "-v", "?"], text=True, timeout=5)
+        out = subprocess.check_output([executable("say") or "say", "-v", "?"], text=True, timeout=5)
         voices = []
         seen = set()
         for line in out.strip().split("\n"):
@@ -371,6 +374,8 @@ def get_status():
         config["narrator_api_key"] = api_key[:4] + "..." + api_key[-4:] if len(api_key) > 8 else "****"
     return {
         **config,
+        "setup": setup_status(),
+        "preview_catalog": preview_catalog(),
         "effects_profiles": parse_effects_profiles(),
         "voice_profiles": parse_voice_profiles(),
         "voice_profile_names": VOICE_PROFILES,
@@ -407,17 +412,16 @@ def _resolve_file(spec, profile_data):
 
 def _say_vol_cmd(voice, rate, phrase, vol):
     """Build a shell command for volume-controlled say (render to temp, play with afplay)."""
-    safe = subprocess.list2cmdline([phrase])
+    safe = shlex.quote(phrase)
     return (f't=$(mktemp /tmp/soundbar_say.XXXXXX.aiff);'
-            f' say -v "{voice}" -r {rate} {safe} -o "$t"'
+            f' say -v {shlex.quote(voice)} -r {rate} {safe} -o "$t"'
             f' && afplay -v {vol} "$t"; rm -f "$t"')
 
 
-def _narrate_speak_cmd(phrase):
-    """Build a shell command to speak a phrase via narrate.py --speak (Kokoro-aware)."""
-    safe = subprocess.list2cmdline([phrase])
-    py3 = subprocess.list2cmdline([get_python3()])
-    return f'{py3} {subprocess.list2cmdline([str(ENGINE / "narrate.py")])} --speak {safe}'
+def _narrate_speak_cmd(phrase, subagent=False):
+    """Build a shell-safe speech command with the correct dialogue speaker."""
+    return shlex.join([get_python3(), str(ENGINE / "narrate.py"),
+                       "--speak-sub" if subagent else "--speak", phrase])
 
 
 def _play_narration(event, config, vol):
@@ -438,8 +442,8 @@ def _play_narration(event, config, vol):
         else:
             first_v, second_v, first_p, second_p = sub_v, main_v, pair[0], pair[1]
         if tts_engine == "kokoro":
-            cmd = (_narrate_speak_cmd(first_p)
-                   + " && " + _narrate_speak_cmd(second_p))
+            cmd = (_narrate_speak_cmd(first_p, event == "subagent_stop")
+                   + " && " + _narrate_speak_cmd(second_p, event == "subagent_start"))
         else:
             cmd = (_say_vol_cmd(first_v, 200, first_p, vol)
                    + " && sleep 0.2 && "
@@ -468,10 +472,10 @@ def _random_rate(spec):
     return random.uniform(r[0], r[1])
 
 
-def play_profile_event(layer, profile, event):
+def play_profile_event(layer, profile, event, config=None, *, variant=None, wait=False):
     """Play a sound directly from the manifest — no shell script."""
     log.info("play %s/%s/%s", layer, profile, event)
-    config = read_config()
+    config = read_config() if config is None else config
     vol_key = "effects_volume" if layer == "effects" else "voice_volume"
     vol = _vol_str(config.get(vol_key, 100))
 
@@ -487,37 +491,200 @@ def play_profile_event(layer, profile, event):
         log.warning("no sound spec for %s/%s/%s", layer, profile, event)
         return
 
-    rate = _random_rate(spec)
-    rate_args = ["-r", f"{rate:.3f}"] if rate else []
-
-    if "file" in spec or "files" in spec:
-        f = _resolve_file(spec, profile_data)
-        if f:
-            subprocess.Popen(["afplay", "-v", vol] + rate_args + [f],
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+    def launch(command):
+        if wait:
+            subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=True, timeout=120)
+        else:
+            subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
 
+    rate = _random_rate(spec)
+    rate_args = ["-r", f"{rate:.3f}"] if rate else []
+    if "file" in spec or "files" in spec:
+        selected = {"file": spec["files"][variant]} if variant is not None and "files" in spec else spec
+        f = _resolve_file(selected, profile_data)
+        if f:
+            launch([executable("afplay") or "afplay", "-v", vol] + rate_args + [f])
     elif "sequence" in spec:
         seqs = spec["sequence"]
-        seq = seqs[int(time.time() * 1000) % len(seqs)]
-        gap = spec.get("gap", 0.15)
-        d = profile_data.get("dir", "")
-        rate_flag = f" -r {rate:.3f}" if rate else ""
+        seq = seqs[variant if variant is not None else int(time.time() * 1000) % len(seqs)]
         parts = []
         for i, fname in enumerate(seq):
-            if i > 0:
-                parts.append(f"sleep {gap}")
-            f = str(DATA / d / fname) if d and not fname.startswith("/") else fname
-            parts.append(f'afplay -v {vol}{rate_flag} "{f}"')
-        cmd = " && ".join(parts)
-        subprocess.Popen(["bash", "-c", cmd],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
-
+            if i:
+                parts.append(shlex.join(["sleep", str(spec.get("gap", 0.15))]))
+            f = str(DATA / profile_data.get("dir", "") / fname) if not fname.startswith("/") else fname
+            parts.append(shlex.join([executable("afplay") or "afplay", "-v", vol] + rate_args + [f]))
+        launch(["bash", "-c", " && ".join(parts)])
     elif "sox" in spec:
-        subprocess.Popen(["play", "-qn"] + spec["sox"].split() + ["vol", vol],
-                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                         stderr=subprocess.DEVNULL)
+        launch([executable("play") or "play", "-qn"] + spec["sox"].split() + ["vol", vol])
+
+
+def preview_catalog():
+    """Expose sample identities, without shell commands or machine-local paths."""
+    result = {}
+    for layer, profiles in read_sounds().items():
+        result[layer] = {}
+        for name, profile in profiles.items():
+            events = {}
+            for event, spec in profile.get("events", {}).items():
+                variants = spec.get("sequence") or [[name] for name in spec.get("files", [])]
+                if not variants:
+                    variants = [[spec["file"]]] if "file" in spec else [[]]
+                events[event] = [" → ".join(Path(file).stem.replace("_", " ") for file in variant)
+                                 or "Synthesized cue" for variant in variants]
+            result[layer][name] = events
+    return result
+
+
+
+# Drafts are never written by setup checks or previews.
+MODES = {"effects", "clips", "phrases", "ai"}
+DRAFT_KEYS = {"effects_profile", "tts_engine", "voice_main", "voice_sub", "kokoro_voice",
+              "kokoro_voice_sub", "narrator_provider", "narrator_model", "narrator_api_key",
+              "narrator_style", "narrator_deep_context"}
+
+
+def setup_status():
+    def inspect(profile):
+        missing = []
+        sox = False
+        for spec in profile.get("events", {}).values():
+            sox = sox or "sox" in spec
+            files = [spec["file"]] if "file" in spec else spec.get("files", [])
+            files += [name for sequence in spec.get("sequence", []) for name in sequence]
+            for name in files:
+                path = Path(name) if name.startswith("/") else DATA / profile.get("dir", "") / name
+                if not path.is_file():
+                    missing.append(path.name)
+        ready = not profile.get("events") or (not missing and (bool(executable("play")) if sox else bool(executable("afplay"))))
+        return {"ready": ready, "sox": sox, "missing": sorted(set(missing)),
+                "message": "Missing audio files" if missing else "Install SoX" if sox and not executable("play") else "Ready" if ready else "macOS audio player unavailable"}
+    manifest = read_sounds()
+    return {"effects": {name: inspect(profile) for name, profile in manifest.get("effects", {}).items()},
+            "clips": {name: inspect(profile) for name, profile in manifest.get("voice", {}).items()},
+            "say": bool(executable("say")), "kokoro": kokoro.is_installed(),
+            "installing": kokoro.progress["status"] == "running",
+            "installStatus": kokoro.progress["status"], "installMessage": kokoro.progress.get("message", "")}
+
+
+def validate_phrases(phrases):
+    if not isinstance(phrases, dict):
+        raise ValueError("Phrases must be an event mapping")
+    for event, items in phrases.items():
+        if event not in EVENTS or not isinstance(items, list):
+            raise ValueError("Unknown phrase event or invalid alternatives")
+        for item in items:
+            texts = item if event in DIALOGUE_EVENTS else [item]
+            if (event in DIALOGUE_EVENTS and (not isinstance(item, list) or len(item) != 2)
+                    or not all(isinstance(text, str) and text.strip() for text in texts)):
+                raise ValueError("Each phrase needs text; dialogue needs two speakers")
+    return phrases
+
+
+def draft_config(body):
+    saved = read_config()
+    changes = body.get("config", {})
+    if not isinstance(changes, dict) or set(changes) - DRAFT_KEYS:
+        raise ValueError("Invalid draft settings")
+    config = {**saved, **changes}
+    if changes.get("narrator_provider", saved["narrator_provider"]) != saved["narrator_provider"] and "narrator_api_key" not in changes:
+        config["narrator_api_key"] = ""
+    if config["tts_engine"] not in TTS_ENGINES or config["narrator_provider"] not in NARRATOR_PROVIDERS:
+        raise ValueError("Unknown speech engine or provider")
+    for key in DRAFT_KEYS - {"narrator_deep_context"}:
+        if not isinstance(config.get(key, ""), str):
+            raise ValueError("Invalid setting: " + key)
+    if not isinstance(config["narrator_deep_context"], bool):
+        raise ValueError("Invalid session context setting")
+    if config["effects_profile"] not in read_sounds().get("effects", {}):
+        raise ValueError("Unknown effects profile")
+    if "narrator_style" in changes and config["narrator_style"] not in read_styles():
+        raise ValueError("Unknown commentary style")
+    if config["tts_engine"] == "kokoro":
+        ids = {voice["id"] for voice in KOKORO_VOICES}
+        if any(config[key] not in ids for key in ("kokoro_voice", "kokoro_voice_sub")):
+            raise ValueError("Unknown Kokoro voice")
+    else:
+        names = {voice["name"] for voice in get_voices()}
+        # Validate the draft's chosen voices, leaving unrelated saved choices alone.
+        for key in ("voice_main", "voice_sub"):
+            if key in changes and config[key] not in names:
+                raise ValueError("Voice is not installed: " + config[key])
+    return config
+
+
+def atomic_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".soundbar-")
+    try:
+        with os.fdopen(fd, "w") as stream:
+            json.dump(data, stream, indent=2, ensure_ascii=False)
+            stream.write("\n")
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def apply_selection(body):
+    mode = body.get("mode")
+    if mode not in MODES or not isinstance(body.get("enabled"), bool):
+        raise ValueError("Invalid mode or sound state")
+    config = draft_config(body)
+    phrases = validate_phrases(body["phrases"]) if mode == "phrases" else None
+    config.update(soundbar_mode=mode, effects_on=body["enabled"] and mode == "effects",
+                  voice_on=body["enabled"] and mode != "effects")
+    if mode != "effects":
+        config["voice_profile"] = {"clips": "generals", "phrases": "senior", "ai": "narrator"}[mode]
+    previous_phrases = PHRASES_FILE.read_bytes() if PHRASES_FILE.exists() else None
+    try:
+        if phrases is not None:
+            atomic_json(PHRASES_FILE, {**read_phrases(), **phrases})
+        atomic_json(CONFIG_FILE, config)
+    except Exception:
+        if phrases is not None:
+            if previous_phrases is None:
+                PHRASES_FILE.unlink(missing_ok=True)
+            else:
+                PHRASES_FILE.write_bytes(previous_phrases)
+        raise
+
+
+def draft_request(body, check=False):
+    mode = body.get("mode")
+    if mode not in MODES:
+        raise ValueError("Unknown mode")
+    config = draft_config(body)
+    if mode in ("effects", "clips"):
+        layer, profile = ("effects", config["effects_profile"]) if mode == "effects" else ("voice", "generals")
+        status = setup_status()["effects" if mode == "effects" else "clips"].get(profile, {})
+        if not status.get("ready"):
+            return {"ok": False, "message": status.get("message", "Profile unavailable")}
+        if not check:
+            events = read_sounds()[layer][profile]["events"]
+            if not events:
+                return {"ok": True, "message": "This profile is silent"}
+            event = body.get("event") or ("edit" if "edit" in events else next(iter(events)))
+            if event not in events:
+                raise ValueError("Unknown preview event")
+            variant = body.get("variant", 0)
+            count = len(events[event].get("sequence") or events[event].get("files") or [None])
+            if type(variant) is not int or not 0 <= variant < count:
+                raise ValueError("Unknown preview alternative")
+            play_profile_event(layer, profile, event, config, variant=variant, wait=True)
+        return {"ok": True, "message": "Ready"}
+    request = {"config": config, "mode": mode, "check": check,
+               "role": body.get("role"), "event": body.get("event", "edit"),
+               "scope": body.get("scope", "speech"), "action": body.get("action", "play"),
+               "variant": body.get("variant", 0), "text": body.get("text", "")}
+    if mode == "phrases" and not check and not request["role"]:
+        request["phrases"] = validate_phrases(body.get("phrases", {}))
+    result = subprocess.run([get_python3(), str(ENGINE / "preview.py")], input=json.dumps(request),
+                            capture_output=True, text=True, timeout=120)
+    if result.returncode or not result.stdout.strip():
+        return {"ok": False, "message": "Preview or connection check failed"}
+    return json.loads(result.stdout)
 
 
 # ── HTTP Server ──
@@ -540,12 +707,15 @@ class Handler(SimpleHTTPRequestHandler):
             elif path == "/api/health":
                 self.json_response({"app": "code-gossip", "root": str(UI_FILE.resolve().parents[1])})
 
-            elif path in ("/onboarding.js", "/onboarding.css"):
+            elif path == "/ui.js":
                 asset = UI_FILE.parent / path[1:]
                 self.send_response(200)
                 self.send_header("Content-Type", "text/javascript" if path.endswith(".js") else "text/css")
                 self.end_headers()
                 self.wfile.write(asset.read_bytes())
+
+            elif path == "/api/setup":
+                self.json_response(setup_status())
 
             elif path == "/api/status":
                 self.json_response(get_status())
@@ -578,7 +748,14 @@ class Handler(SimpleHTTPRequestHandler):
             self.json_response({"ok": False, "error": str(e)})
 
     def _handle_post(self, path, body):
-        if path == "/api/config":
+        if path == "/api/activate":
+            apply_selection(body)
+            self.json_response({"ok": True})
+
+        elif path in ("/api/draft-check", "/api/draft-preview"):
+            self.json_response(draft_request(body, check=path.endswith("check")))
+
+        elif path == "/api/config":
             config = read_config()
             updates = {k: v for k, v in body.items() if k in CONFIG_KEYS}
             # Log profile changes

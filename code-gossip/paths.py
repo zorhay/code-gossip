@@ -8,3 +8,17 @@ DATA = ROOT / "data"
 ENGINE = ROOT / "engine"
 STATE = ROOT / "state"
 SOUNDBAR = ROOT / "soundbar"
+
+
+def executable(name):
+    """Find audio tools even when a hook or launcher has a restricted PATH."""
+    import os
+    import shutil
+    found = shutil.which(name)
+    if found:
+        return found
+    for directory in ("/usr/bin", "/opt/homebrew/bin", "/usr/local/bin"):
+        candidate = Path(directory) / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None

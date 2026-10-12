@@ -174,12 +174,12 @@ if [ "$VOICE_ON" = "on" ]; then
             subagent_start)
               MAIN_P=$(jq -r ".[\"$EVENT\"][$IDX][0]" "$EVENT_PHRASES")
               SUB_P=$(jq -r ".[\"$EVENT\"][$IDX][1]" "$EVENT_PHRASES")
-              ("$PYTHON3" "$SND/engine/narrate.py" --speak "$MAIN_P" && "$PYTHON3" "$SND/engine/narrate.py" --speak "$SUB_P") &
+              ("$PYTHON3" "$SND/engine/narrate.py" --speak "$MAIN_P" && "$PYTHON3" "$SND/engine/narrate.py" --speak-sub "$SUB_P") &
               ;;
             subagent_stop)
               SUB_P=$(jq -r ".[\"$EVENT\"][$IDX][0]" "$EVENT_PHRASES")
               MAIN_P=$(jq -r ".[\"$EVENT\"][$IDX][1]" "$EVENT_PHRASES")
-              ("$PYTHON3" "$SND/engine/narrate.py" --speak "$SUB_P" && "$PYTHON3" "$SND/engine/narrate.py" --speak "$MAIN_P") &
+              ("$PYTHON3" "$SND/engine/narrate.py" --speak-sub "$SUB_P" && "$PYTHON3" "$SND/engine/narrate.py" --speak "$MAIN_P") &
               ;;
             *)
               PHRASE=$(jq -r ".[\"$EVENT\"][$IDX]" "$EVENT_PHRASES")

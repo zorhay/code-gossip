@@ -105,7 +105,7 @@ def test_installed_panel_ready_assets_and_reuse(tmp_path, repo_root, monkeypatch
         assert len(children) == 1
         assert len(urls) == 2
         assert children[0].poll() is None
-        for path, content_type in [('/', 'text/html'), ('/onboarding.js', 'text/javascript'), ('/onboarding.css', 'text/css')]:
+        for path, content_type in [('/', 'text/html'), ('/ui.js', 'text/javascript')]:
             with urlopen(urls[0] + path) as response:
                 assert response.headers['Content-Type'] == content_type
                 assert response.read()

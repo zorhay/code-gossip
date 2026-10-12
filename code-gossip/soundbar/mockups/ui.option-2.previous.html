@@ -1,0 +1,1703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soundbar · Option 2</title>
+
+
+<style>
+  :root {
+    --bg: #1c1c26;
+    --bg2: #222230;
+    --bg3: #2a2a38;
+    --fg: #d0d0d8;
+    --fg2: #909098;
+    --fg3: #606068;
+    --accent: #e0a030;
+    --accent-dim: #503c18;
+    --green: #50b858;
+    --green-dim: #2a4028;
+    --red: #d05050;
+    --border: #33334a;
+    --radius: 5px;
+    --glow-green: 0 0 6px rgba(80, 184, 88, 0.4);
+    --glow-accent: 0 0 6px rgba(224, 160, 48, 0.3);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+    min-height: 100vh;
+    padding: 20px 24px;
+  }
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .brand {
+    font-size: 16px;
+    font-weight: 800;
+    letter-spacing: 2.5px;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .tagline { font-size: 11px; color: var(--fg3); font-style: italic; }
+  .spacing-settings { margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg2); }
+  .spacing-top { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+  .spacing-hint { margin: 6px 0 10px; font-size: 11px; color: var(--fg2); }
+  .spacing-sliders { display: flex; gap: 24px; flex-wrap: wrap; }
+  .spacing-sliders label { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+  .spacing-sliders input { width: 130px; accent-color: var(--accent); }
+  .settings-panel {
+    margin-bottom: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg2);
+  }
+  .settings-panel > summary {
+    padding: 12px 14px;
+    color: var(--fg2);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .settings-panel > summary:hover { color: var(--fg); }
+  .settings-panel > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .settings-panel[open] > summary { border-bottom: 1px solid var(--border); }
+  .settings-content { padding: 12px 14px; }
+  .settings-content .tts-row { margin-top: 0; }
+  .playback-settings { margin-top: 16px; }
+  .playback-settings .spacing-settings { margin: 0; border: 0; background: none; }
+  .playback-settings .spacing-settings + .spacing-settings { border-top: 1px solid var(--border); border-radius: 0; }
+
+  /* ── Channel strips ── */
+  .channels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .channel {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    min-width: 0;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .channel:hover { border-color: #444460; }
+  .channel-top {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .channel-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: var(--fg3);
+    text-transform: uppercase;
+    min-width: 52px;
+  }
+
+  /* Toggle */
+  .toggle { position: relative; width: 36px; height: 18px; cursor: pointer; flex-shrink: 0; }
+  .toggle input { display: none; }
+  .toggle-track {
+    position: absolute; inset: 0;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 9px; transition: 0.2s;
+  }
+  .toggle-track::after {
+    content: '';
+    position: absolute; width: 12px; height: 12px;
+    left: 2px; top: 2px;
+    background: var(--fg3); border-radius: 50%; transition: 0.2s;
+  }
+  .toggle input:checked + .toggle-track { background: var(--green-dim); border-color: var(--green); box-shadow: var(--glow-green); }
+  .toggle input:checked + .toggle-track::after { background: var(--green); transform: translateX(18px); }
+
+  /* Profile select */
+  .profile-select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg); font-family: inherit; font-size: 12px;
+    padding: 4px 24px 4px 8px; cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23606068'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+    flex: 1; min-width: 0;
+  }
+  .profile-select:focus { outline: none; border-color: var(--accent); }
+
+  /* Voice settings row */
+  .voice-settings {
+    display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap;
+  }
+  .voice-label { font-size: 10px; color: var(--fg3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .voice-select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg); font-family: inherit; font-size: 11px;
+    padding: 3px 20px 3px 6px; cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23606068'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 5px center;
+  }
+  .voice-select:focus { outline: none; border-color: var(--accent); }
+  .mini-play {
+    background: none; border: 1px solid var(--border); border-radius: 3px;
+    color: var(--fg3); font-size: 9px; width: 20px; height: 18px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: 0.15s;
+  }
+  .mini-play:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Volume slider */
+  .volume-row {
+    display: flex; align-items: center; gap: 8px; margin-top: 6px;
+  }
+  .volume-label { font-size: 10px; color: var(--fg3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+  .volume-slider {
+    flex: 1;
+    min-width: 0;
+    -webkit-appearance: none; appearance: none;
+    height: 4px; background: var(--border); border-radius: 2px; outline: none;
+  }
+  .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--fg2); cursor: pointer; border: none;
+  }
+  .volume-slider::-webkit-slider-thumb:hover { background: var(--accent); box-shadow: var(--glow-accent); }
+  .volume-value { font-size: 10px; color: var(--fg3); min-width: 28px; text-align: right; }
+
+  /* ── Event mixer table ── */
+  .mixer {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .mixer table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  .mixer th {
+    text-align: left;
+    font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    color: var(--fg3); text-transform: uppercase;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+  }
+  .mixer th.col-event { width: 120px; }
+  .mixer th.col-layer { width: calc((100% - 120px) / 2); }
+  .mixer td {
+    padding: 4px 10px;
+    font-size: 12px;
+    border-bottom: 1px solid #25253a;
+    vertical-align: middle;
+  }
+  .mixer tr:last-child td { border-bottom: none; }
+  .mixer tr:nth-child(even) td { background: rgba(255, 255, 255, 0.015); }
+  .mixer tr:hover td { background: #1e1e2c; }
+
+  .event-name {
+    font-weight: 600;
+    color: var(--fg2);
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  /* Sound cell: icon + label + play */
+  .sound-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 28px;
+  }
+  .sound-cell.off { opacity: 0.5; }
+
+  .origin-icon {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+    border-radius: 3px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    title: attr(data-tip);
+  }
+  .origin-icon[data-origin="system"]    { color: #8888cc; }
+  .origin-icon[data-origin="sampled"]   { color: var(--accent); }
+  .origin-icon[data-origin="generated"] { color: #50b8b8; }
+  .origin-icon[data-origin="tts"]       { color: var(--green); }
+  .origin-icon[data-origin="recorded"]  { color: var(--red); }
+  .origin-icon[data-origin="complex"]   { color: var(--fg3); }
+
+  .sound-label {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    color: var(--fg3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+    max-width: 220px;
+  }
+
+  .play-btn {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 3px;
+    color: var(--fg3); width: 24px; height: 22px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; transition: 0.15s; flex-shrink: 0;
+  }
+  .play-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .play-btn.playing {
+    border-color: var(--accent); color: var(--accent); background: var(--accent-dim);
+    animation: play-pulse 0.6s ease-out;
+  }
+  @keyframes play-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(224, 160, 48, 0.5); }
+    100% { box-shadow: 0 0 0 6px rgba(224, 160, 48, 0); }
+  }
+
+  .empty-cell { color: var(--fg3); font-size: 11px; font-style: italic; }
+
+  /* ── Phrases section ── */
+  .phrases-section {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 12px;
+    overflow: hidden;
+  }
+  .phrases-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .phrases-header:hover { background: #2e2e40; }
+  .phrases-arrow { font-size: 9px; color: var(--fg3); transition: transform 0.2s; }
+  .phrases-arrow.open { transform: rotate(90deg); }
+  .phrases-title {
+    font-size: 10px; font-weight: 700; letter-spacing: 1px;
+    color: var(--fg3); text-transform: uppercase;
+  }
+  .phrases-body { display: none; padding: 10px 14px; }
+  .phrases-body.open { display: block; }
+
+  .phrase-event { margin-bottom: 8px; }
+  .phrase-event:last-child { margin-bottom: 0; }
+  .phrase-header-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 3px;
+  }
+  .phrase-ev-name { font-size: 12px; color: var(--accent); font-weight: 500; }
+  .phrase-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    padding: 2px 7px; font-size: 12px; color: var(--fg2);
+  }
+  .chip:hover { border-color: #48485a; }
+  .chip-text { cursor: text; outline: none; min-width: 20px; }
+  .chip-text:focus { color: var(--fg); }
+  .chip-x { cursor: pointer; color: var(--fg3); font-size: 13px; line-height: 1; }
+  .chip-x:hover { color: var(--red); }
+  .chip-add {
+    background: none; border: 1px dashed var(--border); border-radius: 4px;
+    color: var(--fg3); font-size: 14px; width: 22px; height: 22px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; transition: 0.15s;
+  }
+  .chip-add:hover { border-color: var(--accent); color: var(--accent); }
+  .dlg-row { display: flex; align-items: center; gap: 4px; margin: 2px 0; flex-wrap: wrap; }
+  .dlg-arrow { color: var(--fg3); font-size: 10px; }
+  .speaker {
+    font-size: 9px; padding: 1px 4px; border-radius: 3px; font-weight: 600; letter-spacing: 0.3px;
+  }
+  .speaker-main { background: var(--green-dim); color: var(--green); }
+  .speaker-sub { background: var(--accent-dim); color: var(--accent); }
+
+  /* ── TTS engine row ── */
+  .tts-row {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px; margin-top: 4px;
+  }
+  .tts-label { font-size: 10px; color: var(--fg3); font-weight: 600; white-space: nowrap; }
+  .tts-select {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg); font-family: inherit; font-size: 11px;
+    padding: 3px 20px 3px 6px; cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23606068'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 6px center;
+  }
+  .tts-select:focus { outline: none; border-color: var(--accent); }
+  .tts-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    transition: box-shadow 0.3s;
+  }
+  .tts-dot.ok { background: var(--green); box-shadow: var(--glow-green); }
+  .tts-dot.err { background: var(--red); }
+  .tts-dot.checking { background: var(--accent); animation: pulse 1s infinite; }
+  .tts-hint { font-size: 9px; color: var(--fg3); font-style: italic; }
+
+  /* ── Kokoro info box ── */
+  .kokoro-info {
+    margin: 6px 10px; padding: 8px 10px;
+    background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
+    font-size: 10px; color: var(--fg3); line-height: 1.5;
+  }
+  .kokoro-info summary {
+    cursor: pointer; font-weight: 600; color: var(--fg2); font-size: 11px;
+  }
+  .kokoro-info code {
+    background: var(--bg1); padding: 1px 4px; border-radius: 3px;
+    font-size: 10px;
+  }
+  .kokoro-info .ki-how {
+    margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
+    color: var(--fg3);
+  }
+  .kokoro-install-row {
+    display: flex; align-items: center; gap: 8px; margin-top: 6px;
+  }
+  .kokoro-install-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: var(--radius);
+    padding: 4px 12px; font-size: 10px; font-weight: 600; cursor: pointer;
+    font-family: inherit;
+  }
+  .kokoro-install-btn:hover { filter: brightness(1.15); }
+  .kokoro-install-btn:disabled { opacity: 0.5; cursor: default; filter: none; }
+  .kokoro-install-msg {
+    font-size: 9px; color: var(--fg3); font-style: italic;
+  }
+  .kokoro-py-info {
+    font-size: 9px; color: var(--fg3); margin-top: 4px; line-height: 1.5;
+  }
+  .kokoro-py-info.py-ok { color: var(--green); }
+  .kokoro-py-info.py-err { color: var(--red); }
+  .kokoro-py-info pre {
+    margin: 4px 0 0 0; padding: 4px 6px; background: var(--bg1); border-radius: 3px;
+    font-size: 9px; white-space: pre-wrap; line-height: 1.4;
+  }
+
+  /* ── Narrator section ── */
+  .narrator-section {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 14px;
+    display: none;
+  }
+  .narrator-section.visible { display: block; }
+  .narrator-title {
+    font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
+    color: var(--fg3); text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .narrator-columns {
+    display: grid;
+    grid-template-columns: 1fr 1px 1fr;
+    gap: 0 16px;
+  }
+  .narrator-divider {
+    background: var(--border);
+  }
+  .narrator-pane-title {
+    font-size: 9px; font-weight: 700; letter-spacing: 1.2px;
+    color: var(--fg2); text-transform: uppercase;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .narrator-grid {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 8px 10px;
+    align-items: center;
+  }
+  .narrator-label {
+    font-size: 11px; color: var(--fg2); font-weight: 600;
+    white-space: nowrap;
+  }
+  .narrator-input {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg); font-family: inherit; font-size: 12px;
+    padding: 5px 8px; width: 100%;
+  }
+  .narrator-input:focus { outline: none; border-color: var(--accent); }
+  .narrator-input::placeholder { color: var(--fg3); }
+  .narrator-select {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg); font-family: inherit; font-size: 12px;
+    padding: 5px 24px 5px 8px; cursor: pointer; width: 100%;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23606068'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 8px center;
+  }
+  .narrator-select:focus { outline: none; border-color: var(--accent); }
+  .narrator-desc {
+    font-size: 10px; color: var(--fg3); font-style: italic;
+    grid-column: 2; margin-top: -4px;
+  }
+  .narrator-deep-row {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--fg2); cursor: pointer;
+    user-select: none;
+  }
+  .narrator-deep-row input[type="checkbox"] {
+    margin: 0; cursor: pointer; accent-color: var(--accent);
+  }
+  .narrator-deep-text {
+    font-size: 11px; color: var(--fg3); line-height: 1.3;
+  }
+  .narrator-key-row {
+    display: flex; gap: 6px; align-items: center;
+  }
+  .narrator-key-row .narrator-input { flex: 1; }
+  .narrator-key-save {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg2); font-size: 11px; padding: 5px 10px; cursor: pointer;
+    white-space: nowrap; transition: 0.15s;
+  }
+  .narrator-key-save:hover { border-color: var(--accent); color: var(--accent); }
+  .narrator-status {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px;
+    background: var(--bg); border-radius: var(--radius);
+    margin-top: 4px;
+  }
+  .narrator-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; transition: box-shadow 0.3s;
+  }
+  .narrator-dot.ok { background: var(--green); box-shadow: var(--glow-green); }
+  .narrator-dot.err { background: var(--red); }
+  .narrator-dot.checking { background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .narrator-status-text { font-size: 11px; color: var(--fg2); }
+  .narrator-actions {
+    grid-column: 1 / -1;
+    display: flex; gap: 8px; margin-top: 4px;
+  }
+  .narrator-btn {
+    background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg2); font-size: 11px; padding: 6px 14px; cursor: pointer;
+    transition: 0.15s;
+  }
+  .narrator-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .narrator-btn:disabled { opacity: 0.4; cursor: default; }
+  .narrator-test-result {
+    grid-column: 1 / -1;
+    font-size: 11px; color: var(--fg2); font-style: italic;
+    padding: 4px 0;
+    min-height: 0;
+  }
+
+  /* ── Style editor ── */
+  .style-editor {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+    padding: 8px 10px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    display: none;
+  }
+  .style-editor.open { display: block; }
+  .style-editor-row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 8px;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .style-editor-row:last-child { margin-bottom: 0; }
+  .style-editor label {
+    font-size: 10px; color: var(--fg3); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .style-editor input[type="text"],
+  .style-editor textarea {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg); font-family: inherit; font-size: 12px;
+    padding: 5px 8px; width: 100%;
+  }
+  .style-editor textarea {
+    resize: vertical; min-height: 60px; line-height: 1.4;
+    font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px;
+  }
+  .style-editor input[type="text"]:focus,
+  .style-editor textarea:focus { outline: none; border-color: var(--accent); }
+  .style-editor input[readonly] { color: var(--fg3); background: var(--bg3); cursor: default; }
+  .style-editor-actions {
+    display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;
+  }
+  .style-editor-actions .spacer { flex: 1; }
+  .style-btn {
+    background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg2); font-size: 11px; padding: 5px 10px; cursor: pointer;
+    font-family: inherit; transition: 0.15s;
+  }
+  .style-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .style-btn.primary { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+  .style-btn.primary:hover { filter: brightness(1.15); }
+  .style-btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .style-btn:disabled { opacity: 0.4; cursor: default; filter: none; }
+  .style-msg {
+    font-size: 10px; color: var(--fg3); font-style: italic;
+    margin-top: 4px; min-height: 12px;
+  }
+  .style-msg.err { color: var(--red); }
+  .style-msg.ok { color: var(--green); }
+  .style-icon-btn {
+    background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--fg3); width: 28px; height: 28px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; flex-shrink: 0; transition: 0.15s;
+  }
+  .style-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .style-icon-btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
+  @media (max-width: 700px) {
+    .channels { grid-template-columns: 1fr; }
+    .narrator-columns { grid-template-columns: 1fr; gap: 12px 0; }
+    .narrator-divider { display: none; }
+  }
+
+:root { --fg: #e4e4ec; --fg2: #aaaab8; --fg3: #8c8c9e; }
+body { max-width: 1120px; margin: auto; padding: 32px 32px 60px; font-size: 14px; }
+[hidden] { display: none !important; }
+.header { align-items: center; margin-bottom: 12px; }
+.prototype-links { margin-left: auto; display: flex; gap: 8px; }
+a { color: var(--fg2); text-decoration: none; }
+.prototype-links a { padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+.prototype-links a[aria-current] { color: var(--accent); border-color: var(--accent); }
+.prototype-note { color: var(--fg3); font-size: 12px; margin-bottom: 32px; }
+h1 { font-size: 30px; letter-spacing: -0.8px; margin: 8px 0; }
+h2 { font-size: 17px; margin-bottom: 8px; }
+.eyebrow { color: var(--accent); font-size: 11px; letter-spacing: 1.8px; font-weight: 700; text-transform: uppercase; }
+.lead { color: var(--fg2); line-height: 1.6; margin-bottom: 26px; }
+.surface { padding: 22px; border: 1px solid var(--border); background: var(--bg2); border-radius: 10px; margin-bottom: 16px; min-width: 0; }
+.surface > p { color: var(--fg2); font-size: 13px; margin: 0 0 18px; line-height: 1.5; }
+.channel { padding: 20px; }
+.channel-label { font-size: 12px; color: var(--fg); }
+.channel-top { margin-bottom: 20px; flex-wrap: wrap; }
+.profile-select { font-size: 13px; padding: 9px 26px 9px 10px; }
+.volume-row { min-height: 24px; }
+.volume-label, .volume-value { font-size: 12px; }
+.toggle { height: 22px; width: 40px; }
+.toggle-track { border-radius: 12px; }
+.toggle-track::after { width: 16px; height: 16px; }
+.toggle input { display: block; position: absolute; opacity: 0; width: 100%; height: 100%; }
+.toggle:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 12px; }
+.settings-panel > summary { padding: 17px 18px; font-size: 13px; }
+.settings-content { padding: 18px; }
+.voice-settings { gap: 10px; margin: 0; flex-wrap: wrap; }
+.voice-select, .tts-select, .narrator-select { padding: 9px 26px 9px 10px; font-size: 13px; max-width: 100%; }
+.voice-label, .tts-label, .narrator-label { font-size: 11px; }
+.mini-play, .play-btn { width: 30px; height: 30px; }
+.narrator-btn, .narrator-key-save, .style-btn { font-size: 12px; padding: 9px 12px; }
+.narrator-section { margin-top: 0; }
+.narrator-pane-title { color: var(--fg); font-size: 13px; margin-bottom: 18px; }
+.narrator-grid { gap: 12px; }
+.narrator-deep-text { line-height: 1.5; }
+.sound-label { font-size: 12px; max-width: none; }
+.mixer td { padding: 8px 12px; }
+.mixer th { padding: 12px; }
+.spacing-settings { padding: 18px; }
+.spacing-hint { line-height: 1.6; font-size: 12px; }
+.phrases-title { color: var(--fg2); }
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); padding: 12px 20px; background: var(--accent-dim); color: #f3cf8b; border: 1px solid var(--accent); border-radius: 8px; z-index: 99; max-width: 90vw; }
+.category-nav { display: flex; gap: 8px; border-bottom: 1px solid var(--border); margin-bottom: 28px; }
+.category-nav button { padding: 14px 22px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--fg2); font: inherit; cursor: pointer; }
+.category-nav button[aria-pressed=true] { color: var(--accent); border-color: var(--accent); }
+.mode-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+.mode-card { text-align: left; background: var(--bg2); border: 1px solid var(--border); padding: 20px; border-radius: 10px; color: var(--fg); cursor: pointer; font: inherit; }
+.mode-card[aria-pressed=true] { border-color: var(--accent); background: #30291f; box-shadow: inset 0 0 0 1px var(--accent); }
+.mode-card span { display: block; color: var(--accent); font-size: 11px; margin-bottom: 12px; }
+.mode-card strong { display: block; font-size: 17px; margin-bottom: 10px; }
+.mode-card p { font-size: 12px; line-height: 1.6; color: var(--fg2); }
+.mode-heading { margin: 28px 0 16px; display:flex; justify-content:space-between; align-items:center; }
+.effects-strip .channel-top { margin-bottom: 10px; }
+.voice-mode-channel #voiceProfile { display: none; }
+.voice-mode-channel { margin-bottom: 16px; }
+.voice-mode-channel .channel-top { float: left; margin: 3px 28px 0 0; }
+.voice-mode-channel .volume-row { margin-top: 0; }
+.mode-copy { font-size: 13px; color: var(--fg2); line-height:1.6; margin-bottom: 18px; }
+.option2 #narratorSection { display: none; }
+.option3 .narrator-section { padding: 18px; }
+.option3 .narrator-title { display: none; }
+@media(max-width:700px) { body { padding:20px 16px; } .mode-grid { grid-template-columns:1fr; } .mode-card { padding:16px; } .prototype-links { margin-left:0; } .category-nav button { flex:1; padding:14px 8px; } .surface {padding:16px;} .spacing-sliders {gap:12px;} .mixer th.col-event {width:100px;} .mixer th.col-layer {width:calc((100% - 100px)/2);} .sound-cell{gap:3px;} .mixer td{padding:6px;} .sound-label{font-size:10px;} .origin-icon{display:none;} }
+</style>
+</head>
+<body>
+
+<div class="header"><span class="brand">Code Gossip</span><span class="tagline">Soundbar concepts</span><nav class="prototype-links" aria-label="Compare options"><a href="ui.option-2.html" aria-current="page">02 · Categories</a><a href="ui.option-3.html" >03 · Voice modes</a><a href="ui.option-4.html">04 · Simple</a></nav></div><p class="prototype-note">Interactive prototype · Changes stay in this tab · Audio simulated</p><div class="eyebrow">Option 02 · Organized by task</div><h1>Make it sound like you.</h1><p class="lead">Your everyday mix, how it behaves, and the setup behind it.</p><nav class="category-nav" aria-label="Settings categories"><button data-tab="sound" aria-pressed="true" onclick="chooseCategory('sound')">Sound</button><button data-tab="behavior" aria-pressed="false" onclick="chooseCategory('behavior')">Behavior</button><button data-tab="setup" aria-pressed="false" onclick="chooseCategory('setup')">Setup</button></nav><section id="soundPage" data-category="sound"><h2>Your mix</h2><p class="lead">Combine a sound pack with spoken feedback. Each has its own volume.</p></section><section id="behaviorPage" data-category="behavior" hidden><h2>When and what you hear</h2><p class="lead">Shape event cues, spoken content, and the pace of feedback.</p><div class="surface" id="styleSurface" hidden></div><p class="mode-copy" id="behaviorHint">Select AI commentary in Sound to configure commentary style and context.</p></section><section id="setupPage" data-category="setup" hidden><h2>Connections &amp; speech</h2><p class="lead">Configure the services that power your spoken feedback.</p><div class="surface" id="providerSurface" hidden></div><p class="mode-copy" id="setupHint">An AI connection is only needed for AI commentary.</p></section><!-- Channel strips -->
+<div class="channels">
+  <div class="channel" id="effectsChannel"></div>
+  <div class="channel" id="voiceChannel"></div>
+</div>
+
+<details class="settings-panel" id="voiceSetup" hidden>
+  <summary>Voice setup</summary>
+  <div class="settings-content" id="voiceSetupContent"></div>
+</details>
+
+<!-- Event mixer table -->
+<details class="settings-panel mixer" id="eventMixer" open>
+  <summary>Event sounds</summary>
+  <table>
+  <thead><tr>
+    <th class="col-event">Event</th>
+    <th class="col-layer">Effects</th>
+    <th class="col-layer">Voice</th>
+  </tr></thead>
+  <tbody id="mixerBody"></tbody>
+</table></details>
+
+<details class="settings-panel playback-settings" id="playbackSettings">
+  <summary>Playback settings</summary>
+  <div class="spacing-settings" id="spacingSettings"></div>
+  <div class="spacing-settings" id="codexSettings"></div>
+</details>
+
+<!-- Phrases (collapsible) -->
+<div class="phrases-section" id="phrasesSection" style="display:none">
+  <div class="phrases-header" onclick="togglePhrases()">
+    <span class="phrases-arrow" id="phrasesArrow">&#9654;</span>
+    <span class="phrases-title">Narration phrases</span>
+  </div>
+  <div class="phrases-body" id="phrasesBody"></div>
+</div>
+
+<!-- Narrator settings -->
+<div class="narrator-section" id="narratorSection">
+  <div class="narrator-title">Narrator settings</div>
+  <div class="narrator-columns">
+    <div id="narratorLeft"></div>
+    <div class="narrator-divider"></div>
+    <div id="narratorRight"></div>
+  </div>
+</div>
+
+<div class="toast" id="prototypeToast" role="status" hidden></div>
+<script>
+const ORIGIN_ICONS = {
+  system:    '&#x1F5A5;',  // 🖥
+  sampled:   '&#x1F3B5;',  // 🎵
+  generated: '&#x1F39B;',  // 🎛
+  tts:       '&#x1F5E3;',  // 🗣
+  recorded:  '&#x23FA;',   // ⏺
+  complex:   '&#x2699;',   // ⚙
+};
+const ORIGIN_TIPS = {
+  system: 'System sound', sampled: 'Sampled audio', generated: 'Sox generated',
+  tts: 'Text-to-speech', recorded: 'Recorded', complex: 'Complex/multi-step',
+};
+
+let S = {};
+let saveTimeout = null;
+
+const DEMO={"python3_path": "/usr/bin/python3", "codex_permission_sound_on": true, "sound_spacing_on": true, "effects_cooldown_ms": 750, "voice_cooldown_ms": 3000, "effects_on": true, "effects_profile": "paper", "effects_volume": 65, "voice_on": true, "voice_profile": "senior", "voice_volume": 75, "voice_main": "Tara", "voice_sub": "Aman", "tts_engine": "kokoro", "kokoro_voice": "af_heart", "narrator_provider": "claude_cli", "narrator_model": "", "narrator_api_key": "", "narrator_style": "pair_programmer", "narrator_deep_context": false, "events": ["session_start", "edit", "bash", "search", "permission", "error", "subagent_start", "subagent_stop", "compact", "stop", "user_prompt", "read", "tool", "plan", "test", "build", "git", "git_status", "git_history", "git_commit", "git_push", "pre_compact", "session_end", "interrupt"], "phrases": {"stop": ["Done", "Finished", "All set", "That wraps it up", "Ready for your review", "Over to you"], "edit": ["Implementing", "Scaffolding", "Writing code", "Making the change", "Working on the code", "Putting this together"], "bash": ["Command finished", "Shell command complete", "That command is done", "Back from the shell"], "search": ["Searching", "Where is it", "Let's find that", "Looking for a match", "Tracking that down", "Checking where this lives"], "permission": ["Need your approval", "Do you agree?", "Hey, look at this", "Can I go ahead?", "Your call on this one", "Take a look before I proceed"], "error": ["Something went wrong", "something failed", "That hit a snag", "We have an issue here"], "subagent_start": [["Look into this", "On it"], ["Hey, check this out", "I'm on it"], ["Need your help here", "Let me see"], ["Can you handle this?", "Sure thing"], ["Dig into this", "Already on it"], ["Take a closer look", "Will do"], ["Check this for me", "Taking a look"], ["Mind picking this up?", "Leave it with me"], ["Give me a second opinion", "Let's have a look"], ["Can you investigate?", "I'll check it out"]], "subagent_stop": [["Done", "Got it"], ["Here you go", "Perfect"], ["All set", "Thanks"], ["Found it", "Nice work"], ["That's done", "Let's move on"], ["Back with the results", "Let's take a look"], ["My part is finished", "Thanks for the help"], ["Report is ready", "I'll review it"], ["Checked it over", "Good, thank you"], ["Here's what I found", "Let's go through it"]], "session_start": ["Hi there", "Let's do that", "what's on your mind", "Keep calm", "Let's get started", "Ready when you are", "What are we working on?", "Let's take a look"], "compact": ["Context compacted", "Conversation context updated", "Context trimmed down", "Conversation condensed"], "user_prompt": ["Task received", "Ready to begin", "Got the request", "Let's work on that"], "read": ["Inspecting files", "Reading project context", "Taking a closer look", "Checking the source"], "tool": ["Using a tool", "Calling a tool"], "plan": ["Updating the plan", "Adjusting the next steps"], "test": ["Test command finished", "Test run complete"], "build": ["Build command finished", "Build command complete"], "git": ["Git command finished", "Git operation complete"], "pre_compact": ["Preparing to compact context", "Making room in the context"], "session_end": ["Session closed", "Signing off"], "interrupt": ["Paused", "Holding position", "Stopping here", "Waiting for your next move"], "git_status": ["Checked Git status", "Repository status checked"], "git_history": ["Reviewed Git history", "Finished reading commit history"], "git_commit": ["Commit created", "Changes committed"], "git_push": ["Push complete", "Git push finished"]}, "dialogue_events": ["subagent_start", "subagent_stop"], "effects_profiles": {"default": {"session_start": {"cmd": "Glass.aiff", "origin": "system"}, "edit": {"cmd": "Frog.aiff", "origin": "system"}, "bash": {"cmd": "Submarine.aiff", "origin": "system"}, "search": {"cmd": "Pop.aiff", "origin": "system"}, "permission": {"cmd": "Funk.aiff", "origin": "system"}, "error": {"cmd": "Basso.aiff", "origin": "system"}, "subagent_start": {"cmd": "Bottle.aiff", "origin": "system"}, "subagent_stop": {"cmd": "Ping.aiff", "origin": "system"}, "compact": {"cmd": "Purr.aiff", "origin": "system"}, "stop": {"cmd": "Hero.aiff", "origin": "system"}, "user_prompt": {"cmd": "Glass.aiff", "origin": "system"}, "read": {"cmd": "Pop.aiff", "origin": "system"}, "tool": {"cmd": "Submarine.aiff", "origin": "system"}, "plan": {"cmd": "Frog.aiff", "origin": "system"}, "test": {"cmd": "Tink.aiff", "origin": "system"}, "build": {"cmd": "Morse.aiff", "origin": "system"}, "git": {"cmd": "Submarine.aiff", "origin": "system"}, "git_status": {"cmd": "Pop.aiff", "origin": "system"}, "git_history": {"cmd": "Pop.aiff", "origin": "system"}, "git_commit": {"cmd": "Submarine.aiff", "origin": "system"}, "git_push": {"cmd": "Submarine.aiff", "origin": "system"}, "pre_compact": {"cmd": "Purr.aiff", "origin": "system"}, "session_end": {"cmd": "Hero.aiff", "origin": "system"}, "interrupt": {"cmd": "Funk.aiff", "origin": "system"}}, "attention": {"permission": {"cmd": "Generated tone", "origin": "sampled"}, "stop": {"cmd": "Generated tone", "origin": "sampled"}}, "construction": {"session_start": {"cmd": "jackhammer.mp3", "origin": "sampled"}, "edit": {"cmd": "saw.mp3", "origin": "sampled"}, "bash": {"cmd": "stapler_wood.mp3", "origin": "sampled"}, "search": {"cmd": "ratchet.mp3", "origin": "sampled"}, "permission": {"cmd": "whistle.mp3", "origin": "sampled"}, "error": {"cmd": "steel_drop.mp3", "origin": "sampled"}, "subagent_start": {"cmd": "walkie_start.mp3", "origin": "sampled"}, "subagent_stop": {"cmd": "walkie_tones.mp3", "origin": "sampled"}, "compact": {"cmd": "metal_barrier.mp3", "origin": "sampled"}, "stop": {"cmd": "hammer.mp3", "origin": "sampled"}, "user_prompt": {"cmd": "jackhammer.mp3", "origin": "sampled"}, "read": {"cmd": "ratchet.mp3", "origin": "sampled"}, "tool": {"cmd": "stapler_wood.mp3", "origin": "sampled"}, "plan": {"cmd": "saw.mp3", "origin": "sampled"}, "test": {"cmd": "stapler_wood.mp3", "origin": "sampled"}, "build": {"cmd": "stapler_wood.mp3", "origin": "sampled"}, "git": {"cmd": "stapler_wood.mp3", "origin": "sampled"}, "git_status": {"cmd": "ratchet.mp3", "origin": "sampled"}, "git_history": {"cmd": "ratchet.mp3", "origin": "sampled"}, "git_commit": {"cmd": "stapler_wood.mp3", "origin": "sampled"}, "git_push": {"cmd": "stapler_wood.mp3", "origin": "sampled"}, "pre_compact": {"cmd": "metal_barrier.mp3", "origin": "sampled"}, "session_end": {"cmd": "hammer.mp3", "origin": "sampled"}, "interrupt": {"cmd": "whistle.mp3", "origin": "sampled"}}, "minimal": {"session_start": {"cmd": "Generated tone", "origin": "sampled"}, "edit": {"cmd": "Generated tone", "origin": "sampled"}, "bash": {"cmd": "Generated tone", "origin": "sampled"}, "search": {"cmd": "Generated tone", "origin": "sampled"}, "permission": {"cmd": "Generated tone", "origin": "sampled"}, "error": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_start": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_stop": {"cmd": "Generated tone", "origin": "sampled"}, "compact": {"cmd": "Generated tone", "origin": "sampled"}, "stop": {"cmd": "Generated tone", "origin": "sampled"}, "user_prompt": {"cmd": "Generated tone", "origin": "sampled"}, "read": {"cmd": "Generated tone", "origin": "sampled"}, "tool": {"cmd": "Generated tone", "origin": "sampled"}, "plan": {"cmd": "Generated tone", "origin": "sampled"}, "test": {"cmd": "Generated tone", "origin": "sampled"}, "build": {"cmd": "Generated tone", "origin": "sampled"}, "git": {"cmd": "Generated tone", "origin": "sampled"}, "git_status": {"cmd": "Generated tone", "origin": "sampled"}, "git_history": {"cmd": "Generated tone", "origin": "sampled"}, "git_commit": {"cmd": "Generated tone", "origin": "sampled"}, "git_push": {"cmd": "Generated tone", "origin": "sampled"}, "pre_compact": {"cmd": "Generated tone", "origin": "sampled"}, "session_end": {"cmd": "Generated tone", "origin": "sampled"}, "interrupt": {"cmd": "Generated tone", "origin": "sampled"}}, "paper": {"session_start": {"cmd": "Generated tone", "origin": "sampled"}, "edit": {"cmd": "pencil_soft1.mp3", "origin": "sampled"}, "bash": {"cmd": "typewriter_short.mp3", "origin": "sampled"}, "search": {"cmd": "page_flip.mp3", "origin": "sampled"}, "permission": {"cmd": "bell.mp3", "origin": "sampled"}, "error": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_start": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_stop": {"cmd": "page_turn_quick.mp3", "origin": "sampled"}, "compact": {"cmd": "Generated tone", "origin": "sampled"}, "stop": {"cmd": "Generated tone", "origin": "sampled"}, "user_prompt": {"cmd": "Generated tone", "origin": "sampled"}, "read": {"cmd": "page_flip.mp3", "origin": "sampled"}, "tool": {"cmd": "typewriter_short.mp3", "origin": "sampled"}, "plan": {"cmd": "pencil_soft1.mp3", "origin": "sampled"}, "test": {"cmd": "typewriter_short.mp3", "origin": "sampled"}, "build": {"cmd": "typewriter_short.mp3", "origin": "sampled"}, "git": {"cmd": "typewriter_short.mp3", "origin": "sampled"}, "git_status": {"cmd": "page_flip.mp3", "origin": "sampled"}, "git_history": {"cmd": "page_flip.mp3", "origin": "sampled"}, "git_commit": {"cmd": "typewriter_short.mp3", "origin": "sampled"}, "git_push": {"cmd": "typewriter_short.mp3", "origin": "sampled"}, "pre_compact": {"cmd": "Generated tone", "origin": "sampled"}, "session_end": {"cmd": "Generated tone", "origin": "sampled"}, "interrupt": {"cmd": "bell.mp3", "origin": "sampled"}}, "sci-fi": {"session_start": {"cmd": "Generated tone", "origin": "sampled"}, "edit": {"cmd": "Generated tone", "origin": "sampled"}, "bash": {"cmd": "Generated tone", "origin": "sampled"}, "search": {"cmd": "Generated tone", "origin": "sampled"}, "permission": {"cmd": "Generated tone", "origin": "sampled"}, "error": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_start": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_stop": {"cmd": "Generated tone", "origin": "sampled"}, "compact": {"cmd": "Generated tone", "origin": "sampled"}, "stop": {"cmd": "Generated tone", "origin": "sampled"}, "user_prompt": {"cmd": "Generated tone", "origin": "sampled"}, "read": {"cmd": "Generated tone", "origin": "sampled"}, "tool": {"cmd": "Generated tone", "origin": "sampled"}, "plan": {"cmd": "Generated tone", "origin": "sampled"}, "test": {"cmd": "Generated tone", "origin": "sampled"}, "build": {"cmd": "Generated tone", "origin": "sampled"}, "git": {"cmd": "Generated tone", "origin": "sampled"}, "git_status": {"cmd": "Generated tone", "origin": "sampled"}, "git_history": {"cmd": "Generated tone", "origin": "sampled"}, "git_commit": {"cmd": "Generated tone", "origin": "sampled"}, "git_push": {"cmd": "Generated tone", "origin": "sampled"}, "pre_compact": {"cmd": "Generated tone", "origin": "sampled"}, "session_end": {"cmd": "Generated tone", "origin": "sampled"}, "interrupt": {"cmd": "Generated tone", "origin": "sampled"}}, "submarine": {"session_start": {"cmd": "Generated tone", "origin": "sampled"}, "edit": {"cmd": "Generated tone", "origin": "sampled"}, "bash": {"cmd": "Generated tone", "origin": "sampled"}, "search": {"cmd": "Generated tone", "origin": "sampled"}, "permission": {"cmd": "Generated tone", "origin": "sampled"}, "error": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_start": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_stop": {"cmd": "Generated tone", "origin": "sampled"}, "compact": {"cmd": "Generated tone", "origin": "sampled"}, "stop": {"cmd": "Generated tone", "origin": "sampled"}, "user_prompt": {"cmd": "Generated tone", "origin": "sampled"}, "read": {"cmd": "Generated tone", "origin": "sampled"}, "tool": {"cmd": "Generated tone", "origin": "sampled"}, "plan": {"cmd": "Generated tone", "origin": "sampled"}, "test": {"cmd": "Generated tone", "origin": "sampled"}, "build": {"cmd": "Generated tone", "origin": "sampled"}, "git": {"cmd": "Generated tone", "origin": "sampled"}, "git_status": {"cmd": "Generated tone", "origin": "sampled"}, "git_history": {"cmd": "Generated tone", "origin": "sampled"}, "git_commit": {"cmd": "Generated tone", "origin": "sampled"}, "git_push": {"cmd": "Generated tone", "origin": "sampled"}, "pre_compact": {"cmd": "Generated tone", "origin": "sampled"}, "session_end": {"cmd": "Generated tone", "origin": "sampled"}, "interrupt": {"cmd": "Generated tone", "origin": "sampled"}}, "silent": {}}, "voice_profiles": {"generals": {"session_start": {"cmd": "command_center.aiff", "origin": "sampled"}, "edit": {"cmd": "building.aiff", "origin": "sampled"}, "bash": {"cmd": "yes_sir.aiff", "origin": "sampled"}, "search": {"cmd": "scanning_area.aiff", "origin": "sampled"}, "permission": {"cmd": "awaiting_orders.aiff", "origin": "sampled"}, "error": {"cmd": "unit_lost.aiff", "origin": "sampled"}, "subagent_start": {"cmd": "Generated tone", "origin": "sampled"}, "subagent_stop": {"cmd": "Generated tone", "origin": "sampled"}, "compact": {"cmd": "upgrading.aiff", "origin": "sampled"}, "stop": {"cmd": "construction_complete.aiff", "origin": "sampled"}, "user_prompt": {"cmd": "orders_received.aiff", "origin": "sampled"}, "read": {"cmd": "gathering_intel.aiff", "origin": "sampled"}, "tool": {"cmd": "equipment_ready.aiff", "origin": "sampled"}, "plan": {"cmd": "battle_plan.aiff", "origin": "sampled"}, "test": {"cmd": "checks_complete.aiff", "origin": "sampled"}, "build": {"cmd": "build_complete.aiff", "origin": "sampled"}, "git": {"cmd": "repository_updated.aiff", "origin": "sampled"}, "git_status": {"cmd": "git_status_checked.aiff", "origin": "sampled"}, "git_history": {"cmd": "git_history_reviewed.aiff", "origin": "sampled"}, "git_commit": {"cmd": "git_commit_created.aiff", "origin": "sampled"}, "git_push": {"cmd": "git_push_complete.aiff", "origin": "sampled"}, "pre_compact": {"cmd": "consolidating_intel.aiff", "origin": "sampled"}, "session_end": {"cmd": "command_center_offline.aiff", "origin": "sampled"}, "interrupt": {"cmd": "hold_position.aiff", "origin": "sampled"}}, "senior": {"stop": {"cmd": "Done \u00b7 Finished", "origin": "tts"}, "edit": {"cmd": "Implementing \u00b7 Scaffolding", "origin": "tts"}, "bash": {"cmd": "Command finished \u00b7 Shell command complete", "origin": "tts"}, "search": {"cmd": "Searching \u00b7 Where is it", "origin": "tts"}, "permission": {"cmd": "Need your approval \u00b7 Do you agree?", "origin": "tts"}, "error": {"cmd": "Something went wrong \u00b7 something failed", "origin": "tts"}, "subagent_start": {"cmd": "['Look into this', 'On it'] \u00b7 ['Hey, check this out', \"I'm on it\"]", "origin": "tts"}, "subagent_stop": {"cmd": "['Done', 'Got it'] \u00b7 ['Here you go', 'Perfect']", "origin": "tts"}, "session_start": {"cmd": "Hi there \u00b7 Let's do that", "origin": "tts"}, "compact": {"cmd": "Context compacted \u00b7 Conversation context updated", "origin": "tts"}, "user_prompt": {"cmd": "Task received \u00b7 Ready to begin", "origin": "tts"}, "read": {"cmd": "Inspecting files \u00b7 Reading project context", "origin": "tts"}, "tool": {"cmd": "Using a tool \u00b7 Calling a tool", "origin": "tts"}, "plan": {"cmd": "Updating the plan \u00b7 Adjusting the next steps", "origin": "tts"}, "test": {"cmd": "Test command finished \u00b7 Test run complete", "origin": "tts"}, "build": {"cmd": "Build command finished \u00b7 Build command complete", "origin": "tts"}, "git": {"cmd": "Git command finished \u00b7 Git operation complete", "origin": "tts"}, "pre_compact": {"cmd": "Preparing to compact context \u00b7 Making room in the context", "origin": "tts"}, "session_end": {"cmd": "Session closed \u00b7 Signing off", "origin": "tts"}, "interrupt": {"cmd": "Paused \u00b7 Holding position", "origin": "tts"}, "git_status": {"cmd": "Checked Git status \u00b7 Repository status checked", "origin": "tts"}, "git_history": {"cmd": "Reviewed Git history \u00b7 Finished reading commit history", "origin": "tts"}, "git_commit": {"cmd": "Commit created \u00b7 Changes committed", "origin": "tts"}, "git_push": {"cmd": "Push complete \u00b7 Git push finished", "origin": "tts"}}, "narrator": {"session_start": {"cmd": "Contextual commentary", "origin": "tts"}, "edit": {"cmd": "Contextual commentary", "origin": "tts"}, "bash": {"cmd": "Contextual commentary", "origin": "tts"}, "search": {"cmd": "Contextual commentary", "origin": "tts"}, "permission": {"cmd": "Contextual commentary", "origin": "tts"}, "error": {"cmd": "Contextual commentary", "origin": "tts"}, "subagent_start": {"cmd": "Contextual commentary", "origin": "tts"}, "subagent_stop": {"cmd": "Contextual commentary", "origin": "tts"}, "compact": {"cmd": "Contextual commentary", "origin": "tts"}, "stop": {"cmd": "Contextual commentary", "origin": "tts"}, "user_prompt": {"cmd": "Contextual commentary", "origin": "tts"}, "read": {"cmd": "Contextual commentary", "origin": "tts"}, "tool": {"cmd": "Contextual commentary", "origin": "tts"}, "plan": {"cmd": "Contextual commentary", "origin": "tts"}, "test": {"cmd": "Contextual commentary", "origin": "tts"}, "build": {"cmd": "Contextual commentary", "origin": "tts"}, "git": {"cmd": "Contextual commentary", "origin": "tts"}, "git_status": {"cmd": "Contextual commentary", "origin": "tts"}, "git_history": {"cmd": "Contextual commentary", "origin": "tts"}, "git_commit": {"cmd": "Contextual commentary", "origin": "tts"}, "git_push": {"cmd": "Contextual commentary", "origin": "tts"}, "pre_compact": {"cmd": "Contextual commentary", "origin": "tts"}, "session_end": {"cmd": "Contextual commentary", "origin": "tts"}, "interrupt": {"cmd": "Contextual commentary", "origin": "tts"}}}, "voice_profile_names": ["senior", "generals", "narrator"], "voices": [{"name": "Tara", "locale": "en_US"}, {"name": "Aman", "locale": "en_US"}, {"name": "Samantha", "locale": "en_US"}], "tts_engines": {"say": {"name": "macOS speech"}, "kokoro": {"name": "Kokoro"}}, "kokoro_voices": [{"id": "af_heart", "name": "Heart", "gender": "female"}, {"id": "af_bella", "name": "Bella", "gender": "female"}, {"id": "am_adam", "name": "Adam", "gender": "male"}], "narrator_styles": {"pair_programmer": {"label": "Pair Programmer", "prompt": "You are a friendly pair programmer. Comment briefly on what the developer is doing \u2014 natural, supportive, sometimes amused."}, "sports": {"label": "Sports Commentator", "prompt": "You are an enthusiastic sports commentator narrating a live coding session. High energy, dramatic, play-by-play style."}, "documentary": {"label": "Nature Documentary", "prompt": "You are David Attenborough narrating a nature documentary about a programmer in their natural habitat. Gentle wonder and dry wit."}, "noir": {"label": "Noir Detective", "prompt": "You are a hardboiled detective narrating a noir film about code. World-weary, sardonic, everything sounds suspicious."}, "haiku_poet": {"label": "Haiku Poet", "prompt": "Respond ONLY with a haiku (5-7-5 syllables) about what the programmer is doing. No other text."}, "comedian": {"label": "Stand-up Comedian", "prompt": "You are a stand-up comedian riffing on a coder at work. One punchy setup-and-punchline joke about their current action. Observational humor, a little self-deprecating on behalf of all devs."}, "engineer": {"label": "Senior Engineer", "prompt": "You are a seasoned senior engineer. You are working and commenting you work. \nTerse, technically sharp, dryly witty. Occasionally hint at a better approach without lecturing."}, "casual_guy": {"label": "Casual Guy", "prompt": "You are a chill, casual friend hanging out while they code. Short, relaxed, conversational \u2014 like you're on the couch watching them work. Slight slang is fine, no hype."}, "pirate": {"label": "Pirate Captain", "prompt": "You are a swashbuckling pirate captain narrating the coder's adventure on the high seas of code. Use pirate slang (arrr, matey, ye), keep it one sentence."}, "gamer": {"label": "Twitch Streamer", "prompt": "You are a hyped-up Twitch streamer narrating a coding session like it's a speedrun. Energetic, internet-y, call out big plays and clutch moments. Keep it to one sentence."}, "drill_sergeant": {"label": "Drill Sergeant", "prompt": "You are a military drill sergeant barking orders and reactions at the coder. Loud, clipped, no-nonsense. One short, intense sentence. NO profanity."}, "zen_master": {"label": "Zen Master", "prompt": "You are a calm zen master observing the programmer. Speak in short, serene, koan-like sentences. Find stillness in the code."}}, "narrator_styles_defaults": {"pair_programmer": {"label": "Pair Programmer", "prompt": "You are a friendly pair programmer. Comment briefly on what the developer is doing \u2014 natural, supportive, sometimes amused."}, "sports": {"label": "Sports Commentator", "prompt": "You are an enthusiastic sports commentator narrating a live coding session. High energy, dramatic, play-by-play style."}, "documentary": {"label": "Nature Documentary", "prompt": "You are David Attenborough narrating a nature documentary about a programmer in their natural habitat. Gentle wonder and dry wit."}, "noir": {"label": "Noir Detective", "prompt": "You are a hardboiled detective narrating a noir film about code. World-weary, sardonic, everything sounds suspicious."}, "haiku_poet": {"label": "Haiku Poet", "prompt": "Respond ONLY with a haiku (5-7-5 syllables) about what the programmer is doing. No other text."}, "comedian": {"label": "Stand-up Comedian", "prompt": "You are a stand-up comedian riffing on a coder at work. One punchy setup-and-punchline joke about their current action. Observational humor, a little self-deprecating on behalf of all devs."}, "engineer": {"label": "Senior Engineer", "prompt": "You are a seasoned senior engineer. You are working and commenting you work. \nTerse, technically sharp, dryly witty. Occasionally hint at a better approach without lecturing."}, "casual_guy": {"label": "Casual Guy", "prompt": "You are a chill, casual friend hanging out while they code. Short, relaxed, conversational \u2014 like you're on the couch watching them work. Slight slang is fine, no hype."}, "pirate": {"label": "Pirate Captain", "prompt": "You are a swashbuckling pirate captain narrating the coder's adventure on the high seas of code. Use pirate slang (arrr, matey, ye), keep it one sentence."}, "gamer": {"label": "Twitch Streamer", "prompt": "You are a hyped-up Twitch streamer narrating a coding session like it's a speedrun. Energetic, internet-y, call out big plays and clutch moments. Keep it to one sentence."}, "drill_sergeant": {"label": "Drill Sergeant", "prompt": "You are a military drill sergeant barking orders and reactions at the coder. Loud, clipped, no-nonsense. One short, intense sentence. NO profanity."}, "zen_master": {"label": "Zen Master", "prompt": "You are a calm zen master observing the programmer. Speak in short, serene, koan-like sentences. Find stillness in the code."}}, "narrator_providers": {"claude_cli": {"name": "Claude CLI", "needs_key": false, "default_model": "default", "models": [], "description": "Use your existing Claude CLI connection."}, "openai": {"name": "OpenAI", "needs_key": true, "default_model": "", "models": [], "description": "Connect with your API key."}}};
+const VARIANT=2;
+
+function notice(message) { const el=document.getElementById('prototypeToast'); el.textContent=message; el.hidden=false; clearTimeout(window.toastTimer); window.toastTimer=setTimeout(()=>el.hidden=true,2600); }
+async function api(method,path,body) {
+ if(path==='/api/status') return structuredClone(DEMO);
+ if(path==='/api/config') { Object.assign(DEMO,body); notice('Updated in this prototype'); return {ok:true}; }
+ if(path==='/api/phrases') { DEMO.phrases[body.event]=body.phrases; notice('Phrases updated in this prototype'); return {ok:true}; }
+ if(path==='/api/play' || path==='/api/say') { notice('Simulated preview · '+(body.phrase || body.event.replaceAll('_',' '))); return {ok:true}; }
+ if(path==='/api/tts-check') return {ok:true};
+ if(path==='/api/kokoro-status') return {installed:true,python_info:{ok:true,message:'Ready to use · sample setup'}};
+ if(path==='/api/narrator-check') return {ok:true,message:'Connected · sample connection'};
+ if(path==='/api/narrator-test') return {ok:true,text:'The change is in place. Let’s see what the tests think.'};
+ if(path==='/api/narrator-style') { if(body.original_id && body.original_id!==body.id) delete S.narrator_styles[body.original_id]; S.narrator_styles[body.id]={label:body.label,prompt:body.prompt}; return {ok:true,styles:S.narrator_styles}; }
+ if(path==='/api/narrator-style-delete') {delete S.narrator_styles[body.id]; return {ok:true,styles:S.narrator_styles};}
+ if(path==='/api/narrator-style-reset') return {ok:true,styles:structuredClone(DEMO.narrator_styles_defaults)};
+ return {ok:true};
+}
+async function load() {
+  S = await api('GET', '/api/status');
+  render();
+}
+
+function render() {
+  renderEffectsChannel();
+  renderVoiceChannel();
+  renderSpacingSettings();
+  renderCodexSettings();
+  renderMixer();
+  renderPhrasesVisibility();
+  renderNarratorVisibility();
+  document.dispatchEvent(new Event('soundbar:render'));
+}
+
+function renderSpacingSettings() {
+  const enabled = S.sound_spacing_on !== false;
+  const effects = S.effects_cooldown_ms ?? 750;
+  const voice = S.voice_cooldown_ms ?? 3000;
+  document.getElementById('spacingSettings').innerHTML = `
+    <div class="spacing-top">
+      <label class="toggle"><input type="checkbox" id="spacingOn" aria-label="Reduce repeated sounds" ${enabled ? 'checked' : ''}><span class="toggle-track"></span></label>
+      <span>Reduce repeated sounds</span>
+    </div>
+    <p class="spacing-hint">Play the first cue immediately, then skip rapid repeats. Approval, error, completion, and pause cues stay responsive. Previews always play.</p>
+    <div class="spacing-sliders">
+      <label>Effects repeat gap <input id="effectsCooldown" type="range" min="0" max="10000" step="250" value="${effects}" ${enabled ? '' : 'disabled'}><output id="effectsCooldownValue">${(effects / 1000).toFixed(2)}s</output></label>
+      <label>Voice repeat gap <input id="voiceCooldown" type="range" min="0" max="10000" step="250" value="${voice}" ${enabled ? '' : 'disabled'}><output id="voiceCooldownValue">${(voice / 1000).toFixed(2)}s</output></label>
+    </div>`;
+  document.getElementById('spacingOn').onchange = async e => {
+    S.sound_spacing_on = e.target.checked;
+    await api('POST', '/api/config', { sound_spacing_on: S.sound_spacing_on });
+    renderSpacingSettings();
+  };
+  for (const [id, key] of [['effectsCooldown', 'effects_cooldown_ms'], ['voiceCooldown', 'voice_cooldown_ms']]) {
+    const input = document.getElementById(id);
+    input.oninput = e => { document.getElementById(id + 'Value').textContent = (Number(e.target.value) / 1000).toFixed(2) + 's'; };
+    input.onchange = async e => {
+      S[key] = Number(e.target.value);
+      await api('POST', '/api/config', { [key]: S[key] });
+    };
+  }
+}
+
+function renderCodexSettings() {
+  const enabled = S.codex_permission_sound_on !== false;
+  document.getElementById('codexSettings').innerHTML = `
+    <div class="spacing-top">
+      <label class="toggle"><input type="checkbox" id="codexPermissionSoundOn" aria-label="Play Codex approval sounds" ${enabled ? 'checked' : ''}><span class="toggle-track"></span></label>
+      <span>Play Codex approval sounds</span>
+    </div>
+    <p class="spacing-hint">Turn off to silence approval effects, voice, and narration in all Codex chats. This is a manual preference; it does not change Codex permissions. Previews always play.</p>`;
+  document.getElementById('codexPermissionSoundOn').onchange = async e => {
+    S.codex_permission_sound_on = e.target.checked;
+    await api('POST', '/api/config', { codex_permission_sound_on: S.codex_permission_sound_on });
+  };
+}
+
+// ── Helpers ──
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+function originCell(origin) {
+  return `<span class="origin-icon" data-origin="${origin}" title="${ORIGIN_TIPS[origin] || ''}">${ORIGIN_ICONS[origin] || ''}</span>`;
+}
+
+function shortLabel(cmd) {
+  if (!cmd || cmd === '(complex)') return '...';
+  // Extract filename from afplay commands
+  const m = cmd.match(/afplay\s+"?\$[^"]*\/([^"\/]+)"?/);
+  if (m) return m[1];
+  const m2 = cmd.match(/afplay\s+\/[^\s]*\/([^\s]+)/);
+  if (m2) return m2[1];
+  // Sox: show synth type
+  const m3 = cmd.match(/play\s+-qn\s+synth\s+[\d.]+\s+(\w+)/);
+  if (m3) return `synth ${m3[1]}`;
+  // say
+  if (cmd.startsWith('say ')) return 'TTS';
+  // Truncate
+  return cmd.length > 30 ? cmd.substring(0, 30) + '...' : cmd;
+}
+
+// ══════════ EFFECTS CHANNEL ══════════
+
+function renderEffectsChannel() {
+  const el = document.getElementById('effectsChannel');
+  const profiles = Object.keys(S.effects_profiles || {}).sort((a, b) => Number(b === 'default') - Number(a === 'default'));
+  const opts = profiles.map(n => `<option value="${n}" ${n === S.effects_profile ? 'selected' : ''}>${n}</option>`).join('');
+
+  const evol = S.effects_volume ?? 100;
+  el.innerHTML = `
+    <div class="channel-top">
+      <span class="channel-label">Effects</span>
+      <label class="toggle"><input type="checkbox" id="effectsOn" aria-label="Enable Effects" ${S.effects_on ? 'checked' : ''}><span class="toggle-track"></span></label>
+      <select class="profile-select" id="effectsProfile" aria-label="Effects profile">${opts}</select>
+    </div>
+    <div class="volume-row">
+      <span class="volume-label">Vol</span>
+      <input type="range" class="volume-slider" id="effectsVol" min="0" max="100" value="${evol}">
+      <span class="volume-value" id="effectsVolVal">${evol}%</span>
+    </div>`;
+
+  document.getElementById('effectsOn').onchange = async (e) => {
+    S.effects_on = e.target.checked;
+    await api('POST', '/api/config', { effects_on: S.effects_on });
+    renderMixer();
+  };
+  document.getElementById('effectsProfile').onchange = async (e) => {
+    S.effects_profile = e.target.value;
+    await api('POST', '/api/config', { effects_profile: S.effects_profile });
+    renderMixer();
+  };
+  document.getElementById('effectsVol').oninput = (e) => {
+    document.getElementById('effectsVolVal').textContent = e.target.value + '%';
+  };
+  document.getElementById('effectsVol').onchange = async (e) => {
+    S.effects_volume = parseInt(e.target.value);
+    await api('POST', '/api/config', { effects_volume: S.effects_volume });
+  };
+}
+
+// ══════════ VOICE CHANNEL ══════════
+
+function renderVoiceChannel() {
+  document.getElementById('speakerSlot')?.replaceChildren();
+  const el = document.getElementById('voiceChannel');
+  const vnames = S.voice_profile_names || [];
+  const opts = vnames.map(n => `<option value="${n}" ${n === S.voice_profile ? 'selected' : ''}>${n}</option>`).join('');
+  const isSenior = S.voice_profile === 'senior';
+  const usesTTS = isSenior || S.voice_profile === 'narrator';
+  const isKokoro = (S.tts_engine || 'say') === 'kokoro';
+  const vvol = S.voice_volume ?? 100;
+
+  // TTS engine selector (for narration + narrator profiles)
+  let ttsHTML = '';
+  if (usesTTS) {
+    const engines = S.tts_engines || {};
+    const engineOpts = Object.entries(engines).map(([k, v]) =>
+      `<option value="${k}" ${k === (S.tts_engine || 'say') ? 'selected' : ''}>${esc(v.name)}</option>`
+    ).join('');
+    ttsHTML = `
+      <div class="tts-row">
+        <span class="tts-label">TTS</span>
+        <select class="tts-select" id="ttsEngine">${engineOpts}</select>
+        <span class="tts-dot checking" id="ttsDot"></span>
+        <span class="tts-hint" id="ttsHint"></span>
+      </div>`;
+    if (isKokoro) {
+      ttsHTML += `
+        <div class="kokoro-info">
+          <div class="kokoro-install-row" id="kokoroSetup">
+            <button class="kokoro-install-btn" id="kokoroInstallBtn" onclick="installKokoro()">Install Kokoro</button>
+            <span class="kokoro-install-msg" id="kokoroInstallMsg"></span>
+          </div>
+          <div class="kokoro-py-info" id="kokoroPyInfo"></div>
+          <details style="margin-top:6px">
+            <summary>How it works</summary>
+            <div class="ki-how" style="border:none;margin:0;padding:4px 0 0 0">
+              Creates a Python venv (<code>~/.code-gossip/state/.venv</code>, ~1.5 GB with PyTorch).
+              Requires Python 3.9&ndash;3.11 (PyTorch constraint).
+              A background daemon loads the Kokoro-82M model once and keeps it warm in memory.
+              Speech requests go through a Unix socket &mdash; ~100&ndash;200ms per phrase instead
+              of 3&ndash;5s cold starts. The daemon auto-starts on first use and shuts down after
+              10 minutes idle.
+            </div>
+          </details>
+        </div>`;
+    }
+  }
+
+  // Voice selectors
+  let voiceSettingsHTML = '';
+  if (usesTTS) {
+    if (isKokoro) {
+      const kVoices = S.kokoro_voices || [];
+      const kOpts = kVoices.map(v =>
+        `<option value="${v.id}" ${v.id === (S.kokoro_voice || 'af_heart') ? 'selected' : ''}>${esc(v.name)} (${v.gender})</option>`
+      ).join('');
+      voiceSettingsHTML = `
+        <div class="voice-settings">
+          <label class="voice-label" for="kokoroVoice">Voice</label>
+          <select class="voice-select" id="kokoroVoice">${kOpts}</select>
+          <button class="mini-play" aria-label="Preview voice" onclick="previewVoice('kokoro')">&#9654;</button>
+        </div>`;
+    } else {
+      const voices = (S.voices || []).filter(v => v.locale.startsWith('en_'));
+      const voiceOpts = voices.map(v => `<option value="${esc(v.name)}">${esc(v.name)}</option>`).join('');
+      voiceSettingsHTML = `
+        <div class="voice-settings">
+          <label class="voice-label" for="mainVoice">Voice</label>
+          <select class="voice-select" id="mainVoice">${voiceOpts}</select>
+          <button class="mini-play" aria-label="Preview voice" onclick="previewVoice('main')">&#9654;</button>
+          ${isSenior ? `<label class="voice-label" for="subVoice" style="margin-left:6px">Sub voice</label>
+          <select class="voice-select" id="subVoice">${voiceOpts}</select>
+          <button class="mini-play" aria-label="Preview sub voice" onclick="previewVoice('sub')">&#9654;</button>` : ''}
+        </div>`;
+    }
+  }
+
+  el.innerHTML = `
+    <div class="channel-top">
+      <span class="channel-label">Voice</span>
+      <label class="toggle"><input type="checkbox" id="voiceOn" aria-label="Enable Voice" ${S.voice_on ? 'checked' : ''}><span class="toggle-track"></span></label>
+      <select class="profile-select" id="voiceProfile" aria-label="Voice profile">${opts}</select>
+    </div>
+    <div class="volume-row">
+      <span class="volume-label">Vol</span>
+      <input type="range" class="volume-slider" id="voiceVol" min="0" max="100" value="${vvol}">
+      <span class="volume-value" id="voiceVolVal">${vvol}%</span>
+    </div>`;
+
+  document.getElementById('voiceSetup').hidden = !usesTTS;
+  document.getElementById('voiceSetupContent').innerHTML = ttsHTML + voiceSettingsHTML;
+
+  // Wire up TTS engine selector
+  const ttsEl = document.getElementById('ttsEngine');
+  if (ttsEl) {
+    ttsEl.onchange = async (e) => {
+      S.tts_engine = e.target.value;
+      await api('POST', '/api/config', { tts_engine: S.tts_engine });
+      render();
+      checkTTS();
+    };
+    checkTTS();
+  }
+
+  // Wire up voice selectors
+  if (usesTTS && isKokoro) {
+    const kv = document.getElementById('kokoroVoice');
+    if (kv) kv.onchange = async (e) => {
+      S.kokoro_voice = e.target.value;
+      await api('POST', '/api/config', { kokoro_voice: S.kokoro_voice });
+    };
+  } else if (usesTTS) {
+    const mv = document.getElementById('mainVoice');
+    const sv = document.getElementById('subVoice');
+    if (mv) mv.value = S.voice_main || 'Tara';
+    if (sv) sv.value = S.voice_sub || 'Aman';
+    if (mv) mv.onchange = async (e) => { S.voice_main = e.target.value; await api('POST', '/api/config', { voice_main: S.voice_main }); renderPhrases(); };
+    if (sv) sv.onchange = async (e) => { S.voice_sub = e.target.value; await api('POST', '/api/config', { voice_sub: S.voice_sub }); renderPhrases(); };
+  }
+
+  document.getElementById('voiceVol').oninput = (e) => {
+    document.getElementById('voiceVolVal').textContent = e.target.value + '%';
+  };
+  document.getElementById('voiceVol').onchange = async (e) => {
+    S.voice_volume = parseInt(e.target.value);
+    await api('POST', '/api/config', { voice_volume: S.voice_volume });
+  };
+  document.getElementById('voiceOn').onchange = async (e) => {
+    S.voice_on = e.target.checked;
+    await api('POST', '/api/config', { voice_on: S.voice_on });
+    renderMixer();
+    renderPhrasesVisibility();
+  };
+  document.getElementById('voiceProfile').onchange = async (e) => {
+    S.voice_profile = e.target.value;
+    await api('POST', '/api/config', { voice_profile: S.voice_profile });
+    render();
+  };
+}
+
+async function checkTTS() {
+  const dot = document.getElementById('ttsDot');
+  const hint = document.getElementById('ttsHint');
+  if (!dot) return;
+  dot.className = 'tts-dot checking';
+  hint.textContent = '';
+  try {
+    const res = await api('POST', '/api/tts-check');
+    dot.className = 'tts-dot ' + (res.ok ? 'ok' : 'err');
+    if (!res.ok) hint.textContent = res.message || 'Not available';
+  } catch (e) {
+    dot.className = 'tts-dot err';
+    hint.textContent = 'Check failed';
+  }
+  // Update install button state
+  updateKokoroInstallBtn();
+}
+
+function showTTSError(msg) {
+  const dot = document.getElementById('ttsDot');
+  const hint = document.getElementById('ttsHint');
+  if (dot) dot.className = 'tts-dot err';
+  if (hint) hint.textContent = msg;
+}
+
+async function updateKokoroInstallBtn() {
+  const btn = document.getElementById('kokoroInstallBtn');
+  const msg = document.getElementById('kokoroInstallMsg');
+  const pyEl = document.getElementById('kokoroPyInfo');
+  if (!btn) return;
+  try {
+    const res = await api('POST', '/api/kokoro-status');
+    // Show Python detection info
+    if (pyEl && res.python_info) {
+      const pi = res.python_info;
+      if (res.installed) {
+        pyEl.className = 'kokoro-py-info py-ok';
+        pyEl.textContent = pi.message || `Python ${pi.version}`;
+      } else if (pi.ok) {
+        pyEl.className = 'kokoro-py-info py-ok';
+        pyEl.textContent = pi.message || `Found Python ${pi.version}`;
+      } else {
+        pyEl.className = 'kokoro-py-info py-err';
+        pyEl.innerHTML = '';
+        const lines = (pi.message || 'No compatible Python found.').split('\n');
+        pyEl.appendChild(document.createTextNode(lines[0]));
+        if (lines.length > 1) {
+          const pre = document.createElement('pre');
+          pre.textContent = lines.slice(1).join('\n');
+          pyEl.appendChild(pre);
+        }
+      }
+    } else if (pyEl) {
+      pyEl.textContent = '';
+    }
+    if (res.installed) {
+      btn.style.display = 'none';
+      msg.textContent = 'Installed';
+    } else if (res.status === 'running') {
+      btn.disabled = true;
+      btn.textContent = 'Installing...';
+      msg.textContent = res.message || '';
+      startInstallPoll();
+    } else if (res.status === 'error') {
+      btn.disabled = false;
+      btn.textContent = 'Retry';
+      msg.textContent = res.message || 'Install failed.';
+    } else if (res.python_info && !res.python_info.ok) {
+      // No compatible Python — disable install button
+      btn.disabled = true;
+      btn.textContent = 'Install';
+      msg.textContent = 'Requires Python 3.9-3.11';
+    } else {
+      btn.disabled = false;
+      btn.style.display = '';
+      btn.textContent = 'Install';
+      msg.textContent = '~1.5 GB';
+    }
+  } catch (e) {
+    btn.disabled = false;
+    msg.textContent = '';
+  }
+}
+
+let _kokoroInstallPoll = null;
+
+function startInstallPoll() {
+  if (_kokoroInstallPoll) return;
+  _kokoroInstallPoll = setInterval(async () => {
+    try {
+      const res = await api('POST', '/api/kokoro-status');
+      const btn = document.getElementById('kokoroInstallBtn');
+      const msg = document.getElementById('kokoroInstallMsg');
+      const pyEl = document.getElementById('kokoroPyInfo');
+      if (!btn) { clearInterval(_kokoroInstallPoll); _kokoroInstallPoll = null; return; }
+      msg.textContent = res.message || '';
+      // Update Python info during install
+      if (pyEl && res.python_info && res.python_info.ok) {
+        pyEl.className = 'kokoro-py-info py-ok';
+        pyEl.textContent = res.python_info.message || '';
+      }
+      if (res.installed || res.status === 'done') {
+        btn.style.display = 'none';
+        msg.textContent = 'Installed';
+        clearInterval(_kokoroInstallPoll);
+        _kokoroInstallPoll = null;
+        checkTTS();
+      } else if (res.status === 'error') {
+        btn.textContent = 'Retry';
+        btn.disabled = false;
+        clearInterval(_kokoroInstallPoll);
+        _kokoroInstallPoll = null;
+      }
+    } catch (e) {}
+  }, 2000);
+}
+
+async function installKokoro() {
+  const btn = document.getElementById('kokoroInstallBtn');
+  const msg = document.getElementById('kokoroInstallMsg');
+  const res = await api('POST', '/api/kokoro-install');
+  if (res.installed) {
+    btn.style.display = 'none';
+    msg.textContent = 'Installed';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Installing...';
+  msg.textContent = res.message || 'Starting...';
+  startInstallPoll();
+}
+
+// ══════════ MIXER TABLE ══════════
+
+function renderMixer() {
+  const tbody = document.getElementById('mixerBody');
+  const ep = S.effects_profile || 'default';
+  const vp = S.voice_profile || 'senior';
+  const eEvents = (S.effects_profiles || {})[ep] || {};
+  const vEvents = (S.voice_profiles || {})[vp] || {};
+  const eOn = S.effects_on === true;
+  const vOn = S.voice_on === true;
+
+  tbody.innerHTML = (S.events || []).map(ev => {
+    const eInfo = eEvents[ev];
+    const vInfo = vEvents[ev];
+
+    const eCell = eInfo
+      ? `<div class="sound-cell ${eOn ? '' : 'off'}">
+          ${originCell(eInfo.origin)}
+          <span class="sound-label" title="${esc(eInfo.cmd)}">${esc(shortLabel(eInfo.cmd))}</span>
+          <button class="play-btn" onclick="playSound('effects','${ep}','${ev}',this)">&#9654;</button>
+        </div>`
+      : '<span class="empty-cell">—</span>';
+
+    const vCell = vInfo
+      ? `<div class="sound-cell ${vOn ? '' : 'off'}">
+          ${originCell(vInfo.origin)}
+          <span class="sound-label" title="${esc(vInfo.cmd)}">${esc(shortLabel(vInfo.cmd))}</span>
+          <button class="play-btn" onclick="playSound('voice','${vp}','${ev}',this)">&#9654;</button>
+        </div>`
+      : '<span class="empty-cell">—</span>';
+
+    return `<tr>
+      <td class="event-name">${ev.replace(/_/g, ' ')}</td>
+      <td>${eCell}</td>
+      <td>${vCell}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ══════════ PHRASES ══════════
+
+function renderPhrasesVisibility() {
+  const sec = document.getElementById('phrasesSection');
+  sec.style.display = S.voice_profile === 'senior' ? '' : 'none';
+  renderPhrases();
+}
+
+function togglePhrases() {
+  document.getElementById('phrasesArrow').classList.toggle('open');
+  document.getElementById('phrasesBody').classList.toggle('open');
+}
+
+function renderPhrases() {
+  const body = document.getElementById('phrasesBody');
+  const phrases = S.phrases || {};
+  const dlgSet = new Set(S.dialogue_events || []);
+
+  body.innerHTML = (S.events || []).map(ev => {
+    const items = phrases[ev] || [];
+    const isDlg = dlgSet.has(ev);
+    return `<div class="phrase-event">
+      <div class="phrase-header-row">
+        <span class="phrase-ev-name">${ev}</span>
+        <button class="play-btn" onclick="playSound('voice','senior','${ev}',this)">&#9654;</button>
+      </div>
+      ${isDlg ? renderDlg(ev, items) : renderSimple(ev, items)}
+    </div>`;
+  }).join('');
+}
+
+function renderSimple(ev, items) {
+  const chips = items.map((t, i) =>
+    `<span class="chip"><span class="chip-text" contenteditable="true" data-ev="${ev}" data-i="${i}" onblur="editPhrase(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}">${esc(t)}</span><span class="chip-x" onclick="rmPhrase('${ev}',${i})">x</span></span>`
+  ).join('');
+  return `<div class="phrase-chips"><span class="speaker speaker-main">${esc(S.voice_main||'Main')}</span>${chips}<button class="chip-add" onclick="addPhrase('${ev}')">+</button></div>`;
+}
+
+function renderDlg(ev, items) {
+  const isStart = ev === 'subagent_start';
+  const [l1, c1] = isStart ? [S.voice_main, 'speaker-main'] : [S.voice_sub, 'speaker-sub'];
+  const [l2, c2] = isStart ? [S.voice_sub, 'speaker-sub'] : [S.voice_main, 'speaker-main'];
+  const rows = items.map((pair, i) =>
+    `<div class="dlg-row">
+      <span class="speaker ${c1}">${esc(l1)}</span>
+      <span class="chip"><span class="chip-text" contenteditable="true" data-ev="${ev}" data-i="${i}" data-p="0" onblur="editDlg(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}">${esc(pair[0])}</span></span>
+      <span class="dlg-arrow">&rarr;</span>
+      <span class="speaker ${c2}">${esc(l2)}</span>
+      <span class="chip"><span class="chip-text" contenteditable="true" data-ev="${ev}" data-i="${i}" data-p="1" onblur="editDlg(this)" onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}">${esc(pair[1])}</span></span>
+      <span class="chip-x" onclick="rmPhrase('${ev}',${i})" style="margin-left:3px">x</span>
+    </div>`
+  ).join('');
+  return `<div>${rows}<button class="chip-add" onclick="addDlgPhrase('${ev}')" style="margin-top:4px">+</button></div>`;
+}
+
+// ── Phrase editing ──
+
+function editPhrase(el) {
+  const ev = el.dataset.ev, i = +el.dataset.i, t = el.textContent.trim();
+  if (!t) return;
+  const p = S.phrases || {};
+  if ((p[ev]||[])[i] !== t) { p[ev][i] = t; S.phrases = p; debounceSave(ev); }
+}
+function editDlg(el) {
+  const ev = el.dataset.ev, i = +el.dataset.i, pos = +el.dataset.p, t = el.textContent.trim();
+  if (!t) return;
+  const p = S.phrases || {};
+  if (p[ev]&&p[ev][i]&&p[ev][i][pos]!==t) { p[ev][i][pos]=t; S.phrases=p; debounceSave(ev); }
+}
+function addPhrase(ev) {
+  const p = S.phrases||{}; if(!p[ev]) p[ev]=[];
+  p[ev].push('New phrase'); S.phrases=p; savePhrases(ev); renderPhrases();
+  setTimeout(()=>{const c=document.querySelectorAll(`[data-ev="${ev}"].chip-text`);const l=c[c.length-1];if(l){l.focus();document.execCommand('selectAll');}},50);
+}
+function addDlgPhrase(ev) {
+  const p=S.phrases||{}; if(!p[ev]) p[ev]=[];
+  p[ev].push(['...','...']); S.phrases=p; savePhrases(ev); renderPhrases();
+}
+function rmPhrase(ev, i) {
+  const p=S.phrases||{}; const items=p[ev]||[];
+  if(items.length<=1) return;
+  items.splice(i,1); p[ev]=items; S.phrases=p; savePhrases(ev); renderPhrases();
+}
+function debounceSave(ev) { clearTimeout(saveTimeout); saveTimeout=setTimeout(()=>savePhrases(ev),600); }
+async function savePhrases(ev) { await api('POST','/api/phrases',{event:ev,phrases:S.phrases[ev]}); }
+
+// ── Actions ──
+
+async function playSound(layer, profile, event, btn) {
+  btn.classList.add('playing');
+  await api('POST', '/api/play', { layer, profile, event });
+  setTimeout(() => btn.classList.remove('playing'), 600);
+}
+
+async function previewVoice(which) {
+  if (which === 'kokoro') {
+    const voice = document.getElementById('kokoroVoice').value;
+    const name = (S.kokoro_voices || []).find(v => v.id === voice)?.name || voice;
+    const res = await api('POST', '/api/say', { voice, phrase: `Hello, I am ${name}, your narrator.`, engine: 'kokoro' });
+    if (res && !res.ok) showTTSError(res.error || 'Kokoro unavailable');
+  } else {
+    const voice = which === 'main'
+      ? document.getElementById('mainVoice').value
+      : document.getElementById('subVoice').value;
+    await api('POST', '/api/say', { voice, phrase: `Hello, I am ${voice}`, rate: 200 });
+  }
+}
+
+// ══════════ NARRATOR ══════════
+
+function renderNarratorVisibility() {
+  const sec = document.getElementById('narratorSection');
+  const show = S.voice_profile === 'narrator';
+  sec.classList.toggle('visible', show);
+  if (show) renderNarrator();
+}
+
+function styleLabel(id, styles) {
+  const s = (styles || S.narrator_styles || {})[id];
+  if (s && typeof s === 'object' && s.label) return s.label;
+  return (id || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function stylePrompt(id, styles) {
+  const s = (styles || S.narrator_styles || {})[id];
+  if (s && typeof s === 'object' && s.prompt) return s.prompt;
+  if (typeof s === 'string') return s;
+  return '';
+}
+
+function renderNarrator() {
+  const leftEl = document.getElementById('narratorLeft');
+  const rightEl = document.getElementById('narratorRight');
+  const providers = S.narrator_providers || {};
+  const styles = S.narrator_styles || {};
+  const styleIds = Object.keys(styles);
+  const curProv = S.narrator_provider || 'claude_cli';
+  const provInfo = providers[curProv] || {};
+  const needsKey = provInfo.needs_key || false;
+  const defaultModel = provInfo.default_model || '';
+  const provModels = provInfo.models || [];
+  const curModel = S.narrator_model || '';
+
+  // Provider selector
+  const provOpts = Object.entries(providers).map(([k, v]) =>
+    `<option value="${k}" ${k === curProv ? 'selected' : ''}>${esc(v.name)}</option>`
+  ).join('');
+
+  // Model selector — provider models + custom entry if current isn't in the list
+  let modelOpts = `<option value="" ${!curModel ? 'selected' : ''}>${esc(defaultModel)} (default)</option>`;
+  modelOpts += provModels.filter(m => m !== defaultModel).map(m =>
+    `<option value="${m}" ${m === curModel ? 'selected' : ''}>${esc(m)}</option>`
+  ).join('');
+  if (curModel && !provModels.includes(curModel)) {
+    modelOpts += `<option value="${esc(curModel)}" selected>${esc(curModel)} (custom)</option>`;
+  }
+
+  // Style selector — use labels from the dict
+  const curStyle = S.narrator_style || styleIds[0] || 'pair_programmer';
+  const styleOpts = styleIds.map(id =>
+    `<option value="${id}" ${id === curStyle ? 'selected' : ''}>${esc(styleLabel(id, styles))}</option>`
+  ).join('');
+
+  // ── Left pane: LLM settings ──
+  let left = `
+    <div class="narrator-pane-title">LLM</div>
+    <div class="narrator-grid">
+      <span class="narrator-label">Provider</span>
+      <select class="narrator-select" id="narrProvider">${provOpts}</select>
+      <span class="narrator-desc" id="narrProvDesc">${esc(provInfo.description || '')}</span>
+
+      <span class="narrator-label">Model</span>
+      <select class="narrator-select" id="narrModel">${modelOpts}</select>
+  `;
+
+  if (needsKey) {
+    const hasKey = !!(S.narrator_api_key);
+    left += `
+      <span class="narrator-label">API Key</span>
+      <div class="narrator-key-row">
+        <input class="narrator-input" id="narrApiKey" type="password"
+          placeholder="${hasKey ? 'Key saved \u2014 enter new to replace' : 'Paste your API key'}"
+          autocomplete="off">
+        <button class="narrator-key-save" id="narrKeySave" onclick="saveNarrKey()">Save</button>
+      </div>
+    `;
+  }
+
+  left += `
+      <span class="narrator-label">Deep context</span>
+      <label class="narrator-deep-row">
+        <input type="checkbox" id="narrDeep" ${S.narrator_deep_context ? 'checked' : ''}>
+        <span class="narrator-deep-text">Remember session progress and reference prior moments</span>
+      </label>
+
+      <div class="narrator-status" id="narrStatus">
+        <span class="narrator-dot checking" id="narrDot"></span>
+        <span class="narrator-status-text" id="narrStatusText">Checking connection...</span>
+      </div>
+      <div class="narrator-actions">
+        <button class="narrator-btn" id="narrCheckBtn" onclick="checkNarrator()">Check connection</button>
+      </div>
+    </div>
+  `;
+
+  // ── Right pane: Narration style ──
+  const editing = !!_styleEditorOpen;
+  let right = `
+    <div class="narrator-pane-title">Narration style</div>
+    <div class="narrator-grid">
+      <span class="narrator-label">Style</span>
+      <div class="narrator-key-row">
+        <select class="narrator-select" id="narrStyle" style="flex:1">${styleOpts}</select>
+        <button class="style-icon-btn ${editing ? 'active' : ''}" id="narrStyleEditBtn"
+          onclick="toggleStyleEditor()" title="Edit styles">&#9998;</button>
+      </div>
+
+      <div class="style-editor ${editing ? 'open' : ''}" id="styleEditor"></div>
+
+      <div class="narrator-actions">
+        <button class="narrator-btn" id="narrTestBtn" onclick="testNarrator()">Test narration</button>
+      </div>
+      <div class="narrator-test-result" id="narrTestResult"></div>
+    </div>
+  `;
+
+  leftEl.innerHTML = left;
+  rightEl.innerHTML = right;
+
+  // Wire up event handlers
+  document.getElementById('narrProvider').onchange = async (e) => {
+    S.narrator_provider = e.target.value;
+    S.narrator_model = '';
+    await api('POST', '/api/config', { narrator_provider: S.narrator_provider, narrator_model: '' });
+    renderNarrator();
+    checkNarrator();
+  };
+
+  document.getElementById('narrModel').onchange = async (e) => {
+    S.narrator_model = e.target.value;
+    await api('POST', '/api/config', { narrator_model: S.narrator_model });
+  };
+
+  document.getElementById('narrStyle').onchange = async (e) => {
+    S.narrator_style = e.target.value;
+    await api('POST', '/api/config', { narrator_style: S.narrator_style });
+    if (_styleEditorOpen) renderStyleEditor();
+  };
+
+  const deepEl = document.getElementById('narrDeep');
+  if (deepEl) deepEl.onchange = async (e) => {
+    S.narrator_deep_context = e.target.checked;
+    await api('POST', '/api/config', { narrator_deep_context: S.narrator_deep_context });
+  };
+
+  if (editing) renderStyleEditor();
+
+  // Auto-check on load
+  checkNarrator();
+  arrangeNarratorPrototype();
+}
+
+// ── Style editor (CRUD for narrator styles) ──
+
+let _styleEditorOpen = false;
+let _styleEditorMode = 'edit'; // 'edit' | 'new'
+let _styleDraft = null;        // {id, original_id, label, prompt} when creating
+
+function toggleStyleEditor() {
+  _styleEditorOpen = !_styleEditorOpen;
+  if (_styleEditorOpen) {
+    _styleEditorMode = 'edit';
+    _styleDraft = null;
+  }
+  renderNarrator();
+}
+
+function renderStyleEditor() {
+  const el = document.getElementById('styleEditor');
+  if (!el) return;
+  const styles = S.narrator_styles || {};
+  const cur = _styleEditorMode === 'new'
+    ? (_styleDraft || { id: '', label: '', prompt: '' })
+    : (() => {
+        const id = S.narrator_style || Object.keys(styles)[0] || '';
+        const s = styles[id] || {};
+        return { id, label: s.label || '', prompt: s.prompt || '' };
+      })();
+  const isNew = _styleEditorMode === 'new';
+  const idReadonly = !isNew; // editing existing: lock id to avoid accidental breakage (rename via explicit button if needed)
+  const styleCount = Object.keys(styles).length;
+
+  el.innerHTML = `
+    <div class="style-editor-row">
+      <label>ID</label>
+      <input type="text" id="styleId" value="${esc(cur.id)}" ${idReadonly ? 'readonly' : ''}
+        placeholder="lowercase_with_underscores" maxlength="40">
+    </div>
+    <div class="style-editor-row">
+      <label>Label</label>
+      <input type="text" id="styleLabel" value="${esc(cur.label)}"
+        placeholder="Display name (e.g. Stand-up Comedian)" maxlength="60">
+    </div>
+    <div class="style-editor-row">
+      <label>Prompt</label>
+      <textarea id="stylePrompt" placeholder="System prompt \u2014 describes persona, tone, constraints">${esc(cur.prompt)}</textarea>
+    </div>
+    <div class="style-editor-actions">
+      ${isNew
+        ? `<button class="style-btn primary" onclick="saveStyle(true)">Create</button>
+           <button class="style-btn" onclick="cancelStyleDraft()">Cancel</button>`
+        : `<button class="style-btn primary" onclick="saveStyle(false)">Save</button>
+           <button class="style-btn" onclick="beginNewStyle()">New</button>
+           <button class="style-btn" onclick="resetStyles()">Reset defaults</button>
+           <span class="spacer"></span>
+           <button class="style-btn danger" onclick="deleteCurrentStyle()"
+             ${styleCount <= 1 ? 'disabled' : ''}>Delete</button>`
+      }
+    </div>
+    <div class="style-msg" id="styleMsg"></div>
+  `;
+
+  // Capture draft on input for new-mode so switches don't lose work
+  if (isNew) {
+    const sync = () => {
+      _styleDraft = {
+        id: document.getElementById('styleId').value.trim(),
+        label: document.getElementById('styleLabel').value,
+        prompt: document.getElementById('stylePrompt').value,
+      };
+    };
+    ['styleId', 'styleLabel', 'stylePrompt'].forEach(id => {
+      const node = document.getElementById(id);
+      if (node) node.oninput = sync;
+    });
+  }
+}
+
+function beginNewStyle() {
+  _styleEditorMode = 'new';
+  _styleDraft = { id: '', label: '', prompt: '' };
+  renderStyleEditor();
+  setTimeout(() => { const el = document.getElementById('styleId'); if (el) el.focus(); }, 30);
+}
+
+function cancelStyleDraft() {
+  _styleEditorMode = 'edit';
+  _styleDraft = null;
+  renderStyleEditor();
+}
+
+function styleMsg(text, cls) {
+  const el = document.getElementById('styleMsg');
+  if (!el) return;
+  el.className = 'style-msg ' + (cls || '');
+  el.textContent = text || '';
+  if (text && cls === 'ok') {
+    setTimeout(() => { if (el.textContent === text) { el.textContent = ''; el.className = 'style-msg'; } }, 2500);
+  }
+}
+
+async function saveStyle(isNew) {
+  const id = document.getElementById('styleId').value.trim().toLowerCase();
+  const label = document.getElementById('styleLabel').value.trim();
+  const prompt = document.getElementById('stylePrompt').value.trim();
+  if (!id || !label || !prompt) {
+    styleMsg('ID, label, and prompt are required.', 'err');
+    return;
+  }
+  if (!/^[a-z0-9_]{1,40}$/.test(id)) {
+    styleMsg('ID must be lowercase letters, digits, or underscore (1\u201340 chars).', 'err');
+    return;
+  }
+  if (isNew && (S.narrator_styles || {})[id]) {
+    styleMsg('A style with that ID already exists.', 'err');
+    return;
+  }
+  const body = { id, label, prompt };
+  if (!isNew) body.original_id = S.narrator_style;
+  const res = await api('POST', '/api/narrator-style', body);
+  if (!res.ok) { styleMsg(res.error || 'Save failed', 'err'); return; }
+  S.narrator_styles = res.styles;
+  if (isNew) {
+    // Select the newly created style
+    S.narrator_style = id;
+    await api('POST', '/api/config', { narrator_style: id });
+    _styleEditorMode = 'edit';
+    _styleDraft = null;
+  } else if (body.original_id && body.original_id !== id) {
+    S.narrator_style = id;
+  }
+  renderNarrator();
+  styleMsg('Saved.', 'ok');
+}
+
+async function deleteCurrentStyle() {
+  const id = S.narrator_style;
+  if (!id) return;
+  const styles = S.narrator_styles || {};
+  const label = styleLabel(id, styles);
+  if (!confirm(`Delete style "${label}"? This cannot be undone (use Reset to restore defaults).`)) return;
+  const res = await api('POST', '/api/narrator-style-delete', { id });
+  if (!res.ok) { styleMsg(res.error || 'Delete failed', 'err'); return; }
+  S.narrator_styles = res.styles;
+  // Backend falls back to first remaining style; reload selection.
+  S.narrator_style = Object.keys(res.styles)[0] || '';
+  renderNarrator();
+  styleMsg('Deleted.', 'ok');
+}
+
+async function resetStyles() {
+  if (!confirm('Reset all narrator styles to built-in defaults? Your custom styles will be removed.')) return;
+  const res = await api('POST', '/api/narrator-style-reset');
+  if (!res.ok) { styleMsg(res.error || 'Reset failed', 'err'); return; }
+  S.narrator_styles = res.styles;
+  if (!res.styles[S.narrator_style]) {
+    S.narrator_style = Object.keys(res.styles)[0] || 'pair_programmer';
+    await api('POST', '/api/config', { narrator_style: S.narrator_style });
+  }
+  renderNarrator();
+  styleMsg('Defaults restored.', 'ok');
+}
+
+async function saveNarrKey() {
+  const input = document.getElementById('narrApiKey');
+  const key = input.value.trim();
+  if (!key) return;
+  await api('POST', '/api/config', { narrator_api_key: key });
+  input.value = '';
+  input.placeholder = 'Key saved \u2014 enter new to replace';
+  S.narrator_api_key = '****';  // mark as set
+  checkNarrator();
+}
+
+async function checkNarrator() {
+  // Save unsaved API key before checking
+  const keyInput = document.getElementById('narrApiKey');
+  if (keyInput && keyInput.value.trim()) {
+    const key = keyInput.value.trim();
+    await api('POST', '/api/config', { narrator_api_key: key });
+    keyInput.value = '';
+    keyInput.placeholder = 'Key saved \u2014 enter new to replace';
+    S.narrator_api_key = '****';
+  }
+  const dot = document.getElementById('narrDot');
+  const text = document.getElementById('narrStatusText');
+  dot.className = 'narrator-dot checking';
+  text.textContent = 'Checking...';
+  try {
+    const res = await api('POST', '/api/narrator-check');
+    dot.className = 'narrator-dot ' + (res.ok ? 'ok' : 'err');
+    text.textContent = res.message || (res.ok ? 'Ready' : 'Not configured');
+  } catch (e) {
+    dot.className = 'narrator-dot err';
+    text.textContent = 'Check failed';
+  }
+}
+
+async function testNarrator() {
+  const btn = document.getElementById('narrTestBtn');
+  const result = document.getElementById('narrTestResult');
+  btn.disabled = true;
+  btn.textContent = 'Generating...';
+  result.textContent = '';
+  try {
+    const res = await api('POST', '/api/narrator-test', { event: 'edit' });
+    if (res.ok && res.text) {
+      result.textContent = '\u201c' + res.text + '\u201d';
+    } else {
+      result.textContent = res.error || 'No narration generated';
+      result.style.color = 'var(--red)';
+      setTimeout(() => { result.style.color = ''; }, 3000);
+    }
+  } catch (e) {
+    result.textContent = 'Test failed';
+  }
+  btn.disabled = false;
+  btn.textContent = 'Test narration';
+}
+
+
+function arrangeNarratorPrototype() {
+ if(VARIANT!==2) return;
+ const row=document.querySelector('#narratorLeft .narrator-deep-row');
+ const actions=document.querySelector('#narratorRight .narrator-actions');
+ if(row && actions) { const label=row.previousElementSibling; actions.before(label,row); }
+}
+const modeNames={senior:'Phrases',generals:'Game clips',narrator:'AI commentary'};
+function arrangePrototype() {
+ document.querySelectorAll('#voiceProfile option').forEach(o=>o.textContent=modeNames[o.value]);
+ document.getElementById('effectsProfile').setAttribute('aria-label','Sound pack');
+ document.getElementById('voiceProfile').setAttribute('aria-label','Voice mode');
+ document.querySelectorAll('.tts-label').forEach(el=>el.textContent='Speech engine');
+ document.querySelectorAll('.phrases-title').forEach(el=>el.textContent='Edit phrases');
+ document.querySelectorAll('.mode-card').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.mode===S.voice_profile)));
+ if(VARIANT===2) {
+   const voiceRow=document.querySelector('#voiceSetupContent .voice-settings');
+   if(voiceRow) document.getElementById('speakerSlot').append(voiceRow);
+   document.getElementById('speakerSurface').hidden=S.voice_profile==='generals';
+   document.getElementById('voiceSetup').querySelector('summary').textContent='Speech engine';
+   for(const id of ['providerSurface','styleSurface']) document.getElementById(id).hidden=S.voice_profile!=='narrator';
+   document.getElementById('behaviorHint').hidden=S.voice_profile==='narrator';
+   document.getElementById('setupHint').hidden=S.voice_profile==='narrator';
+ } else {
+   const descriptions={senior:'Short, editable phrases for each event. Choose a speaker, then make the words your own.',generals:'Recorded responses with a game-inspired personality. These clips use their original voices.',narrator:'AI commentary shaped by your agent’s work. Choose its voice, style, and connection below.'};
+   document.getElementById('modeTitle').textContent=modeNames[S.voice_profile];
+   document.getElementById('modeDescription').textContent=descriptions[S.voice_profile];
+   document.getElementById('clipsInfo').hidden=S.voice_profile!=='generals';
+ }
+}
+function chooseCategory(name) {
+ document.querySelectorAll('[data-category]').forEach(el=>el.hidden=el.dataset.category!==name);
+ document.querySelectorAll('[data-tab]').forEach(el=>el.setAttribute('aria-pressed',String(el.dataset.tab===name)));
+}
+function chooseMode(name) { S.voice_profile=name; DEMO.voice_profile=name; render(); }
+document.addEventListener('soundbar:render',arrangePrototype);
+
+window.addEventListener('DOMContentLoaded', () => {
+ const move=(id,parent)=>document.getElementById(parent).append(document.getElementById(id));
+ document.getElementById('eventMixer').open=false;
+ document.getElementById('voiceSetup').open=true;
+ if(VARIANT===2) {
+   document.body.classList.add('option2');
+   document.getElementById('soundPage').append(document.querySelector('.channels'));
+   document.getElementById('soundPage').insertAdjacentHTML('beforeend','<div class="surface" id="speakerSurface"><h2>Speaker</h2><p>Choose the voice used for spoken feedback.</p><div id="speakerSlot"></div></div>');
+   move('voiceSetup','setupPage');
+   move('narratorLeft','providerSurface'); move('narratorRight','styleSurface');
+   for(const id of ['phrasesSection','eventMixer','playbackSettings']) move(id,'behaviorPage');
+ } else {
+   document.body.classList.add('option3');
+   move('effectsChannel','effectsSlot'); move('voiceChannel','modeControls');
+   document.getElementById('voiceChannel').classList.add('voice-mode-channel');
+   for(const id of ['voiceSetup','phrasesSection','narratorSection']) move(id,'modeControls');
+   for(const id of ['eventMixer','playbackSettings']) move(id,'sharedSlot');
+   document.querySelector('.channels').remove();
+ }
+ load();
+});
+</script>
+</body>
+</html>

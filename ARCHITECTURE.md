@@ -53,13 +53,14 @@ code-gossip/                         installed as ~/.code-gossip/
 │   ├── play.sh                     background dispatcher
 │   ├── playback_gate.py            cross-process spacing and cooldowns
 │   ├── narrate.py                  context → words → speech
+│   ├── preview.py                  speech/provider previews from in-memory drafts
 │   ├── kokoro_server.py            warm local speech model
 │   └── integrations.py             Python detection and Kokoro installation
 │
 ├── soundbar/                       configuration interface
 │   ├── panel.sh / launcher.py      launch/reuse server and open browser
 │   ├── server.py                   local HTTP API and previews
-│   ├── ui.html                     mixer frontend
+│   ├── ui.html / ui.js             category UI and explicit activation
 │   └── mockups/                    standalone design explorations
 │
 ├── data/                           shipped content
@@ -90,7 +91,7 @@ Adapters discard playback output and make no permission decisions. Generated hoo
 
 ### Event vocabulary
 
-The [mixer's `EVENTS` list](code-gossip/soundbar/server.py) defines 24 categories. Each agent emits a subset; a profile plays only categories it maps.
+The [Soundbar `EVENTS` list](code-gossip/soundbar/server.py) defines 24 categories. Each agent emits a subset; a profile plays only categories it maps.
 
 | Family | Categories |
 |---|---|
@@ -225,16 +226,21 @@ flowchart LR
 
 `panel.sh` uses `launcher.py` to reuse a ready server or start one, then opens the browser. Manual launches run in the foreground; installation uses `--background` after hook setup, unless `--no-panel` was passed. Reinstallation restarts only the recorded, identity-checked panel process to load updated Python code. The launcher checks `/api/health` for the application and resolved runtime path before opening the UI. Startup/browser failures report a manual-open command without undoing installation. The Python server binds to `127.0.0.1`, writes `state/.server.pid` after binding, and removes its own PID file on shutdown. The **CLOSE SOUNDBAR** button sends a same-origin `POST /api/shutdown`; the server responds before stopping its request loop, closes the socket, and removes its PID file. The UI shows a closed state with reopening instructions. Closing the browser tab alone does not stop the server. Agent hooks and the separate Kokoro process remain active.
 
-`onboarding.js` and `onboarding.css` provide the first-visit welcome and five optional two-step tours. Highlights follow the live controls without changing settings. Welcome completion and dismissed/completed suggestions are stored in browser localStorage (`code-gossip.soundbar.onboarding.v1`), independently of audio configuration.
+`ui.html` and `ui.js` present Effects, Clips, Phrases, and AI commentary. The selected tab is a draft; a separate snapshot identifies active audio. Only **Use** / **Apply changes** commits a draft through `/api/activate`. The server validates configuration and phrase shapes before writing, atomically replaces each settings file, and restores phrases if the config write fails. The mode is remembered for mute/reload. Existing combined channel settings are displayed and preserved until explicit activation; the hook dispatcher still supports both channels.
 
-The UI reads current status, saves preferences, edits phrases/styles, and requests previews. `server.py` has its own manifest preview dispatcher; previews bypass live-hook spacing and do not need an agent event.
+`/api/draft-check` and `/api/draft-preview` merge allowed draft keys into a temporary in-memory config. Credentials for a saved provider are never reused for a different provider. `engine/preview.py` receives JSON through stdin using the configured Python executable, without changing config or phrase files. Speech previews use the selected engine, speaker, and exact alternative. Effects and clips expose event/sample identities through `preview_catalog`; draft playback waits for the selected sample to finish. AI sample generation uses the draft provider/model/style and an example edit, returns text without speaking, and replay speaks that text without calling the provider again. These previews bypass live-hook spacing. Kokoro main and subagent voices are configured separately.
+
+Setup status derives from manifest files, audio tools, and Kokoro installation progress. Provider and speech checks have separate scopes and UI results. Both speech sections use one template. Reloading resumes installation polling through `/api/setup`, without invoking Python discovery or installation. Provider checks and installation require explicit actions. Global sound, volume, and repeat preferences save independently of the draft. Request failures leave the active snapshot intact. The Help dialog replaces the old first-visit tours.
 
 <details>
 <summary>HTTP endpoint reference</summary>
 
 | Method | Endpoint | Purpose |
 |---|---|---|
-| GET | `/`, `/ui` | Mixer HTML |
+| GET | `/`, `/ui`, `/ui.js` | Soundbar interface |
+| GET | `/api/setup` | Manifest audio and speech dependency availability |
+| POST | `/api/activate` | Validate and save a selected mode and its draft settings/phrases |
+| POST | `/api/draft-check`, `/api/draft-preview` | Check or preview unsaved selections without config writes |
 | GET | `/api/health` | Panel identity and resolved runtime path |
 | POST | `/api/shutdown` | Same-origin UI request to stop the panel and clean up its PID file |
 | GET | `/api/status` | Settings, profiles, events, voices, and provider metadata |
@@ -294,9 +300,9 @@ Custom Codex homes require the same `CODEX_HOME` for installation and removal. A
 | Location under `~/.code-gossip/` | Role | Owner |
 |---|---|---|
 | `configs/*.defaults.json` | Shipped settings, phrases, and styles | Repository |
-| `configs/config.json` | Channel preferences, TTS, narrator settings, API key | User; mixer/CLI |
-| `configs/phrases.json` | Senior phrases by event | User; mixer |
-| `configs/narrator_styles.json` | Narrator labels and prompts | User; mixer |
+| `configs/config.json` | Channel preferences, TTS, narrator settings, API key | User; Soundbar/CLI |
+| `configs/phrases.json` | Senior phrases by event | User; Soundbar/API |
+| `configs/narrator_styles.json` | Narrator labels and prompts | User; Soundbar/API |
 | `configs/sounds.json` | Optional full manifest override | User; [sound-design skill](dev-skills/sound-design/SKILL.md)/manual edits |
 | `data/sounds.json` | Shipped effects and recorded-voice mappings | Repository |
 | `data/sounds/` | Audio assets and Generals generator | Shipped samples; generated/custom files |
@@ -352,7 +358,7 @@ Missing senior events can use shipped phrases; an explicitly empty event array s
 
 | Layer | Dependencies |
 |---|---|
-| Core hooks, mixer, installer | Bash, Python 3 standard library, `jq` |
+| Core hooks, Soundbar, installer | Bash, Python 3 standard library, `jq` |
 | macOS playback and speech | `afplay`, `say` |
 | Generated effects | Optional SoX (`play`) |
 | Neural speech | Optional Kokoro environment managed separately in `state/.venv` |

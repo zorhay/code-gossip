@@ -8,7 +8,7 @@
 
 **[▶ Open the demos with sound](https://zorhay.github.io/code-gossip/)** — press Play on the demo page; sound is enabled. The previews above are silent.
 
-**Shared agent hooks · Soundbar mixer · Effects + voice · Editable phrases · Optional AI narrator · macOS**
+**Shared agent hooks · Soundbar · Effects, clips, phrases & AI commentary · Editable phrases · Optional AI narrator · macOS**
 
 ## Installation
 
@@ -75,22 +75,26 @@ bash ./test-install.sh                    # validate the installed runtime
 
 ### Soundbar
 
-Installation opens the local mixer automatically. To open it again:
+Installation opens Soundbar automatically. To open it again:
 
 ```bash
 ~/.code-gossip/soundbar/panel.sh
 ```
 
-At [localhost:8111](http://localhost:8111), choose profiles, enable channels, set volumes, edit phrases, and preview events. Settings apply to all connected agents. A first-visit welcome introduces the mixer. Floating amber tips with 50% background opacity at the top-right offer two short highlights each for profiles, layers, Narrator, Kokoro installation, and settings; finish or dismiss them to hide them permanently in that browser. **CLOSE SOUNDBAR** stops the panel server; closing the browser tab alone leaves it running. Hook audio continues either way.
+At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phrases**, or **AI commentary**. Browsing, previews, and setup checks leave your active selection unchanged. Choose **Use** to activate a mode or **Apply changes** to save edits. The active selection stays visible above the tabs. Sound on/off and volume control the active audio; **Settings** contains repeat gaps and Codex approval cues.
 
-| Component | What it does | How to use it |
+| Category | Controls | Setup |
 |---|---|---|
-| **Effects** | System sounds, sampled audio, or generated tones | Pick a profile such as `paper`, `construction`, or `sci-fi`; enable Effects. Generated profiles need SoX. |
-| **Voice** | Spoken cues or commentary | Choose `senior` for editable phrases, `generals` for game-style clips, or `narrator` for AI commentary; enable Voice. |
-| **Narrator** | Describes the current event in a chosen style | Select a provider/model, save credentials if needed, then use **Check connection** and **Test narration**. |
-| **Speech engine** | Speaks Senior phrases and narrator text | Use built-in macOS speech, or select Kokoro and click **Install Kokoro**. |
+| **Effects** | Sound pack, event, and sample preview | Checks bundled files; generated packs require SoX |
+| **Clips** | Generals recorded responses | Checks the bundled collection |
+| **Phrases** | Editable Senior phrases, main-agent and subagent voices | Built-in macOS speech or optional Kokoro |
+| **AI commentary** | Style, voice, and session context | Provider, model, optional API key, connection check, and speech engine |
 
-Effects and Voice mix independently. Default appears first in the Effects profile list. A fresh install enables system effects and leaves Voice off. Repeat reduction skips rapid duplicate cues; previews bypass it. Codex approval audio has its own toggle.
+Previews play the selected event and alternative. Phrases also have per-row playback. AI commentary separates **Generate sample** from **Play sample**, so replaying the displayed text does not make another AI request.
+
+Each category has a **Setup** foldout. Provider and speech checks are independent; failures remain beside their controls. Installation progress resumes when the panel reloads. Kokoro installs only when you click **Install Kokoro**. SoX setup shows the installation command to run in your terminal. Activation selects one mode and preserves mute. Existing combined Effects + Voice settings remain unchanged until you explicitly activate a mode; the CLI still supports independent channels.
+
+**Settings → Close Soundbar** stops the panel server; closing the browser tab alone leaves it running. Hook audio continues either way. Use **?** for a short explanation of the controls.
 
 The narrator supports Claude CLI, Anthropic, Gemini, OpenAI, and Ollama. It sends event context to the selected provider, which may charge for usage. Fixed phrases and sound effects need no LLM.
 
@@ -105,7 +109,7 @@ The narrator supports Claude CLI, Anthropic, Gemini, OpenAI, and Ollama. It send
 ~/.code-gossip/switch.sh voice off                # mute voice
 ```
 
-To mute everything, disable both channels. Saved preferences, phrases, and narrator styles live in `~/.code-gossip/configs/`; narrator API keys are stored in `config.json`.
+To mute everything in Soundbar, turn **Sound off**. From the CLI, disable both channels. Saved preferences, phrases, and narrator styles live in `~/.code-gossip/configs/`; narrator API keys are stored in `config.json`.
 
 <details>
 <summary><strong>Update or uninstall</strong></summary>
@@ -127,7 +131,7 @@ Partial removal keeps the runtime for remaining integrations. Dev removal only u
 <details>
 <summary><strong>No sound?</strong></summary>
 
-Try a Soundbar preview first. Check the channel toggle, volume, and output device. If previews work but agent events are silent, review the selected integration; for Codex, trust the hooks in `/hooks` and start a new chat. For narration, use **Check connection** and **Test narration**.
+Try a Soundbar preview first. Check Sound on/off, volume, and your output device. If previews work but agent events are silent, review the selected integration; for Codex, trust the hooks in `/hooks` and start a new chat. For narration, check the provider and speech engine separately in **Setup**, then **Generate sample** and **Play sample**.
 
 ```bash
 bash ./test-install.sh

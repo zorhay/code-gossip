@@ -212,3 +212,130 @@ class TestGetPython3:
         p = get_python3()
         assert os.path.isfile(p), f"get_python3() returned non-file: {p}"
         assert os.access(p, os.X_OK), f"get_python3() returned non-executable: {p}"
+
+
+@pytest.fixture
+def isolated_preferences(tmp_path, monkeypatch):
+    import server
+    monkeypatch.setattr(server, 'CONFIG_FILE', tmp_path / 'config.json')
+    monkeypatch.setattr(server, 'PHRASES_FILE', tmp_path / 'phrases.json')
+    monkeypatch.setattr(server, 'STYLES_FILE', tmp_path / 'styles.json')
+    monkeypatch.setattr(server, 'get_voices', lambda: [{'name': 'Tara'}, {'name': 'Aman'}, {'name': 'Samantha'}])
+    config = {**server.DEFAULTS, 'effects_on': True, 'narrator_api_key': 'private-example', 'unrelated': 'preserve'}
+    server.CONFIG_FILE.write_text(json.dumps(config))
+    return server
+
+
+def test_activation_preserves_unrelated_settings_and_saves_dialogue(isolated_preferences):
+    server = isolated_preferences
+    server.apply_selection({'mode': 'phrases', 'enabled': False,
+                            'config': {'voice_main': 'Samantha', 'voice_sub': 'Aman'},
+                            'phrases': {'subagent_start': [['Main', 'Sub']]}})
+    config = server.read_config()
+    assert config['voice_main'] == 'Samantha'
+    assert config['voice_sub'] == 'Aman'
+    assert config['soundbar_mode'] == 'phrases'
+    assert not config['effects_on'] and not config['voice_on']
+    assert config['unrelated'] == 'preserve'
+    assert config['narrator_api_key'] == 'private-example'
+    assert server.read_phrases()['subagent_start'] == [['Main', 'Sub']]
+    assert server.read_phrases()['edit']
+
+
+@pytest.mark.parametrize('phrases', [
+    {'unknown': ['x']}, {'subagent_start': [['Only one']]},
+    {'edit': ['']}, {'edit': [None]}, {'edit': [['bad', 'pair']]},
+])
+def test_invalid_phrase_drafts_do_not_change_files(isolated_preferences, phrases):
+    server = isolated_preferences
+    before = server.CONFIG_FILE.read_bytes()
+    with pytest.raises(ValueError):
+        server.apply_selection({'mode': 'phrases', 'enabled': True, 'config': {}, 'phrases': phrases})
+    assert server.CONFIG_FILE.read_bytes() == before
+    assert not server.PHRASES_FILE.exists()
+
+
+def test_activation_restores_phrase_file_if_config_write_fails(isolated_preferences, monkeypatch):
+    server = isolated_preferences
+    server.PHRASES_FILE.write_text('{"edit": ["Keep this"]}')
+    before = server.PHRASES_FILE.read_bytes()
+    real_write = server.atomic_json
+    def write(path, data):
+        if path == server.CONFIG_FILE:
+            raise OSError('disk failure')
+        return real_write(path, data)
+    monkeypatch.setattr(server, 'atomic_json', write)
+    with pytest.raises(OSError):
+        server.apply_selection({'mode': 'phrases', 'enabled': True, 'config': {}, 'phrases': {'edit': ['New']}})
+    assert server.PHRASES_FILE.read_bytes() == before
+
+
+def test_provider_draft_never_reuses_key_for_different_provider(isolated_preferences):
+    server = isolated_preferences
+    assert server.draft_config({'config': {'narrator_provider': 'openai'}})['narrator_api_key'] == ''
+    assert server.read_config()['narrator_api_key'] == 'private-example'
+
+
+def test_checks_send_drafts_over_stdin_without_writing(isolated_preferences):
+    server = isolated_preferences
+    before = server.CONFIG_FILE.read_bytes()
+    with patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok": true}')) as run:
+        server.draft_request({'mode': 'ai', 'config': {'narrator_provider': 'openai', 'narrator_model': 'test-model', 'narrator_api_key': 'draft-secret'}}, check=True)
+    args, kwargs = run.call_args
+    assert args[0][0] == server.get_python3()
+    assert 'draft-secret' not in str(args)
+    request = json.loads(kwargs['input'])
+    assert request['check'] is True
+    assert request['config']['narrator_api_key'] == 'draft-secret'
+    assert request['config']['narrator_model'] == 'test-model'
+    assert server.CONFIG_FILE.read_bytes() == before
+
+
+def test_effect_preview_uses_unsaved_pack(isolated_preferences):
+    server = isolated_preferences
+    before = server.CONFIG_FILE.read_bytes()
+    with patch.object(server, 'setup_status', return_value={'effects': {'paper': {'ready': True}}}), patch.object(server, 'play_profile_event') as play:
+        server.draft_request({'mode': 'effects', 'config': {'effects_profile': 'paper'}})
+    assert play.call_args.args[:3] == ('effects', 'paper', 'edit')
+    assert play.call_args.args[3]['effects_profile'] == 'paper'
+    assert server.CONFIG_FILE.read_bytes() == before
+
+
+def test_setup_discovers_sox_from_manifest(isolated_preferences):
+    server = isolated_preferences
+    with patch.object(server, 'executable', side_effect=lambda name: None if name == 'play' else '/usr/bin/'+name), patch.object(server.kokoro, 'is_installed', return_value=False):
+        status = server.setup_status()
+    assert status['effects']['sci-fi']['sox']
+    assert not status['effects']['sci-fi']['ready']
+    assert not status['effects']['paper']['sox']
+    assert not status['kokoro']
+
+
+def test_preview_event_and_alternative_are_explicit(isolated_preferences):
+    server = isolated_preferences
+    with patch.object(server, 'setup_status', return_value={'clips': {'generals': {'ready': True}}}), patch.object(server, 'play_profile_event') as play:
+        server.draft_request({'mode':'clips','event':'subagent_start','variant':2,'config':{}})
+        assert play.call_args.args[:3] == ('voice','generals','subagent_start')
+        assert play.call_args.kwargs == {'variant':2,'wait':True}
+        with pytest.raises(ValueError):
+            server.draft_request({'mode':'clips','event':'subagent_start','variant':999,'config':{}})
+
+
+def test_install_progress_is_read_without_python_installation(isolated_preferences):
+    server = isolated_preferences
+    with patch.object(server.kokoro, '_progress', {'status':'running','message':'Installing packages'}), patch.object(server.kokoro, 'is_installed', return_value=False), patch.object(server.kokoro, 'find_python') as find:
+        status = server.setup_status()
+        assert status['installing']
+        assert status['installMessage'] == 'Installing packages'
+        find.assert_not_called()
+
+
+def test_preview_waits_for_audio_and_uses_selected_clip(isolated_preferences):
+    server = isolated_preferences
+    with patch.object(server.subprocess, 'run') as run, patch.object(server.subprocess, 'Popen') as background:
+        server.play_profile_event('voice','generals','subagent_start',variant=1,wait=True)
+        command = run.call_args.args[0]
+        assert 'cmd_move_out.aiff' in command[-1]
+        assert 'unit_on_my_way.aiff' in command[-1]
+        assert run.call_args.kwargs['check']
+        background.assert_not_called()

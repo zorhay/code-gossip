@@ -81,29 +81,21 @@ async function until(check, description) {
           assert(Object.keys(doc.hooks).length > 0);
         }
         await page.goto(url);
-        await page.locator('#welcomeDialog[open]').waitFor();
-        await page.getByRole('button', { name: 'Let’s try it' }).click();
-        assert.equal(await page.locator('.tip-item').count(), 5);
-        await page.getByRole('button', { name: 'Pick profiles', exact: true }).click();
-        await page.selectOption('#effectsProfile', 'paper');
-        await until(async () => (await status()).effects_profile === 'paper', 'saved Effects profile');
-        await page.locator('#tourNext').click(); await page.locator('#tourNext').click();
-        await page.getByRole('button', { name: 'Mix layers', exact: true }).click();
-        await page.locator('label.toggle').filter({ has: page.locator('#effectsOn') }).click();
-        await until(async () => (await status()).effects_on === false, 'saved Effects toggle');
-        await page.locator('#tourNext').click(); await page.locator('#tourNext').click();
-        await page.getByRole('button', { name: 'Install Kokoro', exact: true }).click();
-        await page.selectOption('#ttsEngine', 'kokoro');
-        await page.waitForFunction(() => !document.getElementById('tourNext').disabled);
-        await page.locator('#tourNext').click();
-        await page.locator('#kokoroSetup').waitFor();
-        await page.locator('#tourNext').click();
-        // No download: only the setup guide was exercised.
+        await page.waitForFunction(() => document.getElementById('statusText').textContent.startsWith('Active'));
+        assert.equal(await page.locator('[role=tab]').count(), 4);
+        await page.selectOption('#soundPack', 'paper');
+        assert.equal((await status()).effects_profile, 'default', 'Browsing does not save');
+        await page.locator('#activateSelection').click();
+        await until(async () => (await status()).effects_profile === 'paper', 'activated Effects profile');
+        await page.getByRole('tab', { name: 'Phrases', exact: true }).click();
+        assert.equal((await status()).effects_profile, 'paper');
+        await page.locator('#setup-phrases > summary').click();
+        await page.selectOption('#phraseEngine', 'kokoro');
+        assert.equal((await status()).tts_engine, 'say', 'Setup choices stay in the draft');
         assert(!fs.existsSync(path.join(runtime, 'state/.venv')));
-        await page.reload(); await page.locator('#voiceProfile').waitFor();
-        assert.equal(await page.locator('#welcomeDialog').isVisible(), false);
-        assert.equal(await page.locator('.tip-item').count(), 2);
-        await page.getByRole('button', { name: 'CLOSE SOUNDBAR', exact: true }).click();
+        await page.reload();
+        await page.locator('#tab-effects[aria-selected=true]').waitFor();
+        await page.locator('#settingsButton').click();await page.locator('#closeSoundbar').click();
         await page.locator('#closedDialog[open]').waitFor();
         await until(() => !fs.existsSync(pidFile), 'server shutdown and PID cleanup');
         await assert.rejects(fetch(url + '/api/health'));
@@ -120,7 +112,7 @@ async function until(check, description) {
         assert(!fs.existsSync(runtime));
         assert(fs.existsSync(path.join(checkout, 'code-gossip/installer.py')), 'Dev checkout survives uninstall');
         assert.deepEqual(errors, []);
-        console.log(`${dev ? 'Dev' : 'Normal'} end-to-end passed: install, browser opening, reuse, settings, tips, UI shutdown, reopen, partial/full uninstall.`);
+        console.log(`${dev ? 'Dev' : 'Normal'} end-to-end passed: install, browser opening, reuse, explicit activation, setup drafts, UI shutdown, reopen, partial/full uninstall.`);
       } finally {
         await context.close();
         if (fs.existsSync(path.join(runtime, 'uninstall.sh'))) await run(path.join(runtime, 'uninstall.sh'), '--all', '--purge').catch(() => {});

@@ -901,17 +901,18 @@ if __name__ == "__main__":
             print(json.dumps(check_kokoro()))
         else:
             print(json.dumps({"ok": True, "message": "macOS say is built-in."}))
-    elif "--speak" in sys.argv:
+    elif "--speak" in sys.argv or "--speak-sub" in sys.argv:
         # TTS mode: speak text from remaining args using configured engine
         # Usage: narrate.py --speak "text to speak"
-        idx = sys.argv.index("--speak")
+        subagent = "--speak-sub" in sys.argv
+        idx = sys.argv.index("--speak-sub" if subagent else "--speak")
         text = " ".join(sys.argv[idx + 1:])
         if not text:
             sys.exit(0)
         config = read_config()
         engine = config.get("tts_engine", "say")
-        voice = config.get("kokoro_voice", "af_heart") if engine == "kokoro" \
-            else config.get("voice_main", "Tara")
+        voice = config.get("kokoro_voice_sub" if subagent else "kokoro_voice", "am_adam" if subagent else "af_heart") if engine == "kokoro" \
+            else config.get("voice_sub" if subagent else "voice_main", "Aman" if subagent else "Tara")
         volume = int(config.get("voice_volume", 100))
         speak(text, engine, voice, volume)
     elif "--dry-run" in sys.argv:
