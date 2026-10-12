@@ -37,7 +37,7 @@ Use [render_demo.py](../../docs/render_demo.py) to regenerate MP4s, silent GIFs,
 
 Inspect the diff and affected implementation before documenting behavior. Useful sources include `code-gossip/installer.py` for install/removal, `hooks/` for agent routing, `engine/` for playback/narration, `soundbar/server.py` for API/event contracts, and `configs/*.defaults.json` and `data/sounds.json` for shipped content.
 
-Check normal and dev installation separately. The product is Code Gossip; Soundbar is its mixer. The shared installation is `~/.code-gossip/`, with `hooks/`, `engine/`, `soundbar/`, `data/`, `configs/`, and `state/`. Do not reintroduce legacy compatibility instructions or claim that settings migrate automatically.
+Check normal and dev installation separately. The product is Code Gossip; Soundbar is its local control panel. The shared installation is `~/.code-gossip/`, with `hooks/`, `engine/`, `soundbar/`, `data/`, `configs/`, and `state/`. Do not reintroduce legacy compatibility instructions or claim that settings migrate automatically.
 
 Read shipped defaults, not personal settings or logs, when writing examples. Keep credentials and local runtime state out of documentation and staged files. Historical changelog entries may mention old names and paths; preserve them as history rather than treating them as current setup instructions.
 

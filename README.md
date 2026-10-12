@@ -92,11 +92,11 @@ At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phr
 
 Previews play the selected event and alternative. Phrases also have per-row playback. AI commentary’s **Play sample** generates and plays a sample on the first click; replaying the displayed text does not make another AI request.
 
-Each category has a **Setup** foldout. Setup checks run automatically on load and relevant settings changes without saving drafts. Provider and speech checks are independent; colored results remain beside reusable **Check** buttons. Model suggestions load from the provider, with a refresh control and manual entry (Claude CLI uses manual entry/default). Installation progress resumes when the panel reloads. Kokoro installs only when you click **Install Kokoro**. SoX setup shows the installation command to run in your terminal. Activation selects one mode and preserves mute. Existing combined Effects + Voice settings remain unchanged until you explicitly activate a mode; the CLI still supports independent channels.
+Each category has a **Setup** foldout; AI commentary separates provider and speech setup. Setup checks run automatically on load and relevant settings changes without saving drafts. Provider and speech checks are independent; colored results remain beside reusable check buttons. Model suggestions load from the provider, with a refresh control and manual entry (Claude CLI uses manual entry/default). Installation progress resumes when the panel reloads. Kokoro installs only when you click **Install Kokoro**. SoX setup shows the installation command to run in your terminal. Activation selects one mode and preserves mute. Existing combined Effects + Voice settings remain unchanged until you explicitly activate a mode; the CLI still supports independent channels.
 
 **Settings → Close Soundbar** stops the panel server; closing the browser tab alone leaves it running. Hook audio continues either way. Topic tips appear in a translucent yellow-gold column at the top right. Click a topic to start its own guided scenario, or dismiss it individually. **?** hides the column or restores all tips; dismissals are remembered in that browser.
 
-The narrator supports Claude CLI, Anthropic, Gemini, OpenAI, and Ollama. It sends event context to the selected provider, which may charge for usage. Fixed phrases and sound effects need no LLM.
+The narrator supports Claude CLI, Anthropic, Gemini, OpenAI, and Ollama. It sends event context to the selected provider, which may charge for usage. Cloud connection checks also make a small generation request, including automatic checks when AI commentary is selected. Fixed phrases and sound effects need no LLM.
 
 ### Commands
 

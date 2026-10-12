@@ -4,21 +4,28 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
-### Changed
-
-- Soundbar now organizes Effects, Clips, Phrases, and AI commentary into four tabs, with an explicit Apply action and a separate active-selection indicator. Setup and previews operate on drafts without changing live preferences.
-- Restored independent onboarding topic cards in a top-right column with 50%-opacity yellow-gold backgrounds. Each starts a separate guided scenario or dismisses independently; **?** restores the tips. Topics link to profile, engine, LLM, phrase, preview, and settings controls without changing the active selection.
-- Setup checks run automatically after refresh and relevant changes, without saving drafts. Slow checks no longer block panel controls, and provider checks ignore unrelated speech settings.
-- Kokoro checks detect broken environments and offer repair. Page loading uses lightweight file inventory, leaving expensive speech verification to the background check. Installation prevents panel shutdown while allowing the browser tab to close safely.
-- Incomplete setup disables Apply with a reason and setup link; saving shows progress. Setup rows and installation messages share a consistent narrow-screen layout.
-- Previews identify and play the selected event and alternative. **Play sample** generates and plays AI commentary, then reuses the sample for replay; provider and speech checks are independent, and installation progress survives a panel reload.
-- Apply aligns to the right of the preview actions; active status remains above the tabs. Installation, verification, and provider connection have separate states and specific results, with consistent success/pending/failure colors. LLM suggestions load from live provider catalogs (installed models for Ollama), with refresh and manual entry; Claude CLI no longer shows a fixed model list.
-- Compact per-category setup replaces the mixer table and onboarding tours. Existing combined audio remains intact until a mode is explicitly activated.
-- Replaced the Claude-specific contributor document with a shorter `AGENTS.md` for all coding agents, linking to the detailed architecture and development skills.
+## [0.7.0] - 2026-10-12
 
 ### Added
 
-- Independent main-agent and subagent Kokoro voices, including voice-correct draft previews.
+- Independent main-agent and subagent Kokoro voices, with previews using the selected speaker and phrase.
+- Live model suggestions from Anthropic, Gemini, OpenAI, and locally installed Ollama models, with refresh and manual entry. Claude CLI keeps manual entry and its provider default.
+- Six independent onboarding topics for profiles, sound engines, LLM setup, phrases, previews, and settings. Yellow-gold cards start guided scenarios on click, dismiss individually, and can be restored with **?**.
+
+### Changed
+
+- Soundbar replaces the mixer with **Effects**, **Clips**, **Phrases**, and **AI commentary** tabs. Browsing and previews use drafts; **Apply** explicitly activates the selection. Existing combined Effects + Voice settings remain intact until activation, and the CLI still supports independent channels.
+- **Apply** sits beside preview controls, aligned right, and becomes green **Applied** for the active selection. Incomplete setup shows a reason and a setup link.
+- Per-category setup separates installation, engine verification, and provider connection. Checks return to their original action label, with one separate colored result; provider and speech setup have their own foldouts.
+- **Play sample** generates and plays AI commentary in one action, then replays the displayed sample without another AI request. Effects, clips, and phrase previews identify the selected event and alternative.
+- Kokoro setup explains local dependencies and downloads, and offers repair after failed verification. Installation progress resumes after a browser reload; panel shutdown is blocked while installation runs.
+- Replaced the Claude-specific contributor document with `AGENTS.md`, linked to architecture and development skills, and made agent-assisted installation prominent in the README.
+
+### Fixed
+
+- Setup checks run automatically after refresh, relevant draft changes, and installation completion without saving preferences. Provider checks no longer fail because of unrelated speech settings.
+- Slow checks, previews, and model discovery no longer block panel controls. Initial page loading inventories local files without importing Kokoro; speech verification runs afterward.
+- Kokoro verification detects broken environments instead of trusting a saved installation flag; repair reinstalls the existing environment's packages.
 
 ## [0.6.0] - 2026-10-11
 
