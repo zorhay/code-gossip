@@ -5,7 +5,92 @@ const profileModes = {senior:'phrases', generals:'clips', narrator:'ai'};
 let saved, state, activeSelection, setup, voiceChoices, styleNames, packs;
 let checkedAI = null, busy = false, savingSound = false, savingVolume = false, installPoll = null;
 const setupChecks = {}, errorMessages = new WeakMap();
-let enabledLayers, mediaBusy=false, generatedSample=null;
+let setupChecksReady=false,setupCheckTimer=null;
+let enabledLayers, mediaBusy=false, generatedSample=null, modelList=null;
+const tipsKey='code-gossip.topic-tips.v1';
+let tipsState={hidden:false,dismissed:[]},tipScenario=null;
+const tipTopics=[
+ {id:'profile',title:'Select a profile'},
+ {id:'speech',title:'Set up sound engine'},
+ {id:'llm',title:'Configure LLM'},
+ {id:'phrases',title:'Edit phrases'},
+ {id:'preview',title:'Preview & Apply'},
+ {id:'settings',title:'Settings'},
+];
+function scenarioSteps(id){
+ const mode=state.viewMode, panel='#panel-'+mode;
+ const speechMode=mode==='ai'?'ai':'phrases',prefix=speechMode==='ai'?'ai':'phrase';
+ const speechSetup='#setup-'+(speechMode==='ai'?'aiSpeech':'phrases');
+ const step=(target,title,text,extra={})=>({target,title,text,...extra});
+ const apply=step('#activateSelection','Apply your selection','Apply saves and activates this selection. Green Applied means it matches your saved settings. Browsing and previews leave the active selection unchanged.');
+ return {
+ profile:[step('.mode-tabs','Choose a category','Effects, recorded Clips, editable Phrases, or AI commentary. Each category offers a different way to hear your agent.'),step(panel+' .customize','Choose your profile','Choose a sound pack, voices, or commentary style here. Clips uses the Generals collection. Your choices remain a draft until you Apply.'),apply],
+ speech:[step('#'+(prefix==='ai'?'engine':'phraseEngine'),'Choose a speech engine','macOS speech is built in. Kokoro provides local neural voices and needs a separate installation.',{mode:speechMode,open:speechSetup}),step(speechSetup+' .installation-row','Review installation','Kokoro installs only when you request it. The explanation below lists its downloads and how it runs on your computer. Installation and engine verification are separate states.'),step(speechSetup,'Verify the engine','After installation, the automatic check verifies the engine. Check retries verification; Preview lets you hear the selected voice. Failed verification offers repair for Kokoro.')],
+ llm:[step('#provider','Choose a provider','Use your Claude CLI sign-in, a cloud API, or local Ollama. Cloud providers receive event context; Ollama runs locally.',{mode:'ai',open:'#setup-ai'}),step('#model','Select a model','Choose from the live model list or enter a model ID. Cloud APIs also need an API key in the field below; CLI and Ollama do not.'),step('#checkConnection','Check the connection','Check verifies a cloud connection, the Ollama server, or CLI availability. Then Play sample tests generation and speech. Apply activates the configuration.')],
+ phrases:[step('#panel-phrases .customize','Choose the voices','Set separate voices for the main agent and subagent. Speech setup below selects the engine.',{mode:'phrases'}),step('#phraseEditor','Edit event phrases','Choose an event in the preview area, then edit its alternatives here. Subagent events have a line for each speaker.',{open:'#phraseEditor'}),step('#panel-phrases .preview-actions','Preview and save','Preview plays the selected alternative using your chosen voices. Apply saves your phrase edits and activates Phrases.')],
+ preview:[step(panel+' .audition','Hear the draft','Preview plays the event and alternative shown here. AI Play sample generates and speaks a line; clicking again replays that line.'),apply],
+ settings:[step('#reduceRepeats','Reduce repeated sounds','Adjust Effects and Voice gaps to make rapid activity less distracting. These settings save immediately.',{settings:true}),step('#approvalCues','Control approval cues','Enable or disable Codex approval sounds. This changes audio only; agent permissions stay unchanged.')],
+ }[id];
+}
+function startTipScenario(tip){
+ if(tipScenario||busy||mediaBusy)return;
+ clearTimeout(setupCheckTimer);
+ tipScenario={tip,index:0,steps:scenarioSteps(tip.id),mode:state.viewMode,scrollY:scrollY,settingsOpen:$('settingsDialog').open,details:[...document.querySelectorAll('details')].map(el=>[el,el.open])};
+ $('topicTips').hidden=true;
+ if(tip.id==='settings')$('settingsDialog').showModal();
+ $('tipScenario').showModal();renderTipScenario();
+}
+function renderTipScenario(){
+ const step=tipScenario.steps[tipScenario.index];
+ if(step.mode)selectMode(step.mode,false);
+ if(step.open)document.querySelector(step.open).open=true;
+ $('tipScenarioTitle').textContent=step.title;$('tipScenarioText').textContent=step.text;
+ $('tipScenarioProgress').textContent=tipScenario.tip.title+' · '+(tipScenario.index+1)+' of '+tipScenario.steps.length;
+ $('tipScenarioBack').disabled=tipScenario.index===0;
+ $('tipScenarioNext').textContent=tipScenario.index===tipScenario.steps.length-1?'Done':'Next';
+ document.querySelector(step.target).scrollIntoView({block:'center',behavior:'instant'});
+ positionTipScenario();$('tipScenarioTitle').focus({preventScroll:true});
+}
+function positionTipScenario(){
+ if(!tipScenario)return;
+ const target=document.querySelector(tipScenario.steps[tipScenario.index].target),rect=target.getBoundingClientRect(),card=$('tipScenario');
+ const width=card.offsetWidth,height=card.offsetHeight,below=rect.bottom+14,above=rect.top-height-14;
+ const top=below+height<=innerHeight-16?below:above>=16?above:innerHeight-height-16;
+ Object.assign(card.style,{left:Math.max(16,Math.min(rect.right-width,innerWidth-width-16))+'px',top:Math.max(16,top)+'px'});
+ Object.assign($('tipScenarioHighlight').style,{left:Math.max(2,rect.left-4)+'px',top:rect.top-4+'px',width:Math.min(innerWidth-4,rect.width+8)+'px',height:rect.height+8+'px'});
+}
+function closeTipScenario(){
+ if(!tipScenario)return;
+ const previous=tipScenario;
+ $('tipScenario').close();
+ if(!previous.settingsOpen)$('settingsDialog').close();
+ selectMode(previous.mode,false);previous.details.forEach(([el,open])=>el.open=open);
+ tipScenario=null;renderTips();window.scrollTo({top:previous.scrollY,behavior:'instant'});
+ document.querySelector('[data-topic="'+previous.tip.id+'"] .topic-tip-start').focus({preventScroll:true});
+}
+function saveTips(){try{localStorage.setItem(tipsKey,JSON.stringify(tipsState));}catch{}}
+function renderTips(){
+ const visible=tipTopics.filter(tip=>!tipsState.dismissed.includes(tip.id));
+ $('topicTips').hidden=tipsState.hidden||!visible.length;
+ $('helpButton').setAttribute('aria-expanded',String(!$('topicTips').hidden));
+ for(const tip of tipTopics)document.querySelector('[data-topic="'+tip.id+'"]').hidden=tipsState.dismissed.includes(tip.id);
+}
+function mountTips(){
+ try{const stored=JSON.parse(localStorage.getItem(tipsKey));if(stored&&Array.isArray(stored.dismissed))tipsState={hidden:stored.hidden===true,dismissed:stored.dismissed.filter(id=>tipTopics.some(tip=>tip.id===id))};}catch{}
+ for(const tip of tipTopics){
+  const card=document.createElement('section');card.className='topic-tip';card.dataset.topic=tip.id;
+  const heading=document.createElement('div');heading.className='topic-tip-heading';
+  const start=document.createElement('button');start.className='topic-tip-start';start.textContent=tip.title;start.setAttribute('aria-haspopup','dialog');start.setAttribute('aria-controls','tipScenario');start.onclick=()=>startTipScenario(tip);
+  const dismiss=document.createElement('button');dismiss.className='topic-tip-dismiss';dismiss.textContent='×';dismiss.setAttribute('aria-label','Dismiss '+tip.title+' tip');
+  dismiss.onclick=()=>{tipsState.dismissed.push(tip.id);saveTips();renderTips();$('helpButton').focus();};
+  heading.append(start,dismiss);card.append(heading);$('topicTips').append(card);
+ }
+ renderTips();
+}
+function toggleTips(){
+ if($('topicTips').hidden){tipsState.hidden=false;tipsState.dismissed=[];}else{tipsState.hidden=true;}
+ saveTips();renderTips();
+}
 const sampleSelections={effects:{event:'edit',variant:0},clips:{event:'edit',variant:0}};
 const eventLabel=value=>value.replaceAll('_',' ').replace(/^./,letter=>letter.toUpperCase());
 function mountSpeechSetups(){
@@ -29,7 +114,7 @@ async function api(path, body) {
   return data;
 }
 function errorAnchor(target) {
-  return target.closest('.setup-row,.preference,.volume-bar,.topbar') || target;
+  return target.closest('.preview-actions,.setup-row,.preference,.volume-bar,.topbar') || target;
 }
 function clearError(target) {errorMessages.get(errorAnchor(target))?.remove();}
 function showError(message,target) {
@@ -57,15 +142,15 @@ function speechIdentity(mode){
 function sampleIdentity(){return JSON.stringify([connectionIdentity(),state.style]);}
 function speechReadiness(mode){
  const engine=mode==='phrases'?state.phraseEngine:state.engine;
- if(engine==='kokoro'&&!setup.kokoro)return {ready:false,message:setup.installing?'Installing Kokoro…':'Install Kokoro'};
- if(engine==='say'&&!setup.say)return {ready:false,message:'macOS speech unavailable'};
+ const installation=speechInstallation(engine);
+ if(!installation.available)return {ready:false,message:installation.message};
  const voices=mode==='phrases'?Object.values(state.phraseVoices[engine]):[state.voices[engine]];
  if(voices.some(voice=>!voiceChoices[engine].some(([id])=>id===voice)))return {ready:false,message:'Choose installed voices'};
  const check=setupChecks[mode==='phrases'?'phrases':'aiSpeech'];
  const current=check?.identity===speechIdentity(mode);
- if(current&&check.status==='failed')return {ready:false,message:'Speech check failed'};
+ if(current&&check.status==='failed')return {ready:false,message:'Check failed'};
  if(current&&check.status==='checking')return {ready:false,message:'Checking speech…'};
- return {ready:true,message:current&&check.status==='checked'?'Checked':'Not checked'};
+ return {ready:true,message:current&&check.status==='checked'?'Engine available':'Not checked'};
 }
 function selectionDraft(mode=state.viewMode) {
   if(mode==='effects')return {mode,pack:state.pack};
@@ -102,7 +187,7 @@ function setupReadiness(mode) {
     const check=setupChecks[mode],current=check?.identity===checkIdentity(mode);
     if(current&&check.status==='failed')return {ready:false,message:'Check failed'};
     if(current&&check.status==='checking')return {ready:false,message:'Checking…'};
-    return {ready:true,message:current&&check.status==='checked'?'Checked':'Available'};
+    return {ready:true,message:current&&check.status==='checked'?'Audio available':'Not checked'};
   }
   const speech=speechReadiness(mode);
   if(!speech.ready)return speech;
@@ -116,22 +201,32 @@ function openSetup(mode,scope) {
 function updateActivation() {
   if(!state)return;
   const draft=selectionDraft(), same=JSON.stringify(draft)===JSON.stringify(activeSelection);
-  const ready=setupReadiness(state.viewMode).ready;
-  $('activateSelection').disabled=busy || mediaBusy || savingSound || savingVolume || same;
+  const checking=modeCheckKeys().some(key=>setupChecks[key]?.status==='checking');
+  const readiness=setupReadiness(state.viewMode);
+  $('activateSelection').disabled=busy || mediaBusy || savingSound || savingVolume || same || checking || !readiness.ready;
   $('soundOn').disabled=busy || mediaBusy || savingSound;
   $('volume').disabled=busy || mediaBusy || savingVolume;
-  $('activateSelection').textContent=busy?'Saving…':same?(state.enabled?'Active':'Selected'):!ready?'Complete setup':draft.mode===activeSelection.mode?'Apply changes':'Use '+modeNames[draft.mode];
+  $('activateSelection').textContent=same?'Applied':'Apply';
+  $('activateSelection').classList.toggle('applied',same);
+  $('activateSelection').setAttribute('aria-busy',String(busy));
+  const blocked=!same&&!busy&&!mediaBusy&&!readiness.ready&&!checking;
+  $('activationHelp').hidden=!blocked;
+  $('activationReason').textContent=blocked?readiness.message:'';
+  $('activationProgress').textContent=busy?'Saving selection…':'';
 }
 function updateStatus() {
   $('powerLabel').textContent=state.enabled?'Sound on':'Sound off';$('soundOn').checked=state.enabled;
   $('statusText').textContent=(state.enabled?'Active · ':'Sound off · ')+selectionLabel(activeSelection);
   $('modeStatus').classList.toggle('muted',!state.enabled);updateActivation();
 }
-function selectMode(mode) {
+function selectMode(mode,check=true) {
   if(!Object.hasOwn(modeNames,mode))return;
+  const button=$('activateSelection'),slot=document.querySelector('[data-activation-slot="'+mode+'"]');
+  if(button.parentElement!==slot){clearError(button);slot.append(button);}
+  slot.after($('activationHelp'),$('activationProgress'));
   state.viewMode=mode;
   for(const key of Object.keys(modeNames)){const selected=key===mode;$('tab-'+key).setAttribute('aria-selected',String(selected));$('tab-'+key).tabIndex=selected?0:-1;$('panel-'+key).hidden=!selected;}
-  updateActivation();
+  updateActivation();if(check)scheduleSetupChecks(0);
 }
 async function activateSelection() {
   if(busy||mediaBusy||savingSound||savingVolume)return;
@@ -198,10 +293,10 @@ function updatePreviewControls(){
  if(!state)return;
  for(const mode of ['effects','clips','phrases','ai']){
   const button=document.querySelector('[data-preview="'+mode+'"]');
-  const empty=mode==='ai'?!generatedSample:mode==='phrases'?!state.phrases[state.phraseEvent]?.length:!Object.keys(catalog(mode)||{}).length;
+  const empty=mode==='ai'?false:mode==='phrases'?!state.phrases[state.phraseEvent]?.length:!Object.keys(catalog(mode)||{}).length;
   button.disabled=mediaBusy||empty;
  }
- for(const id of ['previewMainAgent','previewSubagent','previewAIVoice','generateCommentary'])$(id).disabled=mediaBusy;
+ for(const id of ['previewMainAgent','previewSubagent','previewAIVoice'])$(id).disabled=mediaBusy;
  document.querySelectorAll('.row-preview').forEach(button=>button.disabled=mediaBusy);
 }
 async function mediaAction(button,label,work){
@@ -218,41 +313,48 @@ async function mediaAction(button,label,work){
 async function preview(mode,role,button) {
  const readiness=['phrases','ai'].includes(mode)?speechReadiness(mode):setupReadiness(mode);
  if(!readiness.ready){openSetup(mode,['ai','phrases'].includes(mode)?'speech':undefined);return;}
+ if(mode==='ai'&&!role){await playCommentarySample(button);return;}
  const config=draftConfig(mode);
  const body={mode,config,role,event:mode==='phrases'?state.phraseEvent:sampleSelections[mode]?.event,
   variant:mode==='phrases'?state.phraseIndex:sampleSelections[mode]?.variant,
   ...(mode==='phrases'&&!role?{phrases:state.phrases}:{}),...(mode==='ai'&&!role?{action:'play',text:generatedSample?.text}:{} )};
  await mediaAction(button,'Playing…',()=>api('/api/draft-preview',body));
 }
-async function generateCommentary(){
- if(checkedAI!==aiIdentity()){openSetup('ai','provider');return;}
+async function playCommentarySample(button){
+ if(!generatedSample&&checkedAI!==aiIdentity()){openSetup('ai','provider');return;}
  const identity=sampleIdentity(),config=draftConfig('ai');
- await mediaAction($('generateCommentary'),'Generating…',async()=>{
-  const result=await api('/api/draft-preview',{mode:'ai',action:'generate',config});
-  if(identity===sampleIdentity()){generatedSample={identity,text:result.text};renderStyle();}
+ await mediaAction(button,generatedSample?'Playing…':'Generating…',async()=>{
+  if(!generatedSample){
+   const result=await api('/api/draft-preview',{mode:'ai',action:'generate',config});
+   if(identity!==sampleIdentity())return;
+   generatedSample={identity,text:result.text};renderStyle();
+  }
+  button.textContent='Playing…';
+  await api('/api/draft-preview',{mode:'ai',action:'play',config,text:generatedSample.text});
  });
 }
 function renderSetup(){
  if(!state)return;
- for(const mode of [...Object.keys(modeNames),'aiSpeech']){
- const providerCheck=setupChecks.ai,currentProvider=providerCheck?.identity===aiIdentity();
- const status=mode==='aiSpeech'?speechReadiness('ai'):mode==='ai'?{
-  ready:checkedAI===aiIdentity(),message:currentProvider&&providerCheck.status==='checking'?'Checking…':currentProvider&&providerCheck.status==='failed'?'Check failed':checkedAI===aiIdentity()?'Checked':'Not checked'
- }:setupReadiness(mode);$('setupStatus-'+mode).textContent=status.message==='Ready'?'Available':status.message;$('setupStatus-'+mode).classList.toggle('needs-setup',!status.ready);$('setupStatus-'+mode).classList.toggle('checked',status.message==='Checked');$('setupStatus-'+mode).classList.toggle('check-failed',status.message.toLowerCase().includes('failed'));}
  const effect=setup.effects[state.pack] || {};
  $('effectsRequirement').textContent=effect.sox?'SoX':state.pack==='default'?'macOS sounds':'Audio files';
  $('effectsRequirementDetail').textContent=effect.missing?.length?'Missing: '+effect.missing.join(', '):'';
  $('soxInfo').hidden=!effect.sox;$('installSox').hidden=!effect.sox||effect.ready;
  for(const [prefix,engine] of [['phrase',state.phraseEngine],['ai',state.engine]]){
-  const kokoro=engine==='kokoro';$(prefix+'EngineName').textContent=kokoro?'Kokoro':'macOS speech';
-  $(prefix+'EngineDetail').textContent=kokoro?(setup.installMessage || 'Local speech · ~1.5 GB environment'):'Built into macOS';
-  $(prefix+'EngineStatus').textContent=kokoro?(setup.installing?'Installing…':setup.kokoro?'Installed':'Not installed'):(setup.say?'Built in':'Unavailable');
+  const kokoro=engine==='kokoro',installation=speechInstallation(engine);$(prefix+'EngineName').textContent=kokoro?'Installation':'Availability';
+  $(prefix+'EngineDetail').textContent=kokoro?(setup.installing||setup.installStatus==='error'?setup.installMessage:'Local speech · ~1.5 GB environment'):'';
+  $(prefix+'EngineDetail').hidden=!kokoro;
+  $(prefix+'EngineStatus').textContent=installation.message;$(prefix+'EngineStatus').dataset.tone=installation.tone;
+  $(prefix+'VerificationRow').hidden=!installation.available;
   $(prefix+'KokoroInfo').hidden=!kokoro;
-  $(prefix+'InstallKokoro').textContent=setup.installing?'Installing…':'Install Kokoro';
-  $(prefix+'InstallKokoro').hidden=!kokoro||setup.kokoro;$(prefix+'InstallKokoro').disabled=!!setup.installing;
+  const key=prefix==='phrase'?'phrases':'aiSpeech',repair=setupChecks[key]?.status==='failed';
+  $(prefix+'InstallKokoro').textContent=setup.installStatus==='error'?'Retry installation':repair?'Repair installation':'Install Kokoro';
+  $(prefix+'InstallKokoro').hidden=!kokoro||(setup.kokoro&&!repair)||setup.installing;$(prefix+'InstallKokoro').disabled=!!setup.installing;
  }
- $('providerHint').textContent=saved.narrator_providers[state.provider]?.description || '';
+ $('providerHint').textContent=state.provider==='claude_cli'?'Checks that Claude CLI is installed. Play a sample to test sign-in and model access.':state.provider==='ollama'?'Checks the local server. Play a sample to test the selected model.':saved.narrator_providers[state.provider]?.description || '';
+ $('providerCheckLabel').textContent=state.provider==='claude_cli'?'CLI availability':state.provider==='ollama'?'Local server':'Connection';
  $('keyField').hidden=!needsKey();
+ $('closeSoundbar').disabled=!!setup.installing;
+ $('closeInstallHint').hidden=!setup.installing;
  renderChecks();renderStyle();updateActivation();
 }
 async function refreshSetup() {setup={...setup,...await api('/api/setup')};renderSetup();}
@@ -263,42 +365,105 @@ function checkIdentity(key){
  if(key==='phrases'||key==='aiSpeech')return speechIdentity(checkModes[key]);
  return JSON.stringify(draftConfig(checkModes[key]));
 }
-function renderChecks(){
+function mountCheckStatuses(){
  for(const key of Object.keys(checkModes)){
-  const button=checkButton(key),check=setupChecks[key],current=check?.identity===checkIdentity(key),checking=check?.status==='checking';
-  const status=current?check.status:'unchecked';
-  button.textContent=checking?'Checking…':status==='checked'?'Checked':'Check';
-  button.disabled=checking;button.setAttribute('aria-busy',String(checking));button.setAttribute('aria-live','polite');
-  button.dataset.status=checking?'checking':status;
-  if(check&&!current&&!checking)clearError(button);
+  const button=checkButton(key),group=document.createElement('div'),status=document.createElement('span');
+  group.className='setup-check-row';status.className='setup-check-status';status.id='checkStatus-'+key;
+  status.setAttribute('role','status');button.setAttribute('aria-describedby',status.id);
+  button.before(group);group.append(button,status);
  }
 }
+function speechInstallation(engine){
+ if(engine==='say')return {available:setup.say,message:setup.say?'Built into macOS':'Unavailable',tone:setup.say?'neutral':'error'};
+ if(setup.installing)return {available:false,message:'Installing…',tone:'warning'};
+ if(setup.installStatus==='error')return {available:false,message:'Installation failed',tone:'error'};
+ return {available:setup.kokoro,message:setup.kokoro?'Installed':'Not installed',tone:setup.kokoro?'success':'warning'};
+}
+function checkPresentation(key){
+ const check=setupChecks[key],current=check?.identity===checkIdentity(key),status=current?check.status:'unchecked';
+ const provider=key==='ai',cli=provider&&state.provider==='claude_cli';
+ const action=provider?(cli?'Check CLI':'Check connection'):'Check';
+ const pending=provider&&!cli?'Connecting…':'Checking…';
+ const success=provider?(cli?'CLI found':state.provider==='ollama'?'Server reachable':'Connection verified'):key==='effects'||key==='clips'?'Audio available':'Engine available';
+ const failure=provider&&!cli?'Connection failed':'Check failed';
+ let prerequisite=null;
+ if(provider&&!hasProviderKey())prerequisite={message:'API key required',tone:'warning'};
+ if(key==='effects'||key==='clips'){
+  const resource=key==='effects'?setup.effects[state.pack]:setup.clips.generals;
+  if(!resource?.ready)prerequisite={message:resource?.message||'Audio unavailable',tone:resource?.missing?.length?'error':'warning'};
+ }
+ if(key==='phrases'||key==='aiSpeech'){
+  const mode=checkModes[key],installation=speechInstallation(mode==='phrases'?state.phraseEngine:state.engine);
+  if(!installation.available)prerequisite=installation;
+  else if(!speechReadiness(mode).ready&&status!=='failed'&&status!=='checking')prerequisite={message:'Choose installed voices',tone:'warning'};
+ }
+ const result={message:status==='checked'?success:status==='failed'?failure:status==='checking'?pending:provider&&!cli?'Not tested':'Not checked',tone:status==='checked'?'success':status==='failed'?'error':'warning'};
+ return {action,pending,status,checking:check?.status==='checking',prerequisite,...(prerequisite||result)};
+}
+function renderChecks(){
+ for(const key of Object.keys(checkModes)){
+  const button=checkButton(key),view=checkPresentation(key);
+  button.textContent=view.checking?view.pending:view.action;
+  button.disabled=view.checking||!!view.prerequisite&&!['effects','clips'].includes(key);button.setAttribute('aria-busy',String(view.checking));
+  button.title=key==='phrases'||key==='aiSpeech'?'Checks speech dependencies. Use Preview to hear the selected voice.':'';
+  button.dataset.status=view.checking?'checking':view.status;
+  const result=$('checkStatus-'+key);result.dataset.status=view.status;result.dataset.tone=view.tone;
+  result.textContent=view.message;result.hidden=view.checking&&!view.prerequisite;
+  const summary=$('setupStatus-'+key);summary.textContent=view.message;summary.dataset.tone=view.tone;
+  if(setupChecks[key]&&view.status==='unchecked'&&!view.checking)clearError(button);
+ }
+}
+function modeCheckKeys(){return state.viewMode==='ai'?['aiSpeech','ai']:[state.viewMode];}
+function scheduleSetupChecks(delay=150){
+ if(!setupChecksReady||tipScenario)return;
+ clearTimeout(setupCheckTimer);
+ const run=()=>{
+  if(tipScenario)return;
+  for(const key of modeCheckKeys()){
+   const check=setupChecks[key];
+   if(check?.status==='checking'||check?.identity===checkIdentity(key)||checkPresentation(key).prerequisite)continue;
+   checkSetup(key);
+  }
+ };
+ if(delay)setupCheckTimer=setTimeout(run,delay);else run();
+}
 async function checkSetup(key) {
- if(setupChecks[key]?.status==='checking')return;
+ if(setupChecks[key]?.status==='checking'||checkPresentation(key).prerequisite&&!['effects','clips'].includes(key))return;
  const mode=checkModes[key],config=draftConfig(mode),identity=checkIdentity(key),button=checkButton(key);
  const check=setupChecks[key]={identity,status:'checking'};
+ if(key==='ai')checkedAI=null;
  clearError(button);renderSetup();
  try{
   await refreshSetup();
   await api('/api/draft-check',{mode,config,scope:key==='ai'?'provider':'speech'});
   check.status='checked';
-  if(identity===checkIdentity(key)&&key==='ai')checkedAI=identity;
+  if(identity===checkIdentity(key)&&key==='ai'){checkedAI=identity;refreshModels();}
  }catch(error){
   check.status='failed';
   if(identity===checkIdentity(key)){
    if(key==='ai')checkedAI=null;
    showError(error.message,button);
   }
- }finally{renderSetup();}
+ }finally{renderSetup();if(identity!==checkIdentity(key))scheduleSetupChecks();}
 }
 async function installKokoro(target){
- await action(async()=>{const result=await api('/api/kokoro-install',{});setup.installing=result.status==='running';renderSetup();await pollInstall(target);},target);
+ if(setup.installing)return;
+ const repair=!!setup.kokoro||['phrases','aiSpeech'].some(key=>setupChecks[key]?.status==='failed');
+ for(const key of ['phrases','aiSpeech']){delete setupChecks[key];clearError(checkButton(key));}
+ clearError(target);setup.installing=true;setup.installStatus='running';setup.installMessage='';renderSetup();
+ try{
+  const result=await api('/api/kokoro-install',{repair});setup.installing=result.status==='running';
+  await pollInstall();
+ }catch(error){
+  setup.installing=false;setup.installStatus='error';setup.installMessage=error.message;
+ }finally{renderSetup();}
 }
 async function pollInstall(){
  clearTimeout(installPoll);
  try{
   await refreshSetup();
   if(setup.installing)installPoll=setTimeout(pollInstall,2000);
+  else scheduleSetupChecks();
  }catch(error){
   for(const prefix of ['phrase','ai'])showError(error.message,$(prefix+'InstallKokoro'));
   installPoll=setTimeout(pollInstall,5000);
@@ -311,14 +476,45 @@ async function toggleSound(){
  await action(async()=>{await saveConfig(changes);state.enabled=enabled;});savingSound=false;updateStatus();
 }
 async function closeSoundbar(){
+ if(setup.installing)return;
  const button=$('closeSoundbar');button.disabled=true;
- const result=await action(async()=>{const response=await fetch('/api/shutdown',{method:'POST',headers:{'X-Soundbar-Request':'ui'}});if(!response.ok||!(await response.json()).ok)throw new Error('Could not stop Soundbar');clearTimeout(installPoll);$('settingsDialog').close();$('closedDialog').showModal();$('closedTitle').focus();return true;});
+ const result=await action(async()=>{const response=await fetch('/api/shutdown',{method:'POST',headers:{'X-Soundbar-Request':'ui'}});if(!response.ok||!(await response.json()).ok)throw new Error('Could not stop Soundbar');clearTimeout(installPoll);clearTimeout(setupCheckTimer);$('settingsDialog').close();$('closedDialog').showModal();$('closedTitle').focus();return true;});
  if(!result)button.disabled=false;
 }
+function modelListIdentity(){return JSON.stringify([state.provider,state.apiKey]);}
+function hasProviderKey(){return !needsKey()||!!state.apiKey.trim()||state.provider===saved.narrator_provider&&!!saved.narrator_api_key;}
+function renderModelList(){
+ const current=modelList?.identity===modelListIdentity()?modelList:null;
+ $('modelChoices').replaceChildren(...(current?.models||[]).map(name=>new Option(name,name)));
+ $('refreshModels').disabled=current?.status==='loading'||!hasProviderKey()||current?.supported===false;
+ $('refreshModels').setAttribute('aria-busy',String(current?.status==='loading'));
+ $('modelStatus').dataset.status=current?.status||'idle';
+ $('modelStatus').textContent=current?.message||(!hasProviderKey()?'Enter an API key to load models.':'Suggestions load from your provider.');
+}
+async function refreshModels(force=false){
+ if(!hasProviderKey()){renderModelList();return;}
+ const identity=modelListIdentity();
+ if(modelList?.identity===identity&&(modelList.status==='loading'||!force&&modelList.status==='loaded'))return;
+ const request=modelList={identity,status:'loading',models:[],message:'Loading available models…'};
+ renderModelList();
+ const config={narrator_provider:state.provider};
+ if(state.apiKey||state.provider!==saved.narrator_provider)config.narrator_api_key=state.apiKey;
+ try{
+  const result=await api('/api/narrator-models',{config});
+  if(modelList!==request||identity!==modelListIdentity())return;
+  Object.assign(request,{status:'loaded',models:result.models,supported:result.supported,
+   message:result.message||(result.models.length?result.models.length+' models available':'No models available. Refresh after adding access or installing a model.')});
+ }catch(error){
+  if(modelList!==request||identity!==modelListIdentity())return;
+  Object.assign(request,{status:'failed',models:[],message:error.message});
+ }
+ renderModelList();
+}
 function renderProvider(){
- $('model').placeholder=saved.narrator_providers[state.provider]?.default_model || 'Provider default';
- $('modelChoices').replaceChildren(...(saved.narrator_providers[state.provider]?.models || []).map(name=>new Option(name,name)));
+ $('model').placeholder='Provider default';
+ modelList=null;renderModelList();
  $('sampleKey').placeholder=state.provider===saved.narrator_provider&&saved.narrator_api_key?'Key saved — enter to replace':'Enter API key';
+ if($('setup-ai').open)refreshModels();
 }
 async function load(){
  saved=await api('/api/status'); setup=saved.setup;
@@ -345,6 +541,12 @@ async function load(){
  selectMode(state.viewMode);renderSetup();updateStatus();if(setup.installing)installPoll=setTimeout(pollInstall,0);
 }
 function wire(){
+ $('tipScenarioClose').onclick=closeTipScenario;
+ $('tipScenario').oncancel=event=>{event.preventDefault();closeTipScenario();};
+ $('tipScenarioBack').onclick=()=>{if(tipScenario.index>0){tipScenario.index--;renderTipScenario();}};
+ $('tipScenarioNext').onclick=()=>{if(tipScenario.index===tipScenario.steps.length-1)closeTipScenario();else{tipScenario.index++;renderTipScenario();}};
+ window.addEventListener('resize',positionTipScenario);window.addEventListener('scroll',positionTipScenario,{passive:true});
+ $('openSelectionSetup').onclick=()=>openSetup(state.viewMode);
  document.querySelectorAll('[data-mode]').forEach(button=>{button.onclick=()=>selectMode(button.dataset.mode);button.onkeydown=e=>{const keys=Object.keys(modeNames);let index=keys.indexOf(state.viewMode);if(e.key==='ArrowRight')index=(index+1)%keys.length;else if(e.key==='ArrowLeft')index=(index+keys.length-1)%keys.length;else if(e.key==='Home')index=0;else if(e.key==='End')index=keys.length-1;else return;e.preventDefault();selectMode(keys[index]);$('tab-'+keys[index]).focus();};});
  document.querySelectorAll('[data-preview]').forEach(button=>button.onclick=()=>preview(button.dataset.preview,null,button));
  document.querySelectorAll('[data-check-setup]').forEach(button=>button.onclick=()=>checkSetup(button.dataset.checkSetup));
@@ -356,7 +558,6 @@ function wire(){
  $('previewMainAgent').onclick=()=>preview('phrases','main',$('previewMainAgent'));
  $('previewSubagent').onclick=()=>preview('phrases','sub',$('previewSubagent'));
  $('previewAIVoice').onclick=()=>preview('ai','main',$('previewAIVoice'));
- $('generateCommentary').onclick=generateCommentary;
  for(const mode of ['effects','clips']){
   $(mode+'Event').onchange=e=>{sampleSelections[mode]={event:e.target.value,variant:0};renderAudioSample(mode);};
   $(mode+'Variant').onchange=e=>{sampleSelections[mode].variant=Number(e.target.value);renderAudioSample(mode);};
@@ -369,10 +570,14 @@ function wire(){
  $('speaker').onchange=e=>state.voices[state.engine]=e.target.value;
  $('engine').onchange=e=>{state.engine=e.target.value;renderSpeakers();};
  $('provider').onchange=e=>{state.provider=e.target.value;state.model='';state.apiKey='';$('model').value='';$('sampleKey').value='';renderProvider();};
- $('model').oninput=e=>state.model=e.target.value;$('sampleKey').oninput=e=>state.apiKey=e.target.value;
+ $('model').oninput=e=>state.model=e.target.value;
+ $('sampleKey').oninput=e=>{state.apiKey=e.target.value;modelList=null;renderModelList();};
+ $('sampleKey').onchange=()=>refreshModels();
+ $('refreshModels').onclick=()=>refreshModels(true);
+ $('setup-ai').ontoggle=()=>{if($('setup-ai').open&&!tipScenario)refreshModels();};
  $('sessionContext').onchange=e=>state.context=e.target.checked;
  $('settingsButton').onclick=()=>$('settingsDialog').showModal();$('closeSettings').onclick=()=>$('settingsDialog').close();
- $('helpButton').onclick=()=>$('helpDialog').showModal();$('closeHelp').onclick=()=>$('helpDialog').close();
+ $('helpButton').onclick=toggleTips;
  $('closedDialog').oncancel=e=>e.preventDefault();$('closeSoundbar').onclick=closeSoundbar;
  $('reduceRepeats').onchange=()=>action(async()=>{try{await saveConfig({sound_spacing_on:$('reduceRepeats').checked});}finally{$('reduceRepeats').checked=saved.sound_spacing_on;for(const id of ['effectsGap','voiceGap'])$(id).disabled=!saved.sound_spacing_on;}});
  for(const [id,key] of [['effectsGap','effects_cooldown_ms'],['voiceGap','voice_cooldown_ms']]) {$(id).oninput=e=>$(id+'Value').textContent=(e.target.value/1000)+'s';$(id).onchange=()=>action(async()=>{try{await saveConfig({[key]:Number($(id).value)});}finally{$(id).value=saved[key];$(id+'Value').textContent=(saved[key]/1000)+'s';}});}
@@ -380,11 +585,11 @@ function wire(){
  $('checkConnection').onclick=()=>checkSetup('ai');$('installSox').onclick=()=>{$('soxCommand').hidden=false;};
  $('phraseInstallKokoro').onclick=e=>installKokoro(e.currentTarget);$('aiInstallKokoro').onclick=e=>installKokoro(e.currentTarget);
  $('activateSelection').onclick=activateSelection;
- document.addEventListener('input',renderSetup);document.addEventListener('change',renderSetup);
+ document.addEventListener('input',renderSetup);document.addEventListener('change',()=>{renderSetup();scheduleSetupChecks();});
 }
 window.addEventListener('DOMContentLoaded',async()=>{
- mountSpeechSetups();
+ mountSpeechSetups();mountCheckStatuses();
  const controls=[...document.querySelectorAll('button,input,select')];controls.forEach(el=>el.disabled=true);
- try{await load();controls.forEach(el=>el.disabled=false);wire();renderPack();renderAudioSample('clips');updatePhrasePreview();renderSetup();updateStatus();for(const id of ['effectsGap','voiceGap'])$(id).disabled=!saved.sound_spacing_on;}
+ try{await load();controls.forEach(el=>el.disabled=false);wire();setupChecksReady=true;scheduleSetupChecks(0);renderPack();renderAudioSample('clips');updatePhrasePreview();renderSetup();updateStatus();mountTips();for(const id of ['effectsGap','voiceGap'])$(id).disabled=!saved.sound_spacing_on;}
  catch(error){$('loadError').hidden=false;$('loadError').querySelector('button').disabled=false;$('statusText').textContent='Disconnected';showError(error.message,$('loadError'));}
 });

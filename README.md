@@ -81,7 +81,7 @@ Installation opens Soundbar automatically. To open it again:
 ~/.code-gossip/soundbar/panel.sh
 ```
 
-At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phrases**, or **AI commentary**. Browsing, previews, and setup checks leave your active selection unchanged. Choose **Use** to activate a mode or **Apply changes** to save edits. The active selection stays visible above the tabs. Sound on/off and volume control the active audio; **Settings** contains repeat gaps and Codex approval cues.
+At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phrases**, or **AI commentary**. Browsing, previews, and setup checks leave your active selection unchanged. Choose **Apply** to activate a mode or save edits. The active selection stays visible above the tabs. Sound on/off and volume control the active audio; **Settings** contains repeat gaps and Codex approval cues.
 
 | Category | Controls | Setup |
 |---|---|---|
@@ -90,11 +90,11 @@ At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phr
 | **Phrases** | Editable Senior phrases, main-agent and subagent voices | Built-in macOS speech or optional Kokoro |
 | **AI commentary** | Style, voice, and session context | Provider, model, optional API key, connection check, and speech engine |
 
-Previews play the selected event and alternative. Phrases also have per-row playback. AI commentary separates **Generate sample** from **Play sample**, so replaying the displayed text does not make another AI request.
+Previews play the selected event and alternative. Phrases also have per-row playback. AI commentary’s **Play sample** generates and plays a sample on the first click; replaying the displayed text does not make another AI request.
 
-Each category has a **Setup** foldout. Provider and speech checks are independent; failures remain beside their controls. Installation progress resumes when the panel reloads. Kokoro installs only when you click **Install Kokoro**. SoX setup shows the installation command to run in your terminal. Activation selects one mode and preserves mute. Existing combined Effects + Voice settings remain unchanged until you explicitly activate a mode; the CLI still supports independent channels.
+Each category has a **Setup** foldout. Setup checks run automatically on load and relevant settings changes without saving drafts. Provider and speech checks are independent; colored results remain beside reusable **Check** buttons. Model suggestions load from the provider, with a refresh control and manual entry (Claude CLI uses manual entry/default). Installation progress resumes when the panel reloads. Kokoro installs only when you click **Install Kokoro**. SoX setup shows the installation command to run in your terminal. Activation selects one mode and preserves mute. Existing combined Effects + Voice settings remain unchanged until you explicitly activate a mode; the CLI still supports independent channels.
 
-**Settings → Close Soundbar** stops the panel server; closing the browser tab alone leaves it running. Hook audio continues either way. Use **?** for a short explanation of the controls.
+**Settings → Close Soundbar** stops the panel server; closing the browser tab alone leaves it running. Hook audio continues either way. Topic tips appear in a translucent yellow-gold column at the top right. Click a topic to start its own guided scenario, or dismiss it individually. **?** hides the column or restores all tips; dismissals are remembered in that browser.
 
 The narrator supports Claude CLI, Anthropic, Gemini, OpenAI, and Ollama. It sends event context to the selected provider, which may charge for usage. Fixed phrases and sound effects need no LLM.
 
@@ -131,7 +131,7 @@ Partial removal keeps the runtime for remaining integrations. Dev removal only u
 <details>
 <summary><strong>No sound?</strong></summary>
 
-Try a Soundbar preview first. Check Sound on/off, volume, and your output device. If previews work but agent events are silent, review the selected integration; for Codex, trust the hooks in `/hooks` and start a new chat. For narration, check the provider and speech engine separately in **Setup**, then **Generate sample** and **Play sample**.
+Try a Soundbar preview first. Check Sound on/off, volume, and your output device. If previews work but agent events are silent, review the selected integration; for Codex, trust the hooks in `/hooks` and start a new chat. For narration, check the provider and speech engine separately in **Setup**, then **Play sample**.
 
 ```bash
 bash ./test-install.sh

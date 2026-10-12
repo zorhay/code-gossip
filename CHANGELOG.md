@@ -6,8 +6,13 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
-- Soundbar now organizes Effects, Clips, Phrases, and AI commentary into four tabs, with an explicit Use/Apply action and a separate active-selection indicator. Setup and previews operate on drafts without changing live preferences.
-- Previews identify and play the selected event and alternative. AI samples can be generated once and replayed; provider and speech checks are independent, and installation progress survives a panel reload.
+- Soundbar now organizes Effects, Clips, Phrases, and AI commentary into four tabs, with an explicit Apply action and a separate active-selection indicator. Setup and previews operate on drafts without changing live preferences.
+- Restored independent onboarding topic cards in a top-right column with 50%-opacity yellow-gold backgrounds. Each starts a separate guided scenario or dismisses independently; **?** restores the tips. Topics link to profile, engine, LLM, phrase, preview, and settings controls without changing the active selection.
+- Setup checks run automatically after refresh and relevant changes, without saving drafts. Slow checks no longer block panel controls, and provider checks ignore unrelated speech settings.
+- Kokoro checks detect broken environments and offer repair. Page loading uses lightweight file inventory, leaving expensive speech verification to the background check. Installation prevents panel shutdown while allowing the browser tab to close safely.
+- Incomplete setup disables Apply with a reason and setup link; saving shows progress. Setup rows and installation messages share a consistent narrow-screen layout.
+- Previews identify and play the selected event and alternative. **Play sample** generates and plays AI commentary, then reuses the sample for replay; provider and speech checks are independent, and installation progress survives a panel reload.
+- Apply aligns to the right of the preview actions; active status remains above the tabs. Installation, verification, and provider connection have separate states and specific results, with consistent success/pending/failure colors. LLM suggestions load from live provider catalogs (installed models for Ollama), with refresh and manual entry; Claude CLI no longer shows a fixed model list.
 - Compact per-category setup replaces the mixer table and onboarding tours. Existing combined audio remains intact until a mode is explicitly activated.
 - Replaced the Claude-specific contributor document with a shorter `AGENTS.md` for all coding agents, linking to the detailed architecture and development skills.
 

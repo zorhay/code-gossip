@@ -24,7 +24,8 @@ import subprocess
 import threading
 import tempfile
 import time
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
+from contextlib import nullcontext
 import sys
 from pathlib import Path
 
@@ -35,8 +36,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paths import CONFIGS, DATA, ENGINE, STATE, SOUNDBAR, executable
 
 from engine.integrations import kokoro
+from engine.model_catalog import list_models
 
 log = logging.getLogger("soundbar")
+settings_lock = threading.RLock()
+installation_lock = threading.Lock()
+stopping = False
 
 UI_FILE = SOUNDBAR / "ui.html"
 CONFIG_FILE = CONFIGS / "config.json"
@@ -85,58 +90,30 @@ NARRATOR_PROVIDERS = {
         "description": "Uses your existing Claude Code auth. No extra setup needed.",
         "needs_key": False,
         "default_model": "haiku",
-        "models": ["haiku", "sonnet", "opus"],
     },
     "anthropic": {
         "name": "Anthropic API",
         "description": "Direct Claude API. Requires key from console.anthropic.com",
         "needs_key": True,
         "default_model": "claude-haiku-4-5-20251001",
-        "models": [
-            "claude-haiku-4-5-20251001",
-            "claude-sonnet-4-5-20250514",
-            "claude-sonnet-4-6",
-            "claude-opus-4-6",
-        ],
     },
     "gemini": {
         "name": "Google Gemini",
         "description": "Google AI. Requires key from aistudio.google.com",
         "needs_key": True,
         "default_model": "gemini-2.5-flash",
-        "models": [
-            "gemini-2.5-flash",
-            "gemini-2.5-pro",
-            "gemini-3-flash-preview",
-            "gemini-3-pro",
-            "gemini-3.1-flash-lite-preview",
-            "gemini-3.1-pro-preview",
-        ],
     },
     "openai": {
         "name": "OpenAI",
         "description": "OpenAI API. Requires key from platform.openai.com",
         "needs_key": True,
         "default_model": "gpt-4o-mini",
-        "models": [
-            "gpt-4o-mini",
-            "gpt-4o",
-            "gpt-4.1-mini",
-            "gpt-4.1-nano",
-        ],
     },
     "ollama": {
         "name": "Ollama (local)",
         "description": "Local LLM via Ollama. No API key. Requires Ollama running.",
         "needs_key": False,
         "default_model": "qwen3.5:4b",
-        "models": [
-            "qwen3.5:4b",
-            "qwen3.5:9b",
-            "gemma3:4b",
-            "gemma4:latest",
-            "gemma4:26b",
-        ],
     },
 }
 
@@ -167,7 +144,7 @@ def read_default_styles():
 
 
 def write_styles(data):
-    STYLES_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    atomic_json(STYLES_FILE, data)
     log.info("wrote %s", STYLES_FILE.name)
 
 
@@ -214,7 +191,7 @@ def read_config():
 
 
 def write_config(data):
-    CONFIG_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    atomic_json(CONFIG_FILE, data)
     log.info("wrote %s", CONFIG_FILE.name)
 
 
@@ -244,7 +221,7 @@ def read_phrases():
 
 
 def write_phrases(data):
-    PHRASES_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    atomic_json(PHRASES_FILE, data)
     log.info("wrote %s", PHRASES_FILE.name)
 
 
@@ -563,7 +540,7 @@ def setup_status():
     manifest = read_sounds()
     return {"effects": {name: inspect(profile) for name, profile in manifest.get("effects", {}).items()},
             "clips": {name: inspect(profile) for name, profile in manifest.get("voice", {}).items()},
-            "say": bool(executable("say")), "kokoro": kokoro.is_installed(),
+            "say": bool(executable("say")), "kokoro": kokoro.is_present(),
             "installing": kokoro.progress["status"] == "running",
             "installStatus": kokoro.progress["status"], "installMessage": kokoro.progress.get("message", "")}
 
@@ -582,25 +559,35 @@ def validate_phrases(phrases):
     return phrases
 
 
-def draft_config(body):
+def draft_config(body, scope=None):
     saved = read_config()
     changes = body.get("config", {})
     if not isinstance(changes, dict) or set(changes) - DRAFT_KEYS:
         raise ValueError("Invalid draft settings")
+    if scope:
+        fields = {"provider": {"narrator_provider", "narrator_model", "narrator_api_key"},
+                  "speech": {"tts_engine", "voice_main", "voice_sub", "kokoro_voice", "kokoro_voice_sub"},
+                  "audio": {"effects_profile"}}
+        if scope not in fields:
+            raise ValueError("Unknown setup check")
+        changes = {key: value for key, value in changes.items() if key in fields[scope]}
     config = {**saved, **changes}
     if changes.get("narrator_provider", saved["narrator_provider"]) != saved["narrator_provider"] and "narrator_api_key" not in changes:
         config["narrator_api_key"] = ""
-    if config["tts_engine"] not in TTS_ENGINES or config["narrator_provider"] not in NARRATOR_PROVIDERS:
+    if (scope in (None, "speech") and config["tts_engine"] not in TTS_ENGINES
+            or scope in (None, "provider") and config["narrator_provider"] not in NARRATOR_PROVIDERS):
         raise ValueError("Unknown speech engine or provider")
-    for key in DRAFT_KEYS - {"narrator_deep_context"}:
+    for key in (fields[scope] if scope else DRAFT_KEYS - {"narrator_deep_context"}):
         if not isinstance(config.get(key, ""), str):
             raise ValueError("Invalid setting: " + key)
-    if not isinstance(config["narrator_deep_context"], bool):
+    if scope is None and not isinstance(config["narrator_deep_context"], bool):
         raise ValueError("Invalid session context setting")
-    if config["effects_profile"] not in read_sounds().get("effects", {}):
+    if scope in (None, "audio") and config["effects_profile"] not in read_sounds().get("effects", {}):
         raise ValueError("Unknown effects profile")
     if "narrator_style" in changes and config["narrator_style"] not in read_styles():
         raise ValueError("Unknown commentary style")
+    if scope not in (None, "speech"):
+        return config
     if config["tts_engine"] == "kokoro":
         ids = {voice["id"] for voice in KOKORO_VOICES}
         if any(config[key] not in ids for key in ("kokoro_voice", "kokoro_voice_sub")):
@@ -612,6 +599,18 @@ def draft_config(body):
             if key in changes and config[key] not in names:
                 raise ValueError("Voice is not installed: " + config[key])
     return config
+
+
+def narrator_models(body):
+    changes = body.get("config", {})
+    if not isinstance(changes, dict) or set(changes) - {"narrator_provider", "narrator_api_key"}:
+        raise ValueError("Invalid provider settings")
+    saved = read_config()
+    provider = changes.get("narrator_provider", saved["narrator_provider"])
+    key = changes.get("narrator_api_key", saved["narrator_api_key"] if provider == saved["narrator_provider"] else "")
+    if not isinstance(provider, str) or provider not in NARRATOR_PROVIDERS or not isinstance(key, str):
+        raise ValueError("Invalid provider settings")
+    return list_models(provider, key)
 
 
 def atomic_json(path, data):
@@ -655,7 +654,8 @@ def draft_request(body, check=False):
     mode = body.get("mode")
     if mode not in MODES:
         raise ValueError("Unknown mode")
-    config = draft_config(body)
+    scope = ("audio" if mode in ("effects", "clips") else body.get("scope", "speech")) if check else None
+    config = draft_config(body, scope=scope)
     if mode in ("effects", "clips"):
         layer, profile = ("effects", config["effects_profile"]) if mode == "effects" else ("voice", "generals")
         status = setup_status()["effects" if mode == "effects" else "clips"].get(profile, {})
@@ -689,7 +689,7 @@ def draft_request(body, check=False):
 
 # ── HTTP Server ──
 
-class ReuseHTTPServer(HTTPServer):
+class ReuseHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
 
@@ -727,6 +727,7 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(500)
 
     def do_POST(self):
+        global stopping
         path = urlparse(self.path).path
         if path == "/api/shutdown":
             port = self.server.server_port
@@ -735,6 +736,11 @@ class Handler(SimpleHTTPRequestHandler):
                     or self.headers.get("X-Soundbar-Request") != "ui"):
                 self.send_error(403, "Shutdown requires a Soundbar UI request")
                 return
+            with installation_lock:
+                if kokoro.progress["status"] == "running":
+                    self.json_response({"ok": False, "error": "Installation is in progress. Wait for it to finish before closing Soundbar."})
+                    return
+                stopping = True
             self.json_response({"ok": True})
             self.wfile.flush()
             # shutdown() must run outside the serve_forever thread.
@@ -742,7 +748,10 @@ class Handler(SimpleHTTPRequestHandler):
             return
         body = self.read_body()
         try:
-            self._handle_post(path, body)
+            mutations = {"/api/activate", "/api/config", "/api/phrases", "/api/narrator-style",
+                         "/api/narrator-style-delete", "/api/narrator-style-reset"}
+            with settings_lock if path in mutations else nullcontext():
+                self._handle_post(path, body)
         except Exception as e:
             log.error("POST %s failed: %s", path, e)
             self.json_response({"ok": False, "error": str(e)})
@@ -754,6 +763,9 @@ class Handler(SimpleHTTPRequestHandler):
 
         elif path in ("/api/draft-check", "/api/draft-preview"):
             self.json_response(draft_request(body, check=path.endswith("check")))
+
+        elif path == "/api/narrator-models":
+            self.json_response(narrator_models(body))
 
         elif path == "/api/config":
             config = read_config()
@@ -850,13 +862,21 @@ class Handler(SimpleHTTPRequestHandler):
                 self.json_response({"ok": False, "message": str(e)})
 
         elif path == "/api/kokoro-install":
-            if kokoro.is_installed():
-                self.json_response({"ok": True, "status": "done", "installed": True})
-            elif kokoro.progress["status"] == "running":
-                self.json_response({"ok": True, "status": "running", "message": kokoro.progress["message"]})
-            else:
-                threading.Thread(target=kokoro.install, daemon=True).start()
-                self.json_response({"ok": True, "status": "running", "message": "Starting install..."})
+            with installation_lock:
+                if stopping:
+                    raise ValueError("Soundbar is closing. Reopen it to install Kokoro.")
+                if kokoro.progress["status"] == "running":
+                    self.json_response({"ok": True, **kokoro.progress})
+                elif not body.get("repair") and kokoro.is_installed():
+                    self.json_response({"ok": True, "status": "done", "installed": True})
+                else:
+                    kokoro._set_progress("running", "Starting installation…")
+                    try:
+                        threading.Thread(target=kokoro.install, daemon=False).start()
+                    except Exception:
+                        kokoro._set_progress("error", "Could not start installation. Try again.")
+                        raise
+                    self.json_response({"ok": True, "status": "running", "message": "Starting installation…"})
 
         elif path == "/api/kokoro-status":
             self.json_response(kokoro.status())

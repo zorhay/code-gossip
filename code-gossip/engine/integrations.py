@@ -21,6 +21,7 @@ import os
 import shutil
 import subprocess
 import threading
+import time
 import sys
 from pathlib import Path
 
@@ -114,6 +115,7 @@ class VenvIntegration:
         self.venv_py = self.venv_dir / "bin" / "python"
         self._progress = {"status": "idle", "message": ""}
         self._lock = threading.Lock()
+        self._verified = None
 
     # ── Progress tracking ──
 
@@ -122,31 +124,37 @@ class VenvIntegration:
         return dict(self._progress)
 
     def _set_progress(self, status, message):
-        self._progress["status"] = status
-        self._progress["message"] = message
+        self._progress = {"status": status, "message": message}
+        if status in ("running", "done", "error"):
+            self._verified = None
 
     # ── State (integrations.json) ──
 
+    def is_present(self):
+        """Cheap installation inventory; runtime imports belong to verification."""
+        return self.venv_py.is_file() and any(
+            self.venv_dir.glob(f"lib/python*/site-packages/{self.name}/__init__.py")
+        )
+
     def is_installed(self):
-        """Check if integration is actually importable. Fast path via integrations.json flag."""
+        """Verify the environment, with a short process-local cache for status polling."""
         _setup_loggers()
-        data = read_integrations()
-        if data.get(f"{self.name}_installed"):
-            return True
-        # Flag not set — verify by importing
-        if not self.venv_py.exists():
+        if self.progress["status"] == "running" or not self.venv_py.is_file():
+            self._verified = None
             return False
-        try:
-            r = subprocess.run(
-                [str(self.venv_py), "-c", self.verify_import],
-                capture_output=True, timeout=120,
-            )
-            if r.returncode == 0:
-                write_integration(f"{self.name}_installed", True)
-                return True
-        except Exception:
-            pass
-        return False
+        with self._lock:
+            if self._verified and time.monotonic() - self._verified[0] < 30:
+                return self._verified[1]
+            try:
+                result = subprocess.run([str(self.venv_py), "-c", self.verify_import],
+                                        capture_output=True, timeout=120)
+                installed = result.returncode == 0
+            except Exception:
+                installed = False
+            self._verified = (time.monotonic(), installed)
+            if read_integrations().get(f"{self.name}_installed") != installed:
+                write_integration(f"{self.name}_installed", installed)
+            return installed
 
     def status(self):
         """Return status dict for API response."""
@@ -474,14 +482,14 @@ class VenvIntegration:
 
         return True
 
-    def install_packages(self, is_uv_python):
+    def install_packages(self, is_uv_python, reinstall=False):
         """Install main packages + post-install packages. Returns True on success."""
         # Main packages
         self._set_progress("running", f"Installing {self.name} + dependencies (this may take a few minutes)...")
         if is_uv_python and shutil.which("uv"):
             log.info("%s install: uv pip install %s", self.name, self.packages)
             result = subprocess.run(
-                ["uv", "pip", "install", "--python", str(self.venv_py)] + self.packages,
+                ["uv", "pip", "install", "--python", str(self.venv_py)] + (["--reinstall"] if reinstall else []) + self.packages,
                 capture_output=True, text=True, timeout=600,
             )
         else:
@@ -494,7 +502,7 @@ class VenvIntegration:
                 )
             log.info("%s install: pip install %s", self.name, self.packages)
             result = subprocess.run(
-                [str(self.venv_py), "-m", "pip", "install", "-q"] + self.packages,
+                [str(self.venv_py), "-m", "pip", "install", "-q"] + (["--force-reinstall"] if reinstall else []) + self.packages,
                 capture_output=True, text=True, timeout=600,
             )
         _dlog.debug("pip install: rc=%s stdout=%r stderr=%r", result.returncode, result.stdout.strip()[:500], result.stderr.strip()[:500])
@@ -511,12 +519,12 @@ class VenvIntegration:
                 log.info("%s install: downloading %s", self.name, pkg.split("@")[0] if "@" in pkg else pkg)
                 if is_uv_python and shutil.which("uv"):
                     result = subprocess.run(
-                        ["uv", "pip", "install", "--python", str(self.venv_py), pkg],
+                        ["uv", "pip", "install", "--python", str(self.venv_py)] + (["--reinstall"] if reinstall else []) + [pkg],
                         capture_output=True, text=True, timeout=120,
                     )
                 else:
                     result = subprocess.run(
-                        [str(self.venv_py), "-m", "pip", "install", "-q", pkg],
+                        [str(self.venv_py), "-m", "pip", "install", "-q"] + (["--force-reinstall"] if reinstall else []) + [pkg],
                         capture_output=True, text=True, timeout=120,
                     )
                 _dlog.debug("post-install %s: rc=%s stderr=%r", pkg, result.returncode, result.stderr.strip()[:300])
@@ -564,6 +572,7 @@ class VenvIntegration:
                 return
 
             method = py_info["method"]
+            reinstall = self.venv_dir.exists()
             _dlog.debug("install method: %s python: %s", method, py_info.get("python"))
 
             if not self.venv_py.exists():
@@ -580,7 +589,7 @@ class VenvIntegration:
                 return
 
             # Install packages
-            if not self.install_packages(is_uv_python):
+            if not self.install_packages(is_uv_python, reinstall=reinstall):
                 return
 
             # Verify import

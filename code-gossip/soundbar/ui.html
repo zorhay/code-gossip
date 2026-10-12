@@ -69,8 +69,7 @@ select,input[type=text],input[type=password] {width:100%; background:var(--bg); 
 .connection {margin-top:18px; border:1px solid var(--line); border-radius:8px;}
 .connection summary {cursor:pointer; display:list-item; padding:13px 17px; font-size:12px; color:var(--muted);}
 .connection summary span {float:right; font-size:11px; color:var(--muted);}
-.connection summary span.checked {color:var(--green);}
-.connection summary span.needs-setup.check-failed {color:#ed9a87;}
+
 .connection-body {padding:20px; border-top:1px solid var(--line);}
 .connection-fields {display:grid; grid-template-columns:1fr 1fr; gap:20px;}
 .checkbox {display:flex; gap:10px; align-items:center; font-size:12px; color:var(--muted); margin-left:100px;}
@@ -120,7 +119,7 @@ html {overflow-wrap:break-word;}
 .preference input[type=range] {min-width:0; width:100%; accent-color:var(--amber);}
 #loadError {margin:24px; color:#ed9a87;}
 .preview-button:disabled {opacity:.5;cursor:wait;}
-#closedDialog p,#helpDialog p {margin-top:14px;color:var(--muted);}
+#closedDialog p {margin-top:14px;color:var(--muted);}
 .phrase-editor .quiet-button {flex-shrink:0;}
 
 .setup-row {display:flex; align-items:center; gap:16px; margin-bottom:18px; flex-wrap:wrap; font-size:12px;}
@@ -128,24 +127,43 @@ html {overflow-wrap:break-word;}
 .setup-row strong {display:block; font-weight:500;}
 .setup-row small {display:block; color:var(--muted); margin-top:4px; font-size:11px;}
 .setup-ready {color:var(--muted);}
-.connection summary span.needs-setup {color:var(--amber);}
+
 .setup-divider {border-top:1px solid var(--line); margin:20px 0;}
 
-.selection-bar {display:flex; justify-content:space-between; align-items:center; gap:16px; min-height:40px; margin:0 0 12px;}
+.selection-bar {display:flex; align-items:center; min-height:20px; margin:0 0 12px;}
 .selection-bar .mode-status {margin-left:0; color:var(--text); font-size:12px;}
 .selection-bar .mode-status.muted {color:var(--muted);}
-.activation-button {padding:8px 15px; border:1px solid var(--amber); border-radius:6px; background:var(--amber); color:var(--bg); font-size:12px; white-space:nowrap;}
+.activation-button {width:80px;flex-shrink:0;padding:8px 15px; border:1px solid var(--amber); border-radius:6px; background:var(--amber); color:var(--bg); font-size:12px; white-space:nowrap;}
+.activation-help {font-size:12px;color:var(--amber);margin:12px 0 0;}
+.setup-link {background:none;border:0;padding:0;color:var(--text);font:inherit;text-decoration:underline;}
+.sr-only {position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+.activation-button[aria-busy=true] {cursor:wait;}
+.activation-button[aria-busy=true]::before {content:"";display:inline-block;width:9px;height:9px;margin-right:5px;border:1px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin {to {transform:rotate(360deg);}}
+@media(prefers-reduced-motion:reduce){.activation-button[aria-busy=true]::before {animation:none;}}
 .activation-button:hover:not(:disabled) {background:#efbd64;}
 .activation-button:disabled {background:transparent; border-color:var(--line); color:var(--dim); cursor:default;}
+.activation-button.applied:disabled {background:#2d4030; border-color:#638d62; color:var(--green);}
 .audition .field,.customize .field:last-child {margin-bottom:0;}
 .audition .preview-copy:empty {display:none;}
-.preview-actions {display:flex;gap:10px;flex-wrap:wrap;}
+.preview-actions {display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.preview-actions .activation-button {margin-left:auto;}
 .sample-context,.dependency-info,.setup-check-status {font-size:12px;color:var(--muted);}
 .dependency-info {margin:12px 0;line-height:1.7;}
-.setup-check-row {display:flex;justify-content:flex-end;align-items:center;gap:14px;}
-.setup-check-status[data-status=checked] {color:var(--green);}
-.setup-check-status[data-status=failed] {color:#ed9a87;}
-.setup-check-status[data-status=checking] {color:var(--muted);}
+.setup-check-row {display:inline-flex;align-items:center;gap:10px;flex-shrink:0;}
+.setup-check-status {min-width:0;}
+[data-tone=success],.connection summary span[data-tone=success] {color:var(--green);}
+[data-tone=warning],.connection summary span[data-tone=warning] {color:var(--amber);}
+[data-tone=error],.connection summary span[data-tone=error] {color:#ed9a87;}
+[data-tone=neutral],.connection summary span[data-tone=neutral] {color:var(--muted);}
+.verification-row,.installation-row {display:grid;grid-template-columns:88px minmax(0,1fr);align-items:center;}
+.installation-actions {display:flex;align-items:center;flex-wrap:wrap;gap:10px;min-width:0;}
+.installation-detail {font-size:12px;color:var(--muted);margin:-8px 0 20px;overflow-wrap:anywhere;}
+.setup-hint {font-size:11px;color:var(--muted);margin:0 0 18px;}
+.setup-check-row {flex-wrap:wrap;max-width:100%;min-width:0;}
+.setup-check-row button[aria-busy=true] {color:var(--amber);opacity:1;}
+
+@media(max-width:440px){.verification-row,.installation-row {grid-template-columns:minmax(0,1fr);gap:10px;}}
 .phrase-edit-row.selected .phrase-input span {color:var(--text);}
 .preview-button:disabled,.quiet-button:disabled {opacity:.5;cursor:default;}
 .quiet-button[aria-busy=true],.preview-button[aria-busy=true] {cursor:wait;}
@@ -154,16 +172,42 @@ html {overflow-wrap:break-word;}
 .setup-row:last-child {margin-bottom:0;}
 .setup-row > .quiet-button {flex-shrink:0;}
 .setup-row > small {max-width:48ch;}
-.setup-row .quiet-button[data-status=checked] {color:var(--green);}
+.model-input {display:flex;gap:8px;min-width:0;}
+.model-input input {min-width:0;flex:1;}
+.model-input button {flex-shrink:0;}
+#modelStatus {grid-column:2;font-size:11px;color:var(--muted);}
+#modelStatus[data-status=failed] {color:#ed9a87;}
+.connection-fields {align-items:start;}
 .editor-body {padding:22px 26px;border-top:1px solid var(--line);}
 .phrase-editor > summary > span {color:var(--muted);}
 .kokoro-info:last-child {margin-bottom:0;}
+
+.topic-tips {position:fixed;z-index:20;top:76px;right:20px;width:248px;max-width:calc(100vw - 32px);max-height:calc(100dvh - 96px);overflow:auto;display:flex;flex-direction:column;gap:8px;padding:4px;}
+.topic-tip {background:rgba(164,143,49,.5);border:1px solid rgba(232,211,117,.55);border-radius:8px;color:#fff3c2;box-shadow:0 3px 12px #0002;}
+.topic-tip-heading {display:flex;align-items:center;}
+.topic-tip button {color:inherit;font:inherit;}
+.topic-tip-start {flex:1;min-width:0;text-align:left;font-size:12px!important;font-weight:550!important;padding:8px 12px;border:0;background:none;}
+.topic-tip-start::before {content:'›';display:inline-block;margin-right:8px;color:#ead77e;}
+.topic-tip-dismiss {align-self:stretch;width:32px;flex-shrink:0;border:0;background:none;font-size:17px!important;}
+.topic-tip button:hover {background:rgba(255,237,159,.12);}
+#tipScenario {position:fixed;inset:auto;margin:0;width:min(360px,calc(100vw - 32px));padding:20px;overflow:visible;box-shadow:0 12px 48px #0006;}
+#tipScenario::backdrop {background:#0003;}
+#tipScenarioHighlight {position:fixed;pointer-events:none;border:2px solid #e8d375;border-radius:8px;}
+.tip-scenario-heading,.tip-scenario-actions {display:flex;align-items:center;gap:12px;justify-content:space-between;}
+.tip-scenario-heading {margin-bottom:12px;}
+#tipScenarioProgress {font-size:11px;color:#ead77e;}
+#tipScenarioTitle {font-size:17px;margin-bottom:8px;}
+#tipScenarioText {font-size:13px;line-height:1.6;color:var(--muted);}
+.tip-scenario-actions {margin-top:18px;}
+#tipScenarioNext {background:#ead77e;border-color:#ead77e;color:var(--bg);}
+@media(max-width:440px){.topic-tips {top:112px;right:12px;width:216px;max-height:calc(100dvh - 132px);}}
 </style>
 </head>
 <body>
 <div class="shell">
-<header class="topbar"><div class="brand">CODE GOSSIP <span>Soundbar</span></div><div class="top-actions"><label class="power"><span id="powerLabel">Sound on</span><span class="switch"><input type="checkbox" id="soundOn" checked aria-label="Enable sound"><span class="track"></span></span></label><button class="quiet-button" id="settingsButton">⚙ Settings</button><button class="quiet-button" id="helpButton" aria-label="Help">?</button></div></header>
-<div class="selection-bar"><div class="mode-status" id="modeStatus"><span class="status-dot"></span><span id="statusText" aria-live="polite">Loading…</span></div><button class="activation-button" id="activateSelection" disabled>Use selection</button></div>
+<header class="topbar"><div class="brand">CODE GOSSIP <span>Soundbar</span></div><div class="top-actions"><label class="power"><span id="powerLabel">Sound on</span><span class="switch"><input type="checkbox" id="soundOn" checked aria-label="Enable sound"><span class="track"></span></span></label><button class="quiet-button" id="settingsButton">⚙ Settings</button><button class="quiet-button" id="helpButton" aria-label="Show or hide tips" aria-controls="topicTips" aria-expanded="false">?</button></div></header>
+<div class="selection-bar"><div class="mode-status" id="modeStatus"><span class="status-dot"></span><span id="statusText" aria-live="polite">Loading…</span></div></div>
+
 <div class="mode-tabs" role="tablist" aria-label="Sound mode">
 <button class="mode-tab" id="tab-effects" role="tab" aria-controls="panel-effects" aria-selected="true" data-mode="effects"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4m4-8v12m4-15v18m4-15v12m4-8v4"/></svg>Effects</button>
 <button class="mode-tab" id="tab-clips" role="tab" aria-controls="panel-clips" aria-selected="false" tabindex="-1" data-mode="clips"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z"/></svg>Clips</button>
@@ -174,11 +218,11 @@ html {overflow-wrap:break-word;}
 <div class="volume-bar"><label for="volume">Volume</label><input type="range" id="volume" min="0" max="100" value="65"><output id="volumeValue" for="volume">65%</output></div>
 <main>
 <section class="mode-panel" id="panel-effects" role="tabpanel" aria-labelledby="tab-effects">
-<div class="workspace"><div class="customize"><div class="field"><label for="soundPack">Sound pack</label><select id="soundPack"></select></div></div><aside class="audition"><div class="field"><label for="effectsEvent">Event</label><select id="effectsEvent"></select></div><div class="field" id="effectsVariantField" hidden><label for="effectsVariant">Sample</label><select id="effectsVariant"></select></div><p class="preview-copy" id="effectsSample"></p><button class="preview-button" data-preview="effects">▶ Preview</button></aside></div>
+<div class="workspace"><div class="customize"><div class="field"><label for="soundPack">Sound pack</label><select id="soundPack"></select></div></div><aside class="audition"><div class="field"><label for="effectsEvent">Event</label><select id="effectsEvent"></select></div><div class="field" id="effectsVariantField" hidden><label for="effectsVariant">Sample</label><select id="effectsVariant"></select></div><p class="preview-copy" id="effectsSample"></p><div class="preview-actions" data-activation-slot="effects"><button class="preview-button" data-preview="effects">▶ Preview</button><button class="activation-button" id="activateSelection" disabled>Apply</button></div><p id="activationHelp" class="activation-help" hidden><span id="activationReason"></span> <button id="openSelectionSetup" class="setup-link">Open setup</button></p><span id="activationProgress" class="sr-only" role="status"></span></aside></div>
 <details class="connection setup" id="setup-effects"><summary>Setup <span id="setupStatus-effects">Ready</span></summary><div class="connection-body"><div class="setup-row"><div><strong id="effectsRequirement">Bundled audio</strong><small id="effectsRequirementDetail">Included with Soundbar</small></div><button class="quiet-button" data-check-setup="effects">Check</button><button class="quiet-button" id="installSox" hidden>Show install command</button></div><div class="dependency-info" id="soxInfo" hidden><p>SoX generates this pack’s sounds locally. Homebrew installs the audio tool and its dependencies in its managed prefix (usually <code>/opt/homebrew</code> or <code>/usr/local</code>).</p><p id="soxCommand" hidden><code>brew install sox</code></p></div></div></details>
 </section>
 <section class="mode-panel" id="panel-clips" role="tabpanel" aria-labelledby="tab-clips" hidden>
-<div class="workspace"><div class="customize"><div class="collection"><div class="collection-art" aria-hidden="true">★</div><div><strong>Generals</strong><small>Clip collection</small></div></div></div><aside class="audition"><div class="field"><label for="clipsEvent">Event</label><select id="clipsEvent"></select></div><div class="field" id="clipsVariantField" hidden><label for="clipsVariant">Sample</label><select id="clipsVariant"></select></div><p class="preview-copy" id="clipsSample"></p><button class="preview-button" data-preview="clips">▶ Preview</button></aside></div>
+<div class="workspace"><div class="customize"><div class="collection"><div class="collection-art" aria-hidden="true">★</div><div><strong>Generals</strong><small>Clip collection</small></div></div></div><aside class="audition"><div class="field"><label for="clipsEvent">Event</label><select id="clipsEvent"></select></div><div class="field" id="clipsVariantField" hidden><label for="clipsVariant">Sample</label><select id="clipsVariant"></select></div><p class="preview-copy" id="clipsSample"></p><div class="preview-actions" data-activation-slot="clips"><button class="preview-button" data-preview="clips">▶ Preview</button></div></aside></div>
 <details class="connection setup" id="setup-clips"><summary>Setup <span id="setupStatus-clips">Ready</span></summary><div class="connection-body"><div class="setup-row"><div><strong>Generals collection</strong><small>Bundled audio files</small></div><button class="quiet-button" data-check-setup="clips">Check</button></div></div></details>
 </section>
 <section class="mode-panel" id="panel-phrases" role="tabpanel" aria-labelledby="tab-phrases" hidden>
@@ -186,25 +230,26 @@ html {overflow-wrap:break-word;}
 <div class="field agent-voice"><label for="mainAgentVoice">Main agent</label><select id="mainAgentVoice"></select><button class="quiet-button" id="previewMainAgent" title="Ready when you are." aria-label="Preview main agent voice">▶</button></div>
 <div class="field agent-voice"><label for="subagentVoice">Subagent</label><select id="subagentVoice"></select><button class="quiet-button" id="previewSubagent" title="Ready when you are." aria-label="Preview subagent voice">▶</button></div>
 
-</div><aside class="audition"><div class="field"><label for="phraseEvent">Event</label><select id="phraseEvent"></select></div><div class="field"><label for="phraseVariant">Alternative</label><select id="phraseVariant"></select></div><p class="preview-copy" id="phrasePreviewCopy"></p><button class="preview-button" data-preview="phrases">▶ Preview</button></aside></div>
+</div><aside class="audition"><div class="field"><label for="phraseEvent">Event</label><select id="phraseEvent"></select></div><div class="field"><label for="phraseVariant">Alternative</label><select id="phraseVariant"></select></div><p class="preview-copy" id="phrasePreviewCopy"></p><div class="preview-actions" data-activation-slot="phrases"><button class="preview-button" data-preview="phrases">▶ Preview</button></div></aside></div>
 <details class="connection setup" id="setup-phrases"><summary>Speech setup <span id="setupStatus-phrases">Not checked</span></summary><div class="connection-body" data-speech-setup="phrase"></div></details>
 <details class="connection phrase-editor" id="phraseEditor"><summary>Editor <span id="phraseEditorTitle">Alternatives</span></summary><div class="editor-body">
 <p class="phrase-event-hint" id="phraseEventHint"></p><div id="phraseRows"></div><button class="quiet-button" id="addPhrase">+ Add phrase</button></div></details>
 </section>
 <section class="mode-panel" id="panel-ai" role="tabpanel" aria-labelledby="tab-ai" hidden>
-<div class="workspace"><div class="customize"><div class="field"><label for="commentaryStyle">Style</label><select id="commentaryStyle"></select></div><div class="field agent-voice"><label for="speaker">Voice</label><select id="speaker"></select><button class="quiet-button" id="previewAIVoice" aria-label="Preview commentary voice" title="Ready when you are.">▶</button></div><label class="checkbox"><input type="checkbox" id="sessionContext" title="Applies to live commentary; the sample uses only the example edit.">Remember session context</label></div><aside class="audition"><p class="sample-context">Example · Edit <code>src/app.ts</code></p><p class="preview-copy" id="commentarySample" hidden></p><div class="preview-actions"><button class="preview-button" id="generateCommentary">Generate sample</button><button class="preview-button" data-preview="ai" disabled>▶ Play sample</button></div></aside></div>
-<details class="connection setup" id="setup-ai"><summary>Provider setup <span id="setupStatus-ai">Ready</span></summary><div class="connection-body"><div class="connection-fields"><div class="field"><label for="provider">Provider</label><select id="provider"></select></div><div class="field"><label for="model">Model</label><input type="text" id="model" list="modelChoices" placeholder="Provider default"><datalist id="modelChoices"></datalist></div></div><div class="field" id="keyField" hidden><label for="sampleKey">API key</label><input type="password" id="sampleKey" placeholder="Enter API key" autocomplete="off"></div><div class="setup-row"><small id="providerHint">Uses your Claude CLI sign-in.</small><button class="quiet-button" id="checkConnection">Check</button></div></div></details>
+<div class="workspace"><div class="customize"><div class="field"><label for="commentaryStyle">Style</label><select id="commentaryStyle"></select></div><div class="field agent-voice"><label for="speaker">Voice</label><select id="speaker"></select><button class="quiet-button" id="previewAIVoice" aria-label="Preview commentary voice" title="Ready when you are.">▶</button></div><label class="checkbox"><input type="checkbox" id="sessionContext" title="Applies to live commentary; the sample uses only the example edit.">Remember session context</label></div><aside class="audition"><p class="sample-context">Example · Edit <code>src/app.ts</code></p><p class="preview-copy" id="commentarySample" hidden></p><div class="preview-actions" data-activation-slot="ai"><button class="preview-button" data-preview="ai">▶ Play sample</button></div></aside></div>
+<details class="connection setup" id="setup-ai"><summary>Provider setup <span id="setupStatus-ai">Ready</span></summary><div class="connection-body"><div class="connection-fields"><div class="field"><label for="provider">Provider</label><select id="provider"></select></div><div class="field"><label for="model">Model</label><div class="model-input"><input type="text" id="model" list="modelChoices" placeholder="Provider default" aria-describedby="modelStatus"><button class="quiet-button" id="refreshModels" title="Refresh available models" aria-label="Refresh available models">↻</button><datalist id="modelChoices"></datalist></div><small id="modelStatus" role="status"></small></div></div><div class="field" id="keyField" hidden><label for="sampleKey">API key</label><input type="password" id="sampleKey" placeholder="Enter API key" autocomplete="off"></div><p class="setup-hint" id="providerHint">Uses your Claude CLI sign-in.</p><div class="setup-row verification-row"><strong id="providerCheckLabel">Connection</strong><button class="quiet-button" id="checkConnection">Check connection</button></div></div></details>
 <details class="connection setup" id="setup-aiSpeech"><summary>Speech setup <span id="setupStatus-aiSpeech">Not checked</span></summary><div class="connection-body" data-speech-setup="ai"></div></details>
 </section>
 
 </main>
 
 </div>
-<dialog id="settingsDialog" aria-labelledby="settingsTitle"><div class="dialog-heading"><h2 id="settingsTitle">Playback preferences</h2><button class="quiet-button" id="closeSettings" aria-label="Close settings">✕</button></div><div class="preference"><div class="preference-top"><strong>Reduce repeated sounds</strong><label class="switch"><input type="checkbox" id="reduceRepeats" checked aria-label="Reduce repeated sounds"><span class="track"></span></label></div><p>Keep rapid activity from becoming distracting. Approval, error, and completion cues stay responsive.</p><div class="field"><label for="effectsGap">Effects gap</label><input type="range" id="effectsGap" min="0" max="10000" step="250"><output id="effectsGapValue"></output></div><div class="field"><label for="voiceGap">Voice gap</label><input type="range" id="voiceGap" min="0" max="10000" step="250"><output id="voiceGapValue"></output></div></div><div class="preference"><div class="preference-top"><strong>Codex approval cues</strong><label class="switch"><input type="checkbox" id="approvalCues" checked aria-label="Play Codex approval cues"><span class="track"></span></label></div><p>Play a cue when Codex needs your approval. This changes audio only.</p></div><div class="preference"><button class="quiet-button" id="closeSoundbar">Close Soundbar</button></div></dialog>
+<dialog id="settingsDialog" aria-labelledby="settingsTitle"><div class="dialog-heading"><h2 id="settingsTitle">Playback preferences</h2><button class="quiet-button" id="closeSettings" aria-label="Close settings">✕</button></div><div class="preference"><div class="preference-top"><strong>Reduce repeated sounds</strong><label class="switch"><input type="checkbox" id="reduceRepeats" checked aria-label="Reduce repeated sounds"><span class="track"></span></label></div><p>Keep rapid activity from becoming distracting. Approval, error, and completion cues stay responsive.</p><div class="field"><label for="effectsGap">Effects gap</label><input type="range" id="effectsGap" min="0" max="10000" step="250"><output id="effectsGapValue"></output></div><div class="field"><label for="voiceGap">Voice gap</label><input type="range" id="voiceGap" min="0" max="10000" step="250"><output id="voiceGapValue"></output></div></div><div class="preference"><div class="preference-top"><strong>Codex approval cues</strong><label class="switch"><input type="checkbox" id="approvalCues" checked aria-label="Play Codex approval cues"><span class="track"></span></label></div><p>Play a cue when Codex needs your approval. This changes audio only.</p></div><div class="preference"><button class="quiet-button" id="closeSoundbar">Close Soundbar</button><p id="closeInstallHint" hidden>Installation is running. You can close this tab; wait for installation to finish before stopping Soundbar.</p></div></dialog>
 <dialog id="closedDialog" aria-labelledby="closedTitle"><h2 id="closedTitle" tabindex="-1">Soundbar is closed</h2><p>Your agent sounds keep working. You can close this tab.</p><p>To reopen: <code>~/.code-gossip/soundbar/panel.sh</code></p></dialog>
-<dialog id="helpDialog" aria-labelledby="helpTitle"><div class="dialog-heading"><h2 id="helpTitle">Soundbar</h2><button class="quiet-button" id="closeHelp">Close</button></div><p>Browse a category, set it up, and preview it. Use activates your selection; Apply changes saves edits. Sound on/off and volume control the current active selection.</p></dialog>
+<dialog id="tipScenario" aria-labelledby="tipScenarioTitle" aria-describedby="tipScenarioText"><div id="tipScenarioHighlight" aria-hidden="true"></div><div class="tip-scenario-heading"><span id="tipScenarioProgress"></span><button class="quiet-button" id="tipScenarioClose" aria-label="Close guidance">✕</button></div><div aria-live="polite" aria-atomic="true"><h2 id="tipScenarioTitle" tabindex="-1"></h2><p id="tipScenarioText"></p></div><div class="tip-scenario-actions"><button class="quiet-button" id="tipScenarioBack">Back</button><button class="quiet-button" id="tipScenarioNext">Next</button></div></dialog>
+<aside class="topic-tips" id="topicTips" aria-label="Soundbar tips" hidden></aside>
 <div id="loadError" role="alert" hidden>Could not load Soundbar. <button class="quiet-button" onclick="location.reload()">Retry</button></div>
-<template id="speechSetupTemplate"><div class="field"><label data-part="EngineLabel">Speech engine</label><select data-part="Engine"><option value="say">macOS speech</option><option value="kokoro">Kokoro</option></select></div><div class="setup-row"><div><strong data-part="EngineName"></strong><small data-part="EngineDetail"></small></div><span class="setup-ready" data-part="EngineStatus"></span><button class="quiet-button" data-part="SpeechCheck">Check</button><button class="quiet-button" data-part="InstallKokoro" hidden>Install Kokoro</button></div><div class="kokoro-info" data-part="KokoroInfo" hidden>
+<template id="speechSetupTemplate"><div class="field"><label data-part="EngineLabel">Speech engine</label><select data-part="Engine"><option value="say">macOS speech</option><option value="kokoro">Kokoro</option></select></div><div class="setup-row installation-row"><strong data-part="EngineName"></strong><div class="installation-actions"><span class="setup-ready" data-part="EngineStatus" role="status"></span><button class="quiet-button" data-part="InstallKokoro" hidden>Install Kokoro</button></div></div><p class="installation-detail" data-part="EngineDetail"></p><div class="setup-row verification-row" data-part="VerificationRow"><strong>Verification</strong><button class="quiet-button" data-part="SpeechCheck">Check</button></div><div class="kokoro-info" data-part="KokoroInfo" hidden>
 <p>Kokoro turns text into speech on your computer. Install downloads Python packages; the speech model downloads on first use.</p>
 <details><summary>What gets installed &amp; how it works</summary>
 <ul>

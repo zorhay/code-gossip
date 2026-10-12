@@ -280,7 +280,7 @@ def test_checks_send_drafts_over_stdin_without_writing(isolated_preferences):
     server = isolated_preferences
     before = server.CONFIG_FILE.read_bytes()
     with patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok": true}')) as run:
-        server.draft_request({'mode': 'ai', 'config': {'narrator_provider': 'openai', 'narrator_model': 'test-model', 'narrator_api_key': 'draft-secret'}}, check=True)
+        server.draft_request({'mode': 'ai', 'scope': 'provider', 'config': {'narrator_provider': 'openai', 'narrator_model': 'test-model', 'narrator_api_key': 'draft-secret'}}, check=True)
     args, kwargs = run.call_args
     assert args[0][0] == server.get_python3()
     assert 'draft-secret' not in str(args)
@@ -303,7 +303,7 @@ def test_effect_preview_uses_unsaved_pack(isolated_preferences):
 
 def test_setup_discovers_sox_from_manifest(isolated_preferences):
     server = isolated_preferences
-    with patch.object(server, 'executable', side_effect=lambda name: None if name == 'play' else '/usr/bin/'+name), patch.object(server.kokoro, 'is_installed', return_value=False):
+    with patch.object(server, 'executable', side_effect=lambda name: None if name == 'play' else '/usr/bin/'+name), patch.object(server.kokoro, 'is_present', return_value=False):
         status = server.setup_status()
     assert status['effects']['sci-fi']['sox']
     assert not status['effects']['sci-fi']['ready']
@@ -323,7 +323,7 @@ def test_preview_event_and_alternative_are_explicit(isolated_preferences):
 
 def test_install_progress_is_read_without_python_installation(isolated_preferences):
     server = isolated_preferences
-    with patch.object(server.kokoro, '_progress', {'status':'running','message':'Installing packages'}), patch.object(server.kokoro, 'is_installed', return_value=False), patch.object(server.kokoro, 'find_python') as find:
+    with patch.object(server.kokoro, '_progress', {'status':'running','message':'Installing packages'}), patch.object(server.kokoro, 'is_present', return_value=False), patch.object(server.kokoro, 'find_python') as find:
         status = server.setup_status()
         assert status['installing']
         assert status['installMessage'] == 'Installing packages'
@@ -339,3 +339,113 @@ def test_preview_waits_for_audio_and_uses_selected_clip(isolated_preferences):
         assert 'unit_on_my_way.aiff' in command[-1]
         assert run.call_args.kwargs['check']
         background.assert_not_called()
+
+
+def test_live_models_use_only_selected_provider_credentials(isolated_preferences):
+    server = isolated_preferences
+    before = server.CONFIG_FILE.read_bytes()
+    with patch.object(server, 'list_models', return_value={'ok': True, 'models': []}) as discover:
+        server.narrator_models({'config': {}})
+        discover.assert_called_with('claude_cli', 'private-example')
+        server.narrator_models({'config': {'narrator_provider': 'openai'}})
+        discover.assert_called_with('openai', '')
+        server.narrator_models({'config': {'narrator_provider': 'openai', 'narrator_api_key': 'draft-secret'}})
+        discover.assert_called_with('openai', 'draft-secret')
+    assert server.CONFIG_FILE.read_bytes() == before
+    assert all('models' not in provider for provider in server.NARRATOR_PROVIDERS.values())
+
+
+@pytest.mark.parametrize('changes', [{'narrator_provider': 'unknown'}, {'narrator_api_key': 42}, {'tts_engine': 'kokoro'}, []])
+def test_live_models_reject_invalid_config(isolated_preferences, changes):
+    with pytest.raises(ValueError):
+        isolated_preferences.narrator_models({'config': changes})
+
+
+def test_provider_check_ignores_unavailable_speech(isolated_preferences):
+    server = isolated_preferences
+    with patch.object(server, 'get_voices', return_value=[]), patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok":true}')) as worker:
+        assert server.draft_request({'mode':'ai','scope':'provider','config':{'tts_engine':'say','voice_main':'Missing voice'}}, check=True)['ok']
+        assert json.loads(worker.call_args.kwargs['input'])['scope'] == 'provider'
+
+
+def test_speech_check_ignores_invalid_provider_draft(isolated_preferences):
+    server = isolated_preferences
+    with patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok":true}')) as worker:
+        assert server.draft_request({'mode':'ai','scope':'speech','config':{'narrator_provider':'unavailable','narrator_style':'removed-style'}}, check=True)['ok']
+        assert json.loads(worker.call_args.kwargs['input'])['scope'] == 'speech'
+
+
+def test_repair_installation_bypasses_cached_install_and_starts_once(isolated_preferences, monkeypatch):
+    server = isolated_preferences
+    monkeypatch.setattr(server, 'stopping', False)
+    monkeypatch.setattr(server.kokoro, '_progress', {'status':'idle','message':''})
+    handler = object.__new__(server.Handler)
+    handler.json_response = Mock()
+    with patch.object(server.kokoro, 'is_installed', return_value=True) as installed, patch.object(server.threading, 'Thread') as thread:
+        handler._handle_post('/api/kokoro-install', {'repair':True})
+        handler._handle_post('/api/kokoro-install', {'repair':True})
+        installed.assert_not_called()
+        thread.assert_called_once_with(target=server.kokoro.install, daemon=False)
+        thread.return_value.start.assert_called_once()
+        assert server.kokoro.progress['status'] == 'running'
+
+
+def test_slow_check_does_not_block_controls_or_status(isolated_preferences, monkeypatch):
+    import threading
+    import urllib.request
+    from concurrent.futures import ThreadPoolExecutor
+    server = isolated_preferences
+    entered, release = threading.Event(), threading.Event()
+    def slow_check(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return {'ok':True}
+    monkeypatch.setattr(server, 'draft_request', slow_check)
+    http = server.ReuseHTTPServer(('127.0.0.1', 0), server.Handler)
+    serving = threading.Thread(target=http.serve_forever)
+    serving.start()
+    base = f'http://127.0.0.1:{http.server_port}'
+    def request(path, body=None):
+        req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, headers={'Content-Type':'application/json'})
+        with urllib.request.urlopen(req, timeout=2) as response:
+            return json.load(response)
+    try:
+        with ThreadPoolExecutor() as pool:
+            checking = pool.submit(request, '/api/draft-check', {'mode':'ai'})
+            try:
+                assert entered.wait(2)
+                assert request('/api/health')['app'] == 'code-gossip'
+                assert request('/api/config', {'effects_on':False})['ok']
+                assert server.read_config()['effects_on'] is False
+            finally:
+                release.set()
+            assert checking.result()['ok']
+    finally:
+        release.set()
+        http.shutdown()
+        http.server_close()
+        serving.join()
+
+
+def test_shutdown_rejected_while_installing(isolated_preferences, monkeypatch):
+    server = isolated_preferences
+    monkeypatch.setattr(server, 'stopping', False)
+    monkeypatch.setattr(server.kokoro, '_progress', {'status':'running','message':'Installing packages'})
+    handler = object.__new__(server.Handler)
+    handler.path = '/api/shutdown'
+    handler.server = Mock(server_port=8111)
+    handler.headers = {'Origin':'http://localhost:8111','X-Soundbar-Request':'ui'}
+    handler.json_response = Mock()
+    handler.do_POST()
+    result = handler.json_response.call_args.args[0]
+    assert not result['ok']
+    assert 'Installation is in progress' in result['error']
+    assert not server.stopping
+    handler.server.shutdown.assert_not_called()
+
+
+def test_initial_status_never_imports_kokoro(isolated_preferences):
+    server = isolated_preferences
+    with patch.object(server.kokoro, 'is_installed', side_effect=AssertionError('Expensive import during page load')), patch.object(server.kokoro, 'is_present', return_value=True):
+        assert server.get_status()['setup']['kokoro'] is True
+        assert server.setup_status()['kokoro'] is True
