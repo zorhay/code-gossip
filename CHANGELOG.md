@@ -6,7 +6,7 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
-- The GitHub Pages demo site deploys from the released commit when a GitHub release is published, instead of on every push or merge to `main`.
+- The Code Gossip marketing page deploys from the released commit when a GitHub release is published, instead of on every push or merge to `main`.
 
 ## [0.8.0] - 2026-10-22
 
