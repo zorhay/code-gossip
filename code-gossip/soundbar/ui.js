@@ -518,7 +518,7 @@ function renderProvider(){
 }
 async function load(){
  saved=await api('/api/status'); setup=saved.setup;
- packs=Object.fromEntries(Object.keys(saved.effects_profiles).sort((a,b)=>Number(b==='default')-Number(a==='default')).map(name=>[name,name==='default'?'System sounds':name.charAt(0).toUpperCase()+name.slice(1)]));
+ packs=Object.fromEntries(Object.keys(saved.effects_profiles).sort((a,b)=>Number(b==='default')-Number(a==='default')).map(name=>[name,name==='default'?'System sounds':name==='wood-thrush'?'Wood Thrush':name.charAt(0).toUpperCase()+name.slice(1)]));
  styleNames=Object.fromEntries(Object.entries(saved.narrator_styles).map(([id,s])=>[id,s.label || id]));
  voiceChoices={say:saved.voices.map(v=>[v.name,v.name]),kokoro:saved.kokoro_voices.map(v=>[v.id,v.name])};
  const mode=saved.effects_on&&saved.voice_on?'combined':saved.voice_on?profileModes[saved.voice_profile]:saved.effects_on?'effects':saved.soundbar_mode || 'effects';

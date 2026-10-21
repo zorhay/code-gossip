@@ -31,7 +31,7 @@ echo "Target: $DEST"
 # ── Files ──
 
 printf '\n\033[1mFiles\033[0m\n'
-for f in engine/play.sh engine/playback_gate.py soundbar/server.py engine/integrations.py engine/narrate.py engine/kokoro_server.py soundbar/ui.html soundbar/panel.sh switch.sh data/sounds.json installer.py paths.py hooks/codex.py hooks/cursor.py hooks/claude-hooks.json uninstall.sh \
+for f in engine/play.sh engine/playback_gate.py engine/melody.py soundbar/server.py engine/integrations.py engine/narrate.py engine/kokoro_server.py soundbar/ui.html soundbar/panel.sh switch.sh data/sounds.json installer.py paths.py hooks/codex.py hooks/cursor.py hooks/claude-hooks.json uninstall.sh \
          configs/config.defaults.json configs/phrases.defaults.json; do
   check "$f" test -f "$DEST/$f"
 done

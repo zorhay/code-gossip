@@ -54,6 +54,7 @@ code-gossip/                         installed as ~/.code-gossip/
 │   ├── playback_gate.py            cross-process spacing and cooldowns
 │   ├── narrate.py                  context → words → speech
 │   ├── preview.py                  speech/provider previews from in-memory drafts
+│   ├── melody.py                   stateful musical cues shared by hooks and previews
 │   ├── model_catalog.py            live provider model discovery
 │   ├── kokoro_server.py            warm local speech model
 │   └── integrations.py             Python detection and Kokoro installation
@@ -350,9 +351,14 @@ This illustrates the schema; copy the full shipped manifest when creating an ove
 | `files` | Random sample from a list |
 | `sequence` | Random choice of a sequence; play its files in order with `gap` seconds between |
 | `sox` | Generated sound through `play -qn`, with the channel volume applied |
+| `melody` | Stateful musical phrase through `engine/melody.py` and SoX; uses the profile's `melody` palette |
 | `rate: [min, max]` | Optional randomized playback rate for file-based mappings |
 
 Relative file names combine with the profile's `dir` under `data/`; absolute paths stay absolute. Manifest arguments and paths are trusted local configuration. Keep custom sound specs under your control.
+
+Wood Thrush (`wood-thrush`) uses a C minor pentatonic palette from C3 to C5. Its profile-level `melody` defines a MIDI `root`, semitone `scale` offsets, and an inclusive MIDI `range`. Each event's `melody` supplies a `phrase` (`note`, `rise`, `fall`, `question`, or `resolve`) and the sine envelope: total `duration`, `gain`, `attack`, `release`, and `reverb`. The weighted walk favors nearby scale notes, avoids immediate repeats, reduces recent-note reuse, and favors reversing direction after a leap. Attention cues repeat a pitch; completion alone uses a fifth-to-tonic resolution. The new profile uses Submarine-inspired volumes, cue lengths, fades, and reverb. Submarine retains its original fixed tones and glides.
+
+[`melody.py`](code-gossip/engine/melody.py) keeps the last four notes per channel/profile/palette in `state/melody/state.json`, shared across hook processes under a bounded file lock and replaced atomically. History expires after two minutes of silence. Soundbar and forced command-line previews share a separate history. State failures fall back to a fresh phrase, and the hook remains backgrounded. Both playback paths use the configured Python and resolve SoX through `paths.executable`.
 
 ### Phrases and styles
 

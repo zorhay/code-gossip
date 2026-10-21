@@ -94,6 +94,7 @@ play_sound() {
       if   $s.file     then ["file",  $s.file, $dir, ($r[0] * 100 | floor), ($r[1] * 100 | floor)]
       elif $s.files    then ["files", ($s.files | length | tostring), $dir, ($r[0] * 100 | floor), ($r[1] * 100 | floor)]
       elif $s.sox      then ["sox",   $s.sox, "", 100, 100]
+      elif $s.melody   then ["melody", "-", "-", 100, 100]
       elif $s.sequence then ["seq",   ($s.sequence | length | tostring), $dir, ($r[0] * 100 | floor), ($r[1] * 100 | floor)]
       else                  ["none",  "", "", 100, 100]
       end | @tsv
@@ -124,6 +125,11 @@ play_sound() {
       ;;
     sox)
       play -qn $val vol "$vol" &
+      ;;
+    melody)
+      local preview_flag=""
+      [ -n "$FORCE_LAYER$FORCE_EFFECTS_PROFILE$FORCE_VOICE_PROFILE" ] && preview_flag="--preview"
+      "$PYTHON3" "$SND/engine/melody.py" "$MANIFEST" "$layer" "$profile" "$event" "$vol" $preview_flag &
       ;;
     seq)
       local idx=$((RANDOM % val))
