@@ -180,6 +180,8 @@ class TestEndingCueIdentity:
         # Ignore rate and gap: changing those does not make a reused cue distinct.
         if "sox" in spec:
             return {("sox", " ".join(spec["sox"].split()))}
+        if "melody" in spec:
+            return {("melody", spec["melody"].get("phrase", "note"))}
         if "file" in spec:
             return {(spec["file"],)}
         if "files" in spec:

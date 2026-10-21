@@ -7,7 +7,7 @@ CFG="$SOUNDBAR/configs/config.json"
 [ ! -f "$CFG" ] && CFG="$SOUNDBAR/configs/config.defaults.json"
 [ ! -f "$CFG" ] && { echo "Code Gossip not installed. Run install.sh first."; exit 1; }
 
-EFFECTS_PROFILES="default attention construction minimal paper sci-fi submarine silent"
+EFFECTS_PROFILES="default attention construction minimal paper sci-fi submarine wood-thrush silent"
 VOICE_PROFILES="senior narrator generals"
 
 # Read a config value

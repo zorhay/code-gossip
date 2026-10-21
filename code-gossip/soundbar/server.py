@@ -241,7 +241,7 @@ def read_sounds():
 
 def _spec_origin(spec):
     """Derive display origin from a sound spec."""
-    if "sox" in spec:
+    if "sox" in spec or "melody" in spec:
         return "generated"
     f = spec.get("file") or ""
     if not f:
@@ -259,6 +259,8 @@ def _spec_origin(spec):
 
 def _spec_label(spec):
     """Derive display label from a sound spec."""
+    if "melody" in spec:
+        return "Melodic sine · " + spec["melody"].get("phrase", "note")
     if "sox" in spec:
         args = spec["sox"]
         m = re.match(r'synth\s+[\d.]+\s+(\w+)', args)
@@ -495,6 +497,9 @@ def play_profile_event(layer, profile, event, config=None, *, variant=None, wait
         launch(["bash", "-c", " && ".join(parts)])
     elif "sox" in spec:
         launch([executable("play") or "play", "-qn"] + spec["sox"].split() + ["vol", vol])
+    elif "melody" in spec:
+        launch([get_python3(), str(ENGINE / "melody.py"), str(SOUNDS_FILE),
+                layer, profile, event, vol, "--preview"])
 
 
 def preview_catalog():
@@ -509,7 +514,8 @@ def preview_catalog():
                 if not variants:
                     variants = [[spec["file"]]] if "file" in spec else [[]]
                 events[event] = [" → ".join(Path(file).stem.replace("_", " ") for file in variant)
-                                 or "Synthesized cue" for variant in variants]
+                                 or ("Evolving melody" if "melody" in spec else "Synthesized cue")
+                                 for variant in variants]
             result[layer][name] = events
     return result
 
@@ -527,7 +533,7 @@ def setup_status():
         missing = []
         sox = False
         for spec in profile.get("events", {}).values():
-            sox = sox or "sox" in spec
+            sox = sox or "sox" in spec or "melody" in spec
             files = [spec["file"]] if "file" in spec else spec.get("files", [])
             files += [name for sequence in spec.get("sequence", []) for name in sequence]
             for name in files:

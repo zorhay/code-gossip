@@ -54,9 +54,9 @@ function renderTipScenario(){
 function positionTipScenario(){
  if(!tipScenario)return;
  const target=document.querySelector(tipScenario.steps[tipScenario.index].target),rect=target.getBoundingClientRect(),card=$('tipScenario');
- const width=card.offsetWidth,height=card.offsetHeight,below=rect.bottom+14,above=rect.top-height-14;
+ const {width,height}=card.getBoundingClientRect(),below=rect.bottom+14,above=rect.top-height-14;
  const top=below+height<=innerHeight-16?below:above>=16?above:innerHeight-height-16;
- Object.assign(card.style,{left:Math.max(16,Math.min(rect.right-width,innerWidth-width-16))+'px',top:Math.max(16,top)+'px'});
+ Object.assign(card.style,{left:Math.max(16,Math.min(rect.right-width,innerWidth-width-16))+'px',top:Math.max(16,Math.min(top,innerHeight-height-16))+'px'});
  Object.assign($('tipScenarioHighlight').style,{left:Math.max(2,rect.left-4)+'px',top:rect.top-4+'px',width:Math.min(innerWidth-4,rect.width+8)+'px',height:rect.height+8+'px'});
 }
 function closeTipScenario(){
@@ -518,7 +518,7 @@ function renderProvider(){
 }
 async function load(){
  saved=await api('/api/status'); setup=saved.setup;
- packs=Object.fromEntries(Object.keys(saved.effects_profiles).sort((a,b)=>Number(b==='default')-Number(a==='default')).map(name=>[name,name==='default'?'System sounds':name.charAt(0).toUpperCase()+name.slice(1)]));
+ packs=Object.fromEntries(Object.keys(saved.effects_profiles).sort((a,b)=>Number(b==='default')-Number(a==='default')).map(name=>[name,name==='default'?'System sounds':name==='wood-thrush'?'Wood Thrush':name.charAt(0).toUpperCase()+name.slice(1)]));
  styleNames=Object.fromEntries(Object.entries(saved.narrator_styles).map(([id,s])=>[id,s.label || id]));
  voiceChoices={say:saved.voices.map(v=>[v.name,v.name]),kokoro:saved.kokoro_voices.map(v=>[v.id,v.name])};
  const mode=saved.effects_on&&saved.voice_on?'combined':saved.voice_on?profileModes[saved.voice_profile]:saved.effects_on?'effects':saved.soundbar_mode || 'effects';

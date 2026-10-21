@@ -73,7 +73,11 @@ const server = http.createServer((req,res)=>{
       assert((await page.locator('#tipScenarioProgress').innerText()).endsWith(`${step+1} of ${count}`));
       for(const width of [1280,390]){
         await page.setViewportSize({width,height:900});
-        await page.waitForFunction(()=>{const r=document.getElementById('tipScenario').getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.top>=0&&r.bottom<=innerHeight;});
+        if(id==='llm'&&step===2&&width===390){
+          await page.evaluate(()=>window.scrollTo({top:0,behavior:'instant'}));
+          assert(await page.locator('#checkConnection').evaluate(el=>el.getBoundingClientRect().top>innerHeight),'Mobile connection target is below the viewport');
+        }
+        await page.waitForFunction(()=>{const r=document.getElementById('tipScenario').getBoundingClientRect();return r.left>=16&&r.right<=innerWidth-16&&r.top>=16&&r.bottom<=innerHeight-16;});
         assert(await page.locator('#tipScenarioHighlight').evaluate(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0;}));
         if(process.env.SCREENSHOT_DIR&&step===0)await page.screenshot({path:path.join(process.env.SCREENSHOT_DIR,`scenario-${id}-${width}.png`)});
       }

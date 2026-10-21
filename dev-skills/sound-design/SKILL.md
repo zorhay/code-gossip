@@ -36,6 +36,7 @@ Use the user's theme, desired intensity, and selected events. If these are unspe
 - Store samples in `data/sounds/<profile>/`; set the manifest profile's `dir` to `sounds/<profile>`.
 - Under `effects.<profile>.events`, use `file` for one sample, `files` for random variants, `sequence` for alternative ordered groups with a `gap`, or `sox` for generated effects.
 - File-based specs can use a `rate` range for variation. Keep routine cues brief and distinguish approval, error, and turn completion.
+- Stateful generated cues can use `melody`: define the profile's MIDI root, scale offsets, and range, then each event's phrase and envelope. See the [manifest contract](../../ARCHITECTURE.md#sound-manifest); reserve `resolve` for completion.
 - Edit mappings in JSON. The engine is a generic dispatcher; sound design does not require new shell case blocks.
 - User profiles belong in the override. For an explicitly requested shipped profile, edit the repository's `data/sounds.json` and update `EFFECTS_PROFILES` in `switch.sh` if CLI selection should support it.
 

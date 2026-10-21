@@ -228,6 +228,35 @@
         "interrupt": {"sox": "synth 0.8 sine 396 vol 0.18 fade 0.15 0.8 0.5 reverb 60"}
       }
     },
+    "wood-thrush": {
+      "melody": {"root": 48, "scale": [0, 3, 5, 7, 10], "range": [48, 72]},
+      "events": {
+        "session_start": {"melody": {"phrase": "rise", "duration": 1.2, "gain": 0.15, "attack": 0.3, "release": 0.8, "reverb": 80}},
+        "edit": {"melody": {"phrase": "note", "duration": 0.5, "gain": 0.1, "attack": 0.12, "release": 0.35, "reverb": 65}},
+        "bash": {"melody": {"phrase": "note", "duration": 0.6, "gain": 0.14, "attack": 0.15, "release": 0.4, "reverb": 60}},
+        "search": {"melody": {"phrase": "note", "duration": 0.4, "gain": 0.09, "attack": 0.1, "release": 0.28, "reverb": 75}},
+        "permission": {"melody": {"phrase": "question", "duration": 0.8, "gain": 0.18, "attack": 0.15, "release": 0.5, "reverb": 60}},
+        "error": {"melody": {"phrase": "fall", "duration": 1.0, "gain": 0.12, "attack": 0.2, "release": 0.7, "reverb": 75}},
+        "subagent_start": {"melody": {"phrase": "rise", "duration": 0.6, "gain": 0.11, "attack": 0.15, "release": 0.4, "reverb": 65}},
+        "subagent_stop": {"melody": {"phrase": "fall", "duration": 0.6, "gain": 0.11, "attack": 0.15, "release": 0.4, "reverb": 65}},
+        "compact": {"melody": {"phrase": "note", "duration": 0.7, "gain": 0.08, "attack": 0.2, "release": 0.5, "reverb": 70}},
+        "stop": {"melody": {"phrase": "resolve", "duration": 0.9, "gain": 0.13, "attack": 0.2, "release": 0.6, "reverb": 70}},
+        "user_prompt": {"melody": {"phrase": "rise", "duration": 1.2, "gain": 0.15, "attack": 0.3, "release": 0.8, "reverb": 80}},
+        "read": {"melody": {"phrase": "note", "duration": 0.4, "gain": 0.09, "attack": 0.1, "release": 0.28, "reverb": 75}},
+        "tool": {"melody": {"phrase": "note", "duration": 0.6, "gain": 0.14, "attack": 0.15, "release": 0.4, "reverb": 60}},
+        "plan": {"melody": {"phrase": "note", "duration": 0.5, "gain": 0.1, "attack": 0.12, "release": 0.35, "reverb": 65}},
+        "test": {"melody": {"phrase": "note", "duration": 0.6, "gain": 0.14, "attack": 0.15, "release": 0.4, "reverb": 60}},
+        "build": {"melody": {"phrase": "note", "duration": 0.6, "gain": 0.14, "attack": 0.15, "release": 0.4, "reverb": 60}},
+        "git": {"melody": {"phrase": "note", "duration": 0.6, "gain": 0.14, "attack": 0.15, "release": 0.4, "reverb": 60}},
+        "git_status": {"melody": {"phrase": "note", "duration": 0.4, "gain": 0.09, "attack": 0.1, "release": 0.28, "reverb": 75}},
+        "git_history": {"melody": {"phrase": "note", "duration": 0.4, "gain": 0.09, "attack": 0.1, "release": 0.28, "reverb": 75}},
+        "git_commit": {"melody": {"phrase": "note", "duration": 0.6, "gain": 0.14, "attack": 0.15, "release": 0.4, "reverb": 60}},
+        "git_push": {"melody": {"phrase": "note", "duration": 0.6, "gain": 0.14, "attack": 0.15, "release": 0.4, "reverb": 60}},
+        "pre_compact": {"melody": {"phrase": "note", "duration": 0.7, "gain": 0.08, "attack": 0.2, "release": 0.5, "reverb": 70}},
+        "session_end": {"melody": {"phrase": "resolve", "duration": 0.9, "gain": 0.13, "attack": 0.2, "release": 0.6, "reverb": 70}},
+        "interrupt": {"melody": {"phrase": "question", "duration": 0.8, "gain": 0.18, "attack": 0.15, "release": 0.5, "reverb": 60}}
+      }
+    },
     "silent": {
       "events": {}
     }

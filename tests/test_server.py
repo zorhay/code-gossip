@@ -307,8 +307,27 @@ def test_setup_discovers_sox_from_manifest(isolated_preferences):
         status = server.setup_status()
     assert status['effects']['sci-fi']['sox']
     assert not status['effects']['sci-fi']['ready']
+    assert status['effects']['wood-thrush']['sox']
+    assert not status['effects']['wood-thrush']['ready']
     assert not status['effects']['paper']['sox']
     assert not status['kokoro']
+
+
+def test_melody_preview_uses_shared_engine_and_configured_python(isolated_preferences):
+    server = isolated_preferences
+    before = server.CONFIG_FILE.read_bytes()
+    with patch.object(server, 'get_python3', return_value='/configured/python'), \
+            patch.object(server.subprocess, 'run') as run:
+        server.play_profile_event('effects', 'wood-thrush', 'edit', {'effects_volume': 35}, wait=True)
+    assert run.call_args.args[0] == ['/configured/python', str(server.ENGINE / 'melody.py'),
+                                    str(server.SOUNDS_FILE), 'effects', 'wood-thrush', 'edit',
+                                    '0.35', '--preview']
+    assert run.call_args.kwargs['check']
+    assert server.CONFIG_FILE.read_bytes() == before
+    assert server.preview_catalog()['effects']['wood-thrush']['edit'] == ['Evolving melody']
+    spec = server.read_sounds()['effects']['wood-thrush']['events']['edit']
+    assert server._spec_origin(spec) == 'generated'
+    assert 'Melodic sine' in server._spec_label(spec)
 
 
 def test_preview_event_and_alternative_are_explicit(isolated_preferences):
