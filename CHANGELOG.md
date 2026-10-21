@@ -4,9 +4,11 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-22
+
 ### Added
 
-- Wood Thrush (`wood-thrush`), a new effects profile with evolving melodies in a bounded minor pentatonic scale, favoring nearby notes and avoiding recent repeats with soft sine tones and reverb. Attention and completion retain distinct phrases; Soundbar previews have separate note history from live hooks.
+- Wood Thrush (`wood-thrush`), a new effects profile with evolving melodies in a bounded minor pentatonic scale, favoring nearby notes and avoiding recent repeats with soft sine tones and reverb. Attention and completion retain distinct phrases; Soundbar previews have separate note history from live hooks. Available in Soundbar and the CLI; requires SoX.
 
 ### Fixed
 
