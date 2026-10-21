@@ -77,7 +77,11 @@ code-gossip/                         installed as ~/.code-gossip/
 └── uninstall.sh                    installed removal entrypoint
 ```
 
-The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package; development installation symlinks it. GitHub Pages publishes `docs/` from `main`: `index.html`, `player.css`, and `player.js` present the demo media in `docs/assets/`. Playback is local to the visitor’s browser and independent of the installed Soundbar.
+The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package; development installation symlinks it.
+
+GitHub Pages publishes `docs/` through the [Pages workflow](.github/workflows/pages.yml) when a GitHub release is published, including prereleases. The workflow checks out the release event's commit, uploads `docs/`, and deploys through the `github-pages` environment. Pushes, merges, draft releases, and release edits do not trigger deployment. Repository **Settings → Pages → Source** must be **GitHub Actions**, and the `github-pages` environment's selected deployment tags must allow version tags matching `*.*.*` (for example, `0.8.0`). These repository settings are separate from the workflow file. The release tag must contain the workflow; existing releases are not redeployed when it is merged.
+
+The site's `index.html`, `player.css`, and `player.js` present the demo media in `docs/assets/`. Playback is local to the visitor's browser and independent of the installed Soundbar.
 
 Python modules resolve package locations through [`paths.py`](code-gossip/paths.py). Shell entrypoints derive their package root from their own location. User preferences belong in `configs/`, writable runtime files in `state/`, and relative sound paths resolve against `data/`.
 
