@@ -8,6 +8,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 - Wood Thrush (`wood-thrush`), a new effects profile with evolving melodies in a bounded minor pentatonic scale, favoring nearby notes and avoiding recent repeats with soft sine tones and reverb. Attention and completion retain distinct phrases; Soundbar previews have separate note history from live hooks.
 
+### Fixed
+
+- Soundbar onboarding cards stay within the viewport when mobile layout or scrolling moves the highlighted control below the screen.
+
 ## [0.7.0] - 2026-10-12
 
 ### Added

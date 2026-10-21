@@ -54,9 +54,9 @@ function renderTipScenario(){
 function positionTipScenario(){
  if(!tipScenario)return;
  const target=document.querySelector(tipScenario.steps[tipScenario.index].target),rect=target.getBoundingClientRect(),card=$('tipScenario');
- const width=card.offsetWidth,height=card.offsetHeight,below=rect.bottom+14,above=rect.top-height-14;
+ const {width,height}=card.getBoundingClientRect(),below=rect.bottom+14,above=rect.top-height-14;
  const top=below+height<=innerHeight-16?below:above>=16?above:innerHeight-height-16;
- Object.assign(card.style,{left:Math.max(16,Math.min(rect.right-width,innerWidth-width-16))+'px',top:Math.max(16,top)+'px'});
+ Object.assign(card.style,{left:Math.max(16,Math.min(rect.right-width,innerWidth-width-16))+'px',top:Math.max(16,Math.min(top,innerHeight-height-16))+'px'});
  Object.assign($('tipScenarioHighlight').style,{left:Math.max(2,rect.left-4)+'px',top:rect.top-4+'px',width:Math.min(innerWidth-4,rect.width+8)+'px',height:rect.height+8+'px'});
 }
 function closeTipScenario(){
