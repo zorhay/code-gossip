@@ -4,6 +4,15 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-25
+
+### Fixed
+
+- The release now declares its matching version, allowing installed updaters to install it successfully. The published `0.9.0` archive incorrectly declared `0.8.0`, so updates were rejected before installation. Choose **Check for updates**, then **Update** in Soundbar, or run `~/.code-gossip/update.sh update`.
+- Release validation checks the unmodified source archive against the intended tag. Update tests preserve the candidate archive's shipped version instead of replacing it in fixtures.
+
+## [0.9.0] - 2026-10-25
+
 ### Added
 
 - Update discovery in Soundbar with installed/available versions, release notes, and explicit check/update actions. The installed `update.sh` CLI shares the same flow: download fresh release source into a temporary directory, run its installer for existing integrations, restart and verify Soundbar, and attempt recovery on failure. Preferences, custom Codex paths, and unrelated hooks are preserved; local update records and logs live in `version_state/`. Older installations need one checkout-based reinstall to obtain the updater.

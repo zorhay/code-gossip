@@ -110,7 +110,8 @@ def test_metadata_tracks_selected_integrations_and_custom_home(sandbox):
 def release_fixture(tmp_path, repo_root):
     fixture = tmp_path / "release"
     fixture.mkdir()
-    write_json(fixture / "release.json", {"tag_name": "0.9.0", "id": 9, "draft": False, "prerelease": False})
+    version = (repo_root / "code-gossip/VERSION").read_text().strip()
+    write_json(fixture / "release.json", {"tag_name": version, "id": 9, "draft": False, "prerelease": False})
 
     def build(failure=None):
         with zipfile.ZipFile(fixture / "release.zip", "w", zipfile.ZIP_DEFLATED) as bundle:
@@ -122,9 +123,7 @@ def release_fixture(tmp_path, repo_root):
                 if path.name in (*installer.USER_FILES, "sounds.json") and path.parent.name == "configs":
                     continue
                 data = path.read_bytes()
-                if path.name == "VERSION":
-                    data = b"0.9.0\n"
-                elif path.name == "installer.py" and failure == "installer":
+                if path.name == "installer.py" and failure == "installer":
                     data = data.replace(b'if not args.no_panel:', b'raise OSError("fixture installer failure")\n        if not args.no_panel:')
                 elif path.name == "server.py" and failure == "health":
                     data = b'raise RuntimeError("fixture server failure")\n' + data
@@ -139,6 +138,11 @@ def test_update_runs_fresh_installer_and_recovers(sandbox, release_fixture, fail
     env["CODEX_HOME"] = str(home / "custom codex")
     run("install.sh", "--agents", "codex,claude")
     root = home / ".code-gossip"
+    # Give the disposable installation an older version; keep the candidate intact.
+    old_version = "0.8.0"
+    (root / "VERSION").write_text(old_version + "\n")
+    write_json(root / "version_state/installation.json",
+               {**read_json(root / "version_state/installation.json"), "version": old_version})
     # A detected but unselected agent must not get integrated during an update.
     (home / ".cursor").mkdir()
     config = root / "configs/config.json"
@@ -156,8 +160,8 @@ def test_update_runs_fresh_installer_and_recovers(sandbox, release_fixture, fail
     hooks["hooks"].setdefault("Stop", []).append({"hooks": [{"type": "command", "command": "echo unrelated"}]})
     write_json(hooks_path, hooks)
     before = hooks_path.read_bytes()
-    old_version = (root / "VERSION").read_text().strip()
     fixture = release_fixture(failure)
+    target_version = read_json(fixture / "release.json")["tag_name"]
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -166,12 +170,12 @@ def test_update_runs_fresh_installer_and_recovers(sandbox, release_fixture, fail
     env.update(PORT=str(port), TEST_RELEASE_DIRECTORY=str(fixture))
     try:
         result = run(root / "update.sh", "check")
-        assert "Available: 0.9.0" in result.stdout
+        assert f"Available: {target_version}" in result.stdout
         assert (root / "VERSION").read_text().strip() == old_version
         result = run(root / "update.sh", "update", success=not failure)
         operation = read_json(root / "version_state/operation.json")
         assert operation["phase"] == ("failed" if failure else "done"), (operation, result.stdout, result.stderr)
-        expected = old_version if failure else "0.9.0"
+        expected = old_version if failure else target_version
         assert (root / "VERSION").read_text().strip() == expected
         assert soundbar.panel_request(port, "/api/health")["version"] == expected
         assert read_json(config)["effects_volume"] == 23
@@ -258,6 +262,7 @@ def test_failed_preparation_keeps_runtime_untouched(sandbox, monkeypatch):
     home, _, run = sandbox
     run("install.sh", "--agents", "codex")
     root = home / ".code-gossip"
+    (root / "VERSION").write_text("0.8.0\n")
     monkeypatch.setattr(Path, "home", lambda: home)
     monkeypatch.setattr(update, "ensure_panel_idle", lambda *args: None)
     monkeypatch.setattr(update, "check_for_updates", lambda *a, **kw: CheckResult(RELEASE))

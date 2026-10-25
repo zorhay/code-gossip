@@ -11,6 +11,7 @@ const { execFile, execFileSync } = require('node:child_process');
 const { promisify } = require('node:util');
 const exec = promisify(execFile);
 const repo = path.resolve(__dirname, '..');
+const releaseVersion = fs.readFileSync(path.join(repo, 'code-gossip/VERSION'), 'utf8').trim();
 const python = process.env.E2E_PYTHON || execFileSync('/usr/bin/which', ['python3'], { encoding: 'utf8' }).trim();
 const jq = execFileSync('/usr/bin/which', ['jq'], { encoding: 'utf8' }).trim();
 async function freePort() {
@@ -50,15 +51,16 @@ async function until(check, description) {
       fs.writeFileSync(path.join(support, 'sitecustomize.py'), `import os, subprocess\n_real_run = subprocess.run\ndef run(args, *a, **kw):\n    if isinstance(args, list) and args[:1] == ['/usr/bin/open']:\n        with open(os.environ['E2E_OPENED'], 'a') as f: f.write(args[1] + '\\n')\n        return subprocess.CompletedProcess(args, 0)\n    return _real_run(args, *a, **kw)\nsubprocess.run = run\n`);
       fs.appendFileSync(path.join(support, 'sitecustomize.py'), fs.readFileSync(path.join(repo, 'tests/support/sitecustomize.py'), 'utf8'));
       const releaseDirectory=path.join(temp,'release');fs.mkdirSync(releaseDirectory);
-      fs.writeFileSync(path.join(releaseDirectory,'release.json'),JSON.stringify({tag_name:'0.9.0',id:9,draft:false,prerelease:false}));
+      fs.writeFileSync(path.join(releaseDirectory,'release.json'),JSON.stringify({tag_name:releaseVersion,id:9,draft:false,prerelease:false}));
       execFileSync(python,['-c',`import pathlib,sys,zipfile
 source=pathlib.Path(sys.argv[1])
 with zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED) as bundle:
     for file in source.rglob('*'):
         if file.is_file():
-            data=b'0.9.0\\n' if file.name=='VERSION' else file.read_bytes()
-            bundle.writestr('release/'+str(file.relative_to(source)),data)
+            bundle.writestr('release/'+str(file.relative_to(source)),file.read_bytes())
 `,checkout,path.join(releaseDirectory,'release.zip')]);
+      // Only the old installation is simulated; the candidate archive stays unchanged.
+      fs.writeFileSync(path.join(checkout,'code-gossip/VERSION'),'0.8.0\n');
       const env = { ...process.env, TEST_RELEASE_DIRECTORY:releaseDirectory, HOME: home, CODEX_HOME: path.join(home, '.codex'), PATH: bin,
         PORT: String(port), PYTHONPATH: support, PYTHONDONTWRITEBYTECODE: '1', E2E_OPENED: opened };
       const run = async (script, ...args) => (await exec('/bin/bash', [script, ...args], { env, cwd: checkout, timeout: 30000 })).stdout;
@@ -101,12 +103,12 @@ with zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED) as bundle:
         if(!dev){
           await page.locator('#settingsButton').click();
           await page.locator('#checkUpdates').click();
-          await page.waitForFunction(()=>document.getElementById('availableVersion').textContent==='Available: 0.9.0');
+          await page.waitForFunction(version=>document.getElementById('availableVersion').textContent==='Available: '+version,releaseVersion);
           await page.locator('#applyUpdate').click();
-          await page.waitForFunction(()=>document.getElementById('installedVersion').textContent==='Installed: 0.9.0',{},{timeout:30000});
+          await page.waitForFunction(version=>document.getElementById('installedVersion').textContent==='Installed: '+version,releaseVersion,{timeout:30000});
           assert.equal((await status()).effects_profile,'paper','Update preserves saved preferences');
           assert.notEqual(fs.readFileSync(pidFile,'utf8'),refreshedPid,'Update restarts Soundbar');
-          assert.equal(fs.readFileSync(path.join(runtime,'VERSION'),'utf8').trim(),'0.9.0');
+          assert.equal(fs.readFileSync(path.join(runtime,'VERSION'),'utf8').trim(),releaseVersion);
           assert(!fs.existsSync(path.join(runtime,'version_state/recovery')));
         }
         await page.getByRole('tab', { name: 'Phrases', exact: true }).click();

@@ -45,6 +45,8 @@ Read shipped defaults, not personal settings or logs, when writing examples. Kee
 
 Put pending user-visible changes under `Unreleased`, consolidating superseded entries into the final behavior. On an authorized release, set `code-gossip/VERSION` to the release version and move that section into the requested version with the actual release date, leaving an empty `Unreleased` heading for future work. The updater validates that the shipped version matches the stable release tag (with an optional `v` prefix). Preserve dated history; do not invent missing release notes.
 
+Before publishing, validate the exact committed source with `python3 -B scripts/check_release.py <tag> --ref <commit>`. After pushing the tag, download its GitHub source ZIP and run the same check with `--archive <downloaded.zip>`. Do not replace `VERSION` inside the archive for validation or update tests. Verify a disposable older installation updates from that unchanged archive and reports the new version; after publication, verify GitHub's latest release and the source archive again.
+
 Call out breaking changes prominently: what stops working, the affected users, and the supported upgrade steps. Reflect that notice in the release commit and annotated Git tag when releasing. Use the requested tag spelling; inspect existing tags and do not overwrite one. A documentation request alone does not authorize committing, pushing, tagging, or publishing a release.
 
 ## Review the result

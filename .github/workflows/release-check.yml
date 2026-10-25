@@ -1,0 +1,30 @@
+name: Validate release archive
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Intended release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate the unmodified commit archive
+        env:
+          RELEASE_TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+        run: |
+          release_tag="${RELEASE_TAG:-$(cat code-gossip/VERSION)}"
+          python3 -B scripts/check_release.py "$release_tag"
