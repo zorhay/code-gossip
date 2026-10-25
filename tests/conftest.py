@@ -1,6 +1,7 @@
 """Common fixtures for soundbar integration tests."""
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -13,6 +14,13 @@ SOUNDBAR_DIR = REPO_ROOT / "code-gossip"
 # Direct script imports remain useful in unit tests; subprocess tests use entrypoints.
 for directory in (SOUNDBAR_DIR, SOUNDBAR_DIR / "engine", SOUNDBAR_DIR / "hooks", SOUNDBAR_DIR / "soundbar"):
     sys.path.insert(0, str(directory))
+
+
+@pytest.fixture(autouse=True)
+def offline_release_checks(monkeypatch):
+    """Automatic checks in child servers must never contact GitHub in tests."""
+    support = str(REPO_ROOT / "tests/support")
+    monkeypatch.setenv("PYTHONPATH", support + os.pathsep + os.environ.get("PYTHONPATH", ""))
 
 
 @pytest.fixture

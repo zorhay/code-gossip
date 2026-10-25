@@ -33,7 +33,10 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from paths import CONFIGS, DATA, ENGINE, STATE, SOUNDBAR, executable
+from paths import ROOT, CONFIGS, DATA, ENGINE, STATE, SOUNDBAR, executable
+import updates as update_service
+from updates.process import is_busy, lock as update_lock
+from updates.storage import installed_version, write_json
 
 from engine.integrations import kokoro
 from engine.model_catalog import list_models
@@ -42,6 +45,7 @@ log = logging.getLogger("soundbar")
 settings_lock = threading.RLock()
 installation_lock = threading.Lock()
 stopping = False
+RUNNING_VERSION = installed_version(ROOT)
 
 UI_FILE = SOUNDBAR / "ui.html"
 CONFIG_FILE = CONFIGS / "config.json"
@@ -711,7 +715,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self.wfile.write(UI_FILE.read_bytes())
 
             elif path == "/api/health":
-                self.json_response({"app": "code-gossip", "root": str(UI_FILE.resolve().parents[1])})
+                self.json_response({"app": "code-gossip", "root": str(UI_FILE.resolve().parents[1]), "version": RUNNING_VERSION})
+
+            elif path == "/api/updates":
+                self.json_response(update_service.status(ROOT))
 
             elif path == "/ui.js":
                 asset = UI_FILE.parent / path[1:]
@@ -735,15 +742,16 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         global stopping
         path = urlparse(self.path).path
-        if path == "/api/shutdown":
+        if path in ("/api/shutdown", "/api/update", "/api/update-check"):
             port = self.server.server_port
             origins = {f"http://localhost:{port}", f"http://127.0.0.1:{port}"}
             if (self.headers.get("Origin") not in origins
                     or self.headers.get("X-Soundbar-Request") != "ui"):
-                self.send_error(403, "Shutdown requires a Soundbar UI request")
+                self.send_error(403, "This action requires a Soundbar UI request")
                 return
+        if path == "/api/shutdown":
             with installation_lock:
-                if kokoro.progress["status"] == "running":
+                if kokoro.progress["status"] == "running" or is_busy(ROOT):
                     self.json_response({"ok": False, "error": "Installation is in progress. Wait for it to finish before closing Soundbar."})
                     return
                 stopping = True
@@ -755,15 +763,26 @@ class Handler(SimpleHTTPRequestHandler):
         body = self.read_body()
         try:
             mutations = {"/api/activate", "/api/config", "/api/phrases", "/api/narrator-style",
-                         "/api/narrator-style-delete", "/api/narrator-style-reset"}
-            with settings_lock if path in mutations else nullcontext():
+                         "/api/narrator-style-delete", "/api/narrator-style-reset", "/api/kokoro-install"}
+            with settings_lock if path in mutations else nullcontext(), \
+                    update_lock(ROOT) if path in mutations else nullcontext():
                 self._handle_post(path, body)
         except Exception as e:
             log.error("POST %s failed: %s", path, e)
             self.json_response({"ok": False, "error": str(e)})
 
     def _handle_post(self, path, body):
-        if path == "/api/activate":
+        if path == "/api/update-check":
+            self.json_response({"ok": True, **update_service.check_for_updates(ROOT, force=True)})
+
+        elif path == "/api/update":
+            with installation_lock:
+                if stopping or kokoro.progress["status"] == "running":
+                    raise ValueError("Wait for installation to finish and keep Soundbar open before updating.")
+                update_service.start_update(ROOT)
+            self.json_response({"ok": True, **update_service.status(ROOT)})
+
+        elif path == "/api/activate":
             apply_selection(body)
             self.json_response({"ok": True})
 
@@ -1030,12 +1049,16 @@ def main():
     pid_file = STATE / ".server.pid"
     pid = str(os.getpid())
     pid_file.write_text(pid)
+    write_json(STATE / "panel.json", {"pid": int(pid), "port": server.server_port})
+    check_stop = threading.Event()
+    update_service.schedule_checks(ROOT, check_stop)
     print(f"Soundbar: http://localhost:{port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        check_stop.set()
         server.server_close()
         # Another panel may have started since this one; keep its PID file.
         if pid_file.exists() and pid_file.read_text().strip() == pid:

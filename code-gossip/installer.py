@@ -16,6 +16,9 @@ import tempfile
 import time
 
 from hooks import codex, cursor
+from updates.errors import UpdateError
+from updates.process import lock
+from updates.storage import record_installation
 
 
 AGENTS = ("codex", "cursor", "claude")
@@ -168,13 +171,19 @@ def install_files(source, dest, dev):
         # Never copy a developer's private settings, environments, or runtime state.
         ignored = shutil.ignore_patterns(*USER_FILES, ".venv", "__pycache__", ".pytest_cache",
             ".DS_Store", "*.log", "*.sock", ".server.pid", ".manifest", ".soundbar-window",
-            "integrations.json", "session_context", "*.code-gossip-backup", "state")
+            "integrations.json", "session_context", "*.code-gossip-backup", "state", "version_state")
         def ignore_local(directory, names):
             excluded = ignored(directory, names)
             if Path(directory) == source / "configs":
                 excluded.add("sounds.json")
             return excluded
         shutil.copytree(source, dest, dirs_exist_ok=True, ignore=ignore_local)
+    # A rapid update can reuse a .pyc timestamp/size even when its source changed.
+    # Keep optional environments intact; discard only runtime module caches.
+    for directory in (dest, *(dest / name for name in ("hooks", "engine", "soundbar", "updates"))):
+        cache = directory / "__pycache__"
+        if cache.is_dir() and not cache.is_symlink():
+            shutil.rmtree(cache)
     configs = dest / "configs"
     for name in USER_FILES:
         target = configs / name
@@ -184,7 +193,7 @@ def install_files(source, dest, dev):
     config = json.loads(config_path.read_text())
     config["python3_path"] = sys.executable
     config_path.write_text(json.dumps(config, indent=2) + "\n")
-    for name in ("engine/play.sh", "switch.sh", "soundbar/panel.sh", "uninstall.sh"):
+    for name in ("engine/play.sh", "switch.sh", "soundbar/panel.sh", "uninstall.sh", "update.sh"):
         script = dest / name
         script.chmod(script.stat().st_mode | 0o111)
     if shutil.which("say"):
@@ -321,12 +330,22 @@ def run(args):
     if args.dry_run:
         print("No changes made.")
         return
-    if not uninstall:
-        install_files(source, dest, args.dev)
-    for agent in selected:
-        write_hooks(paths[agent], documents[agent], updated[agent])
-    if uninstall and not remaining:
-        remove_files(dest, args.purge)
+    with lock(source if args.dev else dest, inherited=getattr(args, "update_lock_fd", None)):
+        # Re-read shared documents after acquiring the mutation lock; a panel
+        # save may have completed while selection/validation was in progress.
+        documents = {agent: read_document(paths[agent]) for agent in (AGENTS if uninstall else selected)}
+        updated = {agent: merge_hooks(documents[agent], agent,
+                   {} if uninstall else definitions(agent, source, dest)) for agent in selected}
+        if uninstall:
+            remaining = [agent for agent in AGENTS if agent not in selected and is_connected(documents[agent], agent)]
+        if not uninstall:
+            install_files(source, dest, args.dev)
+        for agent in selected:
+            write_hooks(paths[agent], documents[agent], updated[agent])
+        if uninstall and not remaining:
+            remove_files(dest, args.purge)
+        else:
+            record_installation(dest, paths, selected, dev=dest.is_symlink(), uninstall=uninstall)
     print(f"Code Gossip {'uninstalled' if uninstall else 'installed'} for {', '.join(selected)}.")
     if not uninstall:
         print(f"Panel: {dest / 'soundbar/panel.sh'}\nUninstall: {dest / 'uninstall.sh'}")
@@ -346,6 +365,7 @@ def main():
     parser.add_argument("--dev", action="store_true", help="install using a symlink to this checkout")
     parser.add_argument("--no-panel", action="store_true", help="install without starting Soundbar or opening a browser")
     parser.add_argument("--purge", action="store_true", help="delete user settings when the last integration is uninstalled")
+    parser.add_argument("--update-lock-fd", type=int, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.no_panel and args.action != "install":
         parser.error("--no-panel applies only to install")
@@ -353,7 +373,7 @@ def main():
         parser.error("--dev applies only to install; --purge applies only to uninstall")
     try:
         run(args)
-    except (OSError, ValueError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, UpdateError, subprocess.CalledProcessError) as exc:
         parser.exit(1, f"Code Gossip: {exc}\n")
     except KeyboardInterrupt:
         parser.exit(130, "\nCancelled.\n")

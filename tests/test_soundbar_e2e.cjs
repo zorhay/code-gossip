@@ -1,5 +1,5 @@
 // Real installers, HTTP APIs, browser UI, and uninstall in disposable normal/dev homes.
-// Only the OS browser opener is intercepted; Playwright opens the recorded URL.
+// The OS browser opener and GitHub release requests are intercepted.
 // Requires Python, jq, Node and Playwright. Never installs Kokoro or calls an LLM.
 const { chromium } = require('playwright');
 const assert = require('node:assert/strict');
@@ -42,13 +42,24 @@ async function until(check, description) {
       for (const directory of [home, bin, support, checkout]) fs.mkdirSync(directory, { recursive: true });
       for (const agent of ['codex', 'cursor', 'claude']) fs.mkdirSync(path.join(home, '.' + agent));
       for (const [name, source] of Object.entries({ python3: python, dirname: '/usr/bin/dirname', jq })) fs.symlinkSync(source, path.join(bin, name));
-      const excluded = new Set(['state', '__pycache__', '.venv', 'config.json', 'phrases.json', 'narrator_styles.json']);
+      const excluded = new Set(['state', 'version_state', '__pycache__', '.venv', 'config.json', 'phrases.json', 'narrator_styles.json']);
       fs.cpSync(path.join(repo, 'code-gossip'), path.join(checkout, 'code-gossip'), {
         recursive: true, filter: source => !excluded.has(path.basename(source)) && source !== path.join(repo, 'code-gossip/configs/sounds.json'),
       });
       fs.copyFileSync(path.join(repo, 'install.sh'), path.join(checkout, 'install.sh'));
       fs.writeFileSync(path.join(support, 'sitecustomize.py'), `import os, subprocess\n_real_run = subprocess.run\ndef run(args, *a, **kw):\n    if isinstance(args, list) and args[:1] == ['/usr/bin/open']:\n        with open(os.environ['E2E_OPENED'], 'a') as f: f.write(args[1] + '\\n')\n        return subprocess.CompletedProcess(args, 0)\n    return _real_run(args, *a, **kw)\nsubprocess.run = run\n`);
-      const env = { ...process.env, HOME: home, CODEX_HOME: path.join(home, '.codex'), PATH: bin,
+      fs.appendFileSync(path.join(support, 'sitecustomize.py'), fs.readFileSync(path.join(repo, 'tests/support/sitecustomize.py'), 'utf8'));
+      const releaseDirectory=path.join(temp,'release');fs.mkdirSync(releaseDirectory);
+      fs.writeFileSync(path.join(releaseDirectory,'release.json'),JSON.stringify({tag_name:'0.9.0',id:9,draft:false,prerelease:false}));
+      execFileSync(python,['-c',`import pathlib,sys,zipfile
+source=pathlib.Path(sys.argv[1])
+with zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED) as bundle:
+    for file in source.rglob('*'):
+        if file.is_file():
+            data=b'0.9.0\\n' if file.name=='VERSION' else file.read_bytes()
+            bundle.writestr('release/'+str(file.relative_to(source)),data)
+`,checkout,path.join(releaseDirectory,'release.zip')]);
+      const env = { ...process.env, TEST_RELEASE_DIRECTORY:releaseDirectory, HOME: home, CODEX_HOME: path.join(home, '.codex'), PATH: bin,
         PORT: String(port), PYTHONPATH: support, PYTHONDONTWRITEBYTECODE: '1', E2E_OPENED: opened };
       const run = async (script, ...args) => (await exec('/bin/bash', [script, ...args], { env, cwd: checkout, timeout: 30000 })).stdout;
       const install = (...extra) => run(path.join(checkout, 'install.sh'), '--agents', 'codex,cursor,claude', ...(dev ? ['--dev'] : []), ...extra);
@@ -87,6 +98,17 @@ async function until(check, description) {
         assert.equal((await status()).effects_profile, 'default', 'Browsing does not save');
         await page.locator('#activateSelection').click();
         await until(async () => (await status()).effects_profile === 'paper', 'activated Effects profile');
+        if(!dev){
+          await page.locator('#settingsButton').click();
+          await page.locator('#checkUpdates').click();
+          await page.waitForFunction(()=>document.getElementById('availableVersion').textContent==='Available: 0.9.0');
+          await page.locator('#applyUpdate').click();
+          await page.waitForFunction(()=>document.getElementById('installedVersion').textContent==='Installed: 0.9.0',{},{timeout:30000});
+          assert.equal((await status()).effects_profile,'paper','Update preserves saved preferences');
+          assert.notEqual(fs.readFileSync(pidFile,'utf8'),refreshedPid,'Update restarts Soundbar');
+          assert.equal(fs.readFileSync(path.join(runtime,'VERSION'),'utf8').trim(),'0.9.0');
+          assert(!fs.existsSync(path.join(runtime,'version_state/recovery')));
+        }
         await page.getByRole('tab', { name: 'Phrases', exact: true }).click();
         assert.equal((await status()).effects_profile, 'paper');
         await page.locator('#setup-phrases > summary').click();

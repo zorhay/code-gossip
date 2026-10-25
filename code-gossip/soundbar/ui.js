@@ -7,6 +7,7 @@ let checkedAI = null, busy = false, savingSound = false, savingVolume = false, i
 const setupChecks = {}, errorMessages = new WeakMap();
 let setupChecksReady=false,setupCheckTimer=null;
 let enabledLayers, mediaBusy=false, generatedSample=null, modelList=null;
+let versions=null,versionPoll=null,versionChecking=false,versionStarting=false,versionError='',loadedVersion=null;
 const tipsKey='code-gossip.topic-tips.v1';
 let tipsState={hidden:false,dismissed:[]},tipScenario=null;
 const tipTopics=[
@@ -108,7 +109,7 @@ function mountSpeechSetups(){
 }
 
 async function api(path, body) {
-  const response = await fetch(path, body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+  const response = await fetch(path, body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-Soundbar-Request':'ui'}, body:JSON.stringify(body)});
   const data = await response.json();
   if (!response.ok || data.ok === false) throw new Error(data.error || data.message || 'Request failed');
   return data;
@@ -353,8 +354,7 @@ function renderSetup(){
  $('providerHint').textContent=state.provider==='claude_cli'?'Checks that Claude CLI is installed. Play a sample to test sign-in and model access.':state.provider==='ollama'?'Checks the local server. Play a sample to test the selected model.':saved.narrator_providers[state.provider]?.description || '';
  $('providerCheckLabel').textContent=state.provider==='claude_cli'?'CLI availability':state.provider==='ollama'?'Local server':'Connection';
  $('keyField').hidden=!needsKey();
- $('closeSoundbar').disabled=!!setup.installing;
- $('closeInstallHint').hidden=!setup.installing;
+ renderVersions();
  renderChecks();renderStyle();updateActivation();
 }
 async function refreshSetup() {setup={...setup,...await api('/api/setup')};renderSetup();}
@@ -476,10 +476,57 @@ async function toggleSound(){
  await action(async()=>{await saveConfig(changes);state.enabled=enabled;});savingSound=false;updateStatus();
 }
 async function closeSoundbar(){
- if(setup.installing)return;
+ if(setup.installing||versions?.running)return;
  const button=$('closeSoundbar');button.disabled=true;
- const result=await action(async()=>{const response=await fetch('/api/shutdown',{method:'POST',headers:{'X-Soundbar-Request':'ui'}});if(!response.ok||!(await response.json()).ok)throw new Error('Could not stop Soundbar');clearTimeout(installPoll);clearTimeout(setupCheckTimer);$('settingsDialog').close();$('closedDialog').showModal();$('closedTitle').focus();return true;});
+ const result=await action(async()=>{const response=await fetch('/api/shutdown',{method:'POST',headers:{'X-Soundbar-Request':'ui'}});if(!response.ok||!(await response.json()).ok)throw new Error('Could not stop Soundbar');clearTimeout(installPoll);clearTimeout(setupCheckTimer);clearTimeout(versionPoll);$('settingsDialog').close();$('closedDialog').showModal();$('closedTitle').focus();return true;});
  if(!result)button.disabled=false;
+}
+function renderVersions(){
+ const running=versions?.running||versionStarting;
+ $('closeSoundbar').disabled=!!setup?.installing||running;
+ $('closeInstallHint').hidden=!setup?.installing&&!running;
+ if(!versions)return;
+ const needsAttention=['failed','interrupted'].includes(versions.phase);
+ $('installedVersion').textContent='Installed: '+versions.installed;
+ $('versionNotice').hidden=!versions.available&&!running&&!needsAttention;
+ $('versionNotice').textContent=running?'Updating Code Gossip…':needsAttention?'Update needs attention':versions.available?`Update available: ${versions.installed} → ${versions.release.version}`:'Code Gossip updates';
+ $('availableVersion').textContent=versions.available?'Available: '+versions.release.version:versions.checked_at?'You have the latest stable release.':'Updates are checked automatically while Soundbar runs.';
+ $('releaseNotes').hidden=!versions.release;
+ if(versions.release)$('releaseNotes').href=versions.release.notes_url;
+ $('checkUpdates').disabled=running||versionChecking;
+ $('checkUpdates').textContent=versionChecking?'Checking…':'Check for updates';
+ $('checkUpdates').setAttribute('aria-busy',String(versionChecking));
+ $('applyUpdate').hidden=versions.development||!versions.available&&!needsAttention&&!running;
+ $('applyUpdate').disabled=running||versionChecking||!!setup?.installing;
+ $('applyUpdate').textContent=running?'Updating…':needsAttention?'Retry update':'Update';
+ $('applyUpdate').setAttribute('aria-busy',String(running));
+ $('updateResult').textContent=versionError||[versions.message,versions.guidance].filter(Boolean).join(' ');
+ $('updateResult').dataset.tone=versionError||needsAttention?'error':running?'warning':'neutral';
+ $('updateExplanation').textContent=versions.development?'Development installation: update your checkout, then rerun install.sh --dev with your existing agents.':'Updates install only when you choose Update. Soundbar restarts; saved preferences are kept.';
+}
+async function refreshVersions(){
+ clearTimeout(versionPoll);
+ try{
+  versions=await api('/api/updates');
+  if(!loadedVersion)loadedVersion=versions.installed;
+  if(!versions.running&&versions.phase==='done'&&loadedVersion!==versions.installed){location.reload();return;}
+  renderVersions();
+ }catch(error){
+  if(versions?.running){$('updateResult').textContent='Soundbar is restarting. Reconnecting…';}
+ }
+ if(!$('closedDialog').open)versionPoll=setTimeout(refreshVersions,versions?.running?1000:30000);
+}
+async function checkUpdates(){
+ versionChecking=true;versionError='';renderVersions();
+ try{versions=await api('/api/update-check',{});}
+ catch(error){versionError=error.message;}
+ finally{versionChecking=false;renderVersions();}
+}
+async function applyUpdate(){
+ versionStarting=true;versionError='';renderVersions();
+ try{versions=await api('/api/update',{});}
+ catch(error){versionError=error.message;}
+ finally{versionStarting=false;renderVersions();refreshVersions();}
 }
 function modelListIdentity(){return JSON.stringify([state.provider,state.apiKey]);}
 function hasProviderKey(){return !needsKey()||!!state.apiKey.trim()||state.provider===saved.narrator_provider&&!!saved.narrator_api_key;}
@@ -577,6 +624,8 @@ function wire(){
  $('setup-ai').ontoggle=()=>{if($('setup-ai').open&&!tipScenario)refreshModels();};
  $('sessionContext').onchange=e=>state.context=e.target.checked;
  $('settingsButton').onclick=()=>$('settingsDialog').showModal();$('closeSettings').onclick=()=>$('settingsDialog').close();
+ $('versionNotice').onclick=()=>{$('settingsDialog').showModal();$('versionPreferences').scrollIntoView({block:'nearest'});};
+ $('checkUpdates').onclick=checkUpdates;$('applyUpdate').onclick=applyUpdate;
  $('helpButton').onclick=toggleTips;
  $('closedDialog').oncancel=e=>e.preventDefault();$('closeSoundbar').onclick=closeSoundbar;
  $('reduceRepeats').onchange=()=>action(async()=>{try{await saveConfig({sound_spacing_on:$('reduceRepeats').checked});}finally{$('reduceRepeats').checked=saved.sound_spacing_on;for(const id of ['effectsGap','voiceGap'])$(id).disabled=!saved.sound_spacing_on;}});
@@ -590,6 +639,6 @@ function wire(){
 window.addEventListener('DOMContentLoaded',async()=>{
  mountSpeechSetups();mountCheckStatuses();
  const controls=[...document.querySelectorAll('button,input,select')];controls.forEach(el=>el.disabled=true);
- try{await load();controls.forEach(el=>el.disabled=false);wire();setupChecksReady=true;scheduleSetupChecks(0);renderPack();renderAudioSample('clips');updatePhrasePreview();renderSetup();updateStatus();mountTips();for(const id of ['effectsGap','voiceGap'])$(id).disabled=!saved.sound_spacing_on;}
+ try{await load();controls.forEach(el=>el.disabled=false);wire();setupChecksReady=true;scheduleSetupChecks(0);renderPack();renderAudioSample('clips');updatePhrasePreview();renderSetup();updateStatus();mountTips();refreshVersions();for(const id of ['effectsGap','voiceGap'])$(id).disabled=!saved.sound_spacing_on;}
  catch(error){$('loadError').hidden=false;$('loadError').querySelector('button').disabled=false;$('statusText').textContent='Disconnected';showError(error.message,$('loadError'));}
 });

@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Added
+
+- Update discovery in Soundbar with installed/available versions, release notes, and explicit check/update actions. The installed `update.sh` CLI shares the same flow: download fresh release source into a temporary directory, run its installer for existing integrations, restart and verify Soundbar, and attempt recovery on failure. Preferences, custom Codex paths, and unrelated hooks are preserved; local update records and logs live in `version_state/`. Older installations need one checkout-based reinstall to obtain the updater.
+
 ### Changed
 
 - The Code Gossip marketing page deploys from the released commit when a GitHub release is published, instead of on every push or merge to `main`.

@@ -71,6 +71,10 @@ code-gossip/                         installed as ~/.code-gossip/
 │
 ├── configs/                        defaults + gitignored user preferences
 ├── state/                          gitignored logs, sockets, caches, .venv
+├── version_state/                  gitignored installation/update records and recovery
+├── VERSION                         shipped release version
+├── updates/                        detection, source preparation, installation, recovery
+├── update.sh / update.py            installed update CLI
 ├── paths.py                        shared Python path definitions
 ├── installer.py                    installation and removal for all agents
 ├── switch.sh                       command-line controls
@@ -256,7 +260,10 @@ Model suggestions come from `/api/narrator-models`, which reads the draft provid
 | POST | `/api/activate` | Validate and save a selected mode and its draft settings/phrases |
 | POST | `/api/draft-check`, `/api/draft-preview` | Check or preview unsaved selections without config writes |
 | POST | `/api/narrator-models` | Read available models with the draft provider credentials; no config writes |
-| GET | `/api/health` | Panel identity and resolved runtime path |
+| GET | `/api/health` | Panel identity, resolved runtime path, and version loaded at startup |
+| GET | `/api/updates` | Cached release information and persistent update progress/result |
+| POST | `/api/update-check` | Same-origin UI request for an immediate release check |
+| POST | `/api/update` | Same-origin UI request to start the independent updater |
 | POST | `/api/shutdown` | Same-origin UI request to stop the panel and clean up its PID file |
 | GET | `/api/status` | Settings, profiles, events, voices, and provider metadata |
 | POST | `/api/config` | Save recognized settings keys |
@@ -307,6 +314,59 @@ flowchart TD
 | Dev removal | Remove only the installation symlink, never checkout content, even with `--purge` |
 
 Custom Codex homes require the same `CODEX_HOME` for installation and removal. A normal installation and a dev symlink cannot overwrite each other; uninstall before changing modes. The installer supports only the current package layout.
+
+### Release updates
+
+Soundbar and [`update.sh`](code-gossip/update.sh) share the [`updates`](code-gossip/updates/) public operations. The runtime's `VERSION` file contains its release number; set it to match the stable release tag before publishing a release. Existing installations without this feature need one checkout-based reinstall to get the updater and record their integrations. Development symlinks receive checkout-based instructions rather than source replacement.
+
+```mermaid
+sequenceDiagram
+    participant UI as Soundbar / CLI
+    participant GitHub as GitHub releases
+    participant Worker as Independent updater
+    participant Runtime as Installed runtime
+    Note over Runtime: Record version, integrations, paths, and Python
+    UI->>GitHub: Startup, scheduled, or manual check
+    GitHub-->>UI: Stable version and release notes
+    Note over UI: Notify and wait for explicit Update
+    UI->>Worker: Start update
+    Worker->>Runtime: Lock and verify installation details
+    Worker->>GitHub: Refresh, pin release, download fresh source
+    GitHub-->>Worker: Archive in temporary directory
+    Note over Worker: Validate source and preflight fresh installer
+    Worker->>Runtime: Back up, stop panel, run fresh installer
+    Worker->>Runtime: Restart and verify version and health
+    alt Installation and verification succeed
+        Runtime-->>Worker: Healthy
+    else Installation or verification fails
+        Worker->>Runtime: Restore previous installation
+    end
+    Worker-->>UI: Persist result and reconnect Soundbar
+    Note over Worker: Clean temporary source and retain logs
+```
+
+| Step / owner | Contract |
+|---|---|
+| Record — `updates/storage.py`, installer | Record the release version, normal/dev mode, Python, and selected integration configuration paths in `version_state/installation.json`; partial install/removal updates the selection. A recorded custom Codex home is passed to the fresh installer even if Soundbar lacks that environment variable. |
+| Trigger and detect — `updates/check.py` | A server-owned background thread checks the cache on startup and hourly, contacting GitHub only after 24 hours since success. Failed automatic attempts retry at most hourly. The Soundbar button and `update.sh check` bypass the cache. No hook or separate background service checks for releases. |
+| Discover and notify — `updates/github.py`, Soundbar | Use GitHub's [latest stable release API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release); compare numeric major/minor/patch versions, accepting an optional `v`. Short network timeouts and cached results keep automatic failures quiet. Manual errors appear beside the check action. Checking never installs. |
+| Prepare and fetch — `updates/update.py`, `source.py` | An explicit update refreshes release information, validates recorded integrations/Python, pins the selected tag to a commit, and downloads its ZIP archive into an owned OS temporary directory. Reject traversal, unexpected symlinks, special files, oversized archives, missing runtime files, and mismatched versions. Run the downloaded installer's dry run before changing runtime files. |
+| Install — `updates/process.py`, `installation.py`, fresh installer | A detached worker survives the panel/terminal closing and holds a process lock inherited by its installer. Settings mutations, another install/update, and new Kokoro installations are blocked during the transaction; an already running Kokoro installation prevents updating. Back up the runtime and selected hook documents, then invoke the fresh Python installer with the recorded interpreter and existing integration selection. |
+| Verify or recover — `updates/soundbar.py`, `recovery.py` | Restart only the identity-checked Soundbar process and verify its root and startup version through `/api/health`. Preserve `state/` and `version_state/` throughout. On failure, restore the previous runtime and our hook handlers, preserving unrelated hook edits. Failed recovery retains the backup and reports its location. A later Update retries interrupted recovery before proceeding. |
+| Report and clean — `updates/storage.py`, `source.py`, Soundbar | Persist progress, result, and log; reconnect and reload the UI after a successful version change. Hook guidance depends on changed owned definitions, ignoring mere ordering. Delete temporary source after completion/failure; clean only directories with this installation's ownership marker. Keep recovery data if recovery still needs attention. |
+
+[`run_update()`](code-gossip/updates/update.py) is the main workflow: recover an interrupted update, prepare the plan, prepare fresh source, back up, install, verify, and report. Each workflow module puts its entrypoint before the supporting functions. [`prepare_source()`](code-gossip/updates/source.py) owns download, extraction, validation, and installer preflight; [`recover_interrupted_update()`](code-gossip/updates/recovery.py) owns recovery before another attempt.
+
+| Supporting module | Responsibility |
+|---|---|
+| [`entities.py`](code-gossip/updates/entities.py) | Typed versions, releases, installations, check results, update plans, progress, and results exchanged between steps |
+| [`config.py`](code-gossip/updates/config.py) | Check intervals, timeouts, archive limits, and paths resolved from the selected runtime |
+| [`constants.py`](code-gossip/updates/constants.py) | Repository identity, filenames, preserved directories, and required source files |
+| [`storage.py`](code-gossip/updates/storage.py) | Atomic JSON persistence and conversion between saved records and typed entities |
+| [`errors.py`](code-gossip/updates/errors.py) | Explicit update and busy errors |
+| [`cli.py`](code-gossip/updates/cli.py), [`__init__.py`](code-gossip/updates/__init__.py) | CLI argument/output handling and Soundbar-facing operations; JSON payloads stay at these boundaries and storage |
+
+The CLI supports `check`, `update`, and `status`, with `--json` for machine-readable results. `version_state/` contains `installation.json`, `check.json`, `operation.json`, `update.log`, locks, and a transient `recovery/` backup. These local files are gitignored and excluded when copying a source checkout into an installation. Source downloads are temporary; `~/.code-gossip/` remains a runtime directory without a Git repository. Update/check HTTP actions require a same-origin Soundbar request; `GET /api/updates` only reads status. Automatic checks continue when the browser tab closes, until the Soundbar server stops.
 
 ## Data contracts
 

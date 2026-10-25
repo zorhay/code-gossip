@@ -29,11 +29,15 @@ const server = http.createServer((req,res)=>{
  try{
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[],writes=[],previews=[],checks=[],modelRequests=[];let saveGate=null,releaseSave;let modelGate=null,releaseModels,failModels=false;let failGeneration=false,failSave=false,failShutdown=true,installations=0,checkGate=null,releaseCheck,failCheck=false;
+  let versionState={installed:'0.8.0',available:false,release:null,checked_at:1,development:false,running:false,phase:'idle',message:''},updateChecks=0,updateStarts=0,failUpdateCheck=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});
   await page.route('**/api/**',async route=>{
    const req=route.request(),endpoint=new URL(req.url()).pathname;
    let reply={ok:true};
    if(endpoint==='/api/status')reply=state;
+   else if(endpoint==='/api/updates')reply=versionState;
+   else if(endpoint==='/api/update-check'){assert.equal(req.headers()['x-soundbar-request'],'ui');updateChecks++;reply=failUpdateCheck?{ok:false,error:'GitHub is unavailable'}:versionState;}
+   else if(endpoint==='/api/update'){assert.equal(req.headers()['x-soundbar-request'],'ui');updateStarts++;Object.assign(versionState,{running:true,phase:'downloading',message:'Downloading Code Gossip 0.9.0…'});reply=versionState;}
    else if(endpoint==='/api/setup')reply=state.setup;
    else if(endpoint==='/api/activate'){
     const body=req.postDataJSON();writes.push(body);if(saveGate)await saveGate;
@@ -310,6 +314,32 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#aiVerificationRow').isVisible(),true);
   await page.waitForFunction(()=>document.getElementById('checkStatus-aiSpeech').textContent==='Engine available');
   assert.equal(checks.at(-1).scope,'speech','Installation completion runs a separate verification');
+  // Detection never installs. Both actions remain explicit and independently retryable.
+  Object.assign(versionState,{available:true,release:{version:'0.9.0',notes_url:'https://github.com/zorhay/code-gossip/releases/tag/0.9.0'}});
+  await page.evaluate(()=>refreshVersions());
+  assert((await page.locator('#versionNotice').innerText()).includes('0.8.0 → 0.9.0'));
+  assert.equal(updateStarts,0);
+  await page.locator('#versionNotice').click();
+  failUpdateCheck=true;await page.locator('#checkUpdates').click();
+  await page.getByText('GitHub is unavailable',{exact:true}).waitFor();
+  assert(await page.locator('#applyUpdate').isEnabled(),'A failed check preserves cached availability');
+  failUpdateCheck=false;await page.locator('#checkUpdates').click();
+  await page.waitForFunction(()=>document.getElementById('checkUpdates').textContent==='Check for updates');
+  assert.equal(updateChecks,2);assert.equal(updateStarts,0);
+  for(const width of [390,1280]){
+   await page.setViewportSize({width,height:900});
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+   if(process.env.SCREENSHOT_DIR)await page.screenshot({path:path.join(process.env.SCREENSHOT_DIR,'update-available-'+width+'.png')});
+  }
+  await page.locator('#applyUpdate').click();await page.waitForFunction(()=>document.getElementById('applyUpdate').textContent==='Updating…');
+  assert.equal(updateStarts,1);assert(await page.locator('#closeSoundbar').isDisabled());
+  Object.assign(versionState,{running:false,phase:'failed',message:'Update failed. Previous version restored.'});
+  await page.evaluate(()=>refreshVersions());assert.equal(await page.locator('#applyUpdate').innerText(),'Retry update');
+  Object.assign(versionState,{development:true});await page.evaluate(()=>refreshVersions());
+  assert.equal(await page.locator('#applyUpdate').isVisible(),false);
+  assert((await page.locator('#updateExplanation').innerText()).startsWith('Development installation'));
+  Object.assign(versionState,{development:false,available:false,phase:'done',message:'Updated successfully.'});
+  await page.evaluate(()=>refreshVersions());await page.keyboard.press('Escape');
   await page.locator('#settingsButton').click();await page.locator('#closeSoundbar').click();await page.getByText('Could not stop Soundbar',{exact:true}).first().waitFor();assert(await page.locator('#closeSoundbar').isEnabled());
   failShutdown=false;await page.locator('#closeSoundbar').click();await page.locator('#closedDialog[open]').waitFor();await page.keyboard.press('Escape');assert(await page.locator('#closedDialog').isVisible());
   assert.deepEqual(errors,[]);console.log('Soundbar UI passed: draft isolation, explicit activation, failure recovery, previews, check lifecycle, inline errors, Kokoro transparency, phrase voices, mute/reload, keyboard, mobile, shutdown.');
