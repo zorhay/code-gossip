@@ -16,3 +16,17 @@ for (const player of players) {
     card.querySelector('.error').hidden = false;
   });
 }
+
+const copyInstall = document.getElementById('copy-install');
+if (navigator.clipboard) {
+  copyInstall.hidden = false;
+  copyInstall.addEventListener('click', async () => {
+    const status = document.getElementById('copy-status');
+    try {
+      await navigator.clipboard.writeText(document.getElementById('install-command').textContent);
+      status.textContent = 'Command copied.';
+    } catch {
+      status.textContent = 'Select and copy the command above.';
+    }
+  });
+}

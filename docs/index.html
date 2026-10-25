@@ -13,7 +13,7 @@
   <main>
     <nav aria-label="Main navigation">
       <a class="brand" href="https://github.com/zorhay/code-gossip">CODE GOSSIP<span aria-hidden="true"> ▪</span></a>
-      <a class="repo-link" href="https://github.com/zorhay/code-gossip#installation">Install Code Gossip ↗</a>
+      <a class="repo-link" href="#install">Install Code Gossip ↓</a>
     </nav>
     <header>
       <p class="eyebrow">A LITTLE LESS WATCHING. A LITTLE MORE LISTENING.</p>
@@ -47,6 +47,20 @@
       </article>
     </section>
     <p class="note">An illustrated scenario. Senior uses shipped phrases; narrator commentary was AI-written for this demo. Both voice profiles use Kokoro.</p>
+    <section class="installation" id="install" aria-labelledby="install-title">
+      <div class="install-heading">
+        <h2 id="install-title">Hear your next coding session.</h2>
+        <a class="release" href="https://github.com/zorhay/code-gossip/releases/latest">Latest release<!-- RELEASE_VERSION --></a>
+      </div>
+      <p>Run this in Terminal to install for all detected agents. Soundbar opens when installation finishes.</p>
+      <div class="install-command">
+        <pre><code id="install-command">curl -fsSL https://zorhay.github.io/code-gossip/install.sh | bash -s -- --all</code></pre>
+        <button id="copy-install" type="button" hidden>Copy command</button>
+      </div>
+      <p id="copy-status" class="copy-status" role="status"></p>
+      <p class="requirements">Requires macOS, Python 3, and jq (<code>brew install python jq</code>). Choose specific agents with <code>--agents codex,claude</code> instead of <code>--all</code>.</p>
+      <p class="install-links"><a href="install.sh">Inspect the installer</a><a href="https://github.com/zorhay/code-gossip#installation">Setup and development instructions ↗</a></p>
+    </section>
     <footer><span>Code Gossip · Made for macOS</span><a href="https://github.com/zorhay/code-gossip">Explore the project ↗</a></footer>
   </main>
 </body>

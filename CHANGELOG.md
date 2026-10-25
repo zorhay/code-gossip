@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Added
+
+- One-command macOS installation through the website bootstrap, using the same release package and installer as normal installation. The website includes a copyable command and displays the release version supplied by the deployment workflow.
+
 ### Fixed
 
 - Publishing a GitHub release now builds and attaches its installation package without trying to create the release again. Tag pushes alone do not publish; website deployment waits for the package, and reruns preserve an already-uploaded package.

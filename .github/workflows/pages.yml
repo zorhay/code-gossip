@@ -24,6 +24,16 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Display the released version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          python3 - <<'PY'
+          import html, os
+          from pathlib import Path
+          page = Path('docs/index.html')
+          page.write_text(page.read_text().replace('<!-- RELEASE_VERSION -->', ' · ' + html.escape(os.environ['RELEASE_TAG'])))
+          PY
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Upload marketing page
