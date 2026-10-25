@@ -4,7 +4,8 @@ on:
   pull_request:
   push:
     branches: [main]
-    tags: ['*.*.*']
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -25,11 +26,11 @@ jobs:
           python-version: '3.11'
       - name: Build installation package
         env:
-          PACKAGE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '1.2.3' }}
+          PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
         run: python3 -B scripts/package_release.py "$PACKAGE_TAG"
       - name: Test installers, updates, and development mode
         run: |
-          python3 -m pip install pytest pytest-subtests
+          python3 -m pip install pytest pytest-subtests PyYAML
           python3 -m pytest -q
           npm install --prefix "$RUNNER_TEMP/browser" playwright
           "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
@@ -37,14 +38,14 @@ jobs:
           node tests/test_soundbar_ui.cjs
           E2E_RELEASE_PACKAGE="$PWD/dist/code-gossip.zip" node tests/test_soundbar_e2e.cjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: github.ref_type == 'tag'
+        if: github.event_name == 'release'
         with:
           name: installation-package
           path: dist/code-gossip.zip
           if-no-files-found: error
 
   publish:
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'release'
     needs: test
     runs-on: ubuntu-latest
     permissions:
@@ -58,8 +59,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: gh release create "$RELEASE_TAG" dist/code-gossip.zip --verify-tag --generate-notes --latest
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[] | select(.state == "uploaded") | .name')
+          if grep -Fxq 'code-gossip.zip' <<< "$assets"; then
+            echo "Installation package already uploaded."
+          else
+            gh release upload "$RELEASE_TAG" dist/code-gossip.zip
+          fi
 
   pages:
     needs: publish

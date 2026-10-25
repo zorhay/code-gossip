@@ -33,4 +33,4 @@ node tests/test_soundbar_ui.cjs
 node tests/test_soundbar_e2e.cjs
 ```
 
-Python tests need pytest. Browser tests need Node and Playwright with Chromium (`CHROMIUM_PATH` may override it). The end-to-end runner also needs macOS, Python, and jq; `E2E_PYTHON` selects Python. It uses disposable installs without downloading Kokoro, calling an LLM, or changing personal settings. For an installed runtime, `bash test-install.sh` checks files, hooks, and playback.
+Python tests need pytest, pytest-subtests, and PyYAML. Browser tests need Node and Playwright with Chromium (`CHROMIUM_PATH` may override it). The end-to-end runner also needs macOS, Python, and jq; `E2E_PYTHON` selects Python. It uses disposable installs without downloading Kokoro, calling an LLM, or changing personal settings. For an installed runtime, `bash test-install.sh` checks files, hooks, and playback.
