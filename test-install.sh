@@ -32,7 +32,11 @@ echo "Target: $DEST"
 
 printf '\n\033[1mFiles\033[0m\n'
 for f in engine/play.sh engine/playback_gate.py engine/melody.py soundbar/server.py engine/integrations.py engine/narrate.py engine/kokoro_server.py soundbar/ui.html soundbar/panel.sh switch.sh data/sounds.json installer.py paths.py hooks/codex.py hooks/cursor.py hooks/claude-hooks.json uninstall.sh \
-         configs/config.defaults.json configs/phrases.defaults.json; do
+         configs/config.defaults.json configs/phrases.defaults.json VERSION update.sh update.py \
+         updates/check.py updates/update.py updates/recovery.py updates/source.py \
+         updates/installation.py updates/github.py updates/soundbar.py updates/process.py \
+         updates/storage.py updates/entities.py updates/config.py updates/constants.py \
+         updates/errors.py updates/cli.py; do
   check "$f" test -f "$DEST/$f"
 done
 for f in configs/config.json configs/phrases.json; do
@@ -103,7 +107,7 @@ check "engine/play.sh reads config" \
   env FORCE_LAYER=effects FORCE_EFFECTS_PROFILE=silent bash "$DEST/engine/play.sh" stop < /dev/null
 check "engine/play.sh reads data/sounds.json" \
   jq -e '.effects.default.events.stop.file' "$MANIFEST"
-for module in engine.integrations soundbar.server engine.narrate; do
+for module in engine.integrations soundbar.server engine.narrate updates.cli; do
   check "$module imports cleanly" python3 -B -c '
 import importlib, sys
 sys.path.insert(0, sys.argv[1])

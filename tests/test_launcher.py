@@ -81,7 +81,7 @@ def test_installed_panel_ready_assets_and_reuse(tmp_path, repo_root, monkeypatch
     import shutil
     root = tmp_path / 'runtime'
     shutil.copytree(repo_root / 'code-gossip', root,
-                    ignore=shutil.ignore_patterns('state', '__pycache__', 'config.json', 'phrases.json', 'narrator_styles.json'))
+                    ignore=shutil.ignore_patterns('state', 'version_state', '__pycache__', 'config.json', 'phrases.json', 'narrator_styles.json'))
     monkeypatch.setattr(launcher, 'ROOT', root)
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))

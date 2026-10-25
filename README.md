@@ -114,14 +114,31 @@ To mute everything in Soundbar, turn **Sound off**. From the CLI, disable both c
 <details>
 <summary><strong>Update or uninstall</strong></summary>
 
-From the checkout:
+Soundbar checks GitHub for a newer stable release on startup when its last check is more than 24 hours old, then about once a day while the server runs. **Settings → Updates** shows the installed version, release notes, **Check for updates**, and **Update**. Updates install only when you choose them; closing the browser tab does not stop the server or its checks.
+
+Both actions are also available from the installed runtime:
+
+```bash
+~/.code-gossip/update.sh check          # check GitHub immediately
+~/.code-gossip/update.sh update         # download fresh source, then run its installer
+~/.code-gossip/update.sh status         # cached result and update progress
+```
+
+Updates use a temporary release archive, so no Git checkout or Git executable is needed. Saved preferences and existing integrations are preserved. Soundbar restarts and reconnects; if installation or verification fails, the updater attempts to restore the previous version. Progress and diagnostic logs live in `~/.code-gossip/version_state/`. Changed hook commands may require review in Codex CLI `/hooks` and a new agent session.
+
+If your installation predates `update.sh`, rerun `bash ./install.sh` from a fresh checkout once to get it. Development installations continue to update from their checkout:
 
 ```bash
 git pull
-bash ./install.sh                      # use --dev for a dev installation
-bash ./uninstall.sh                    # select integrations to remove
-bash ./uninstall.sh --all              # remove all without questions
-bash ./uninstall.sh --all --purge      # also remove saved settings
+bash ./install.sh --dev                # select your existing integrations
+```
+
+Uninstall from the installed runtime:
+
+```bash
+~/.code-gossip/uninstall.sh            # select integrations to remove
+~/.code-gossip/uninstall.sh --all       # remove all without questions
+~/.code-gossip/uninstall.sh --all --purge # also remove saved settings
 ```
 
 Partial removal keeps the runtime for remaining integrations. Dev removal only unlinks the installation; checkout files and settings remain even with `--purge`. Codex may require review of changed hooks in `/hooks` and a new chat after an update.

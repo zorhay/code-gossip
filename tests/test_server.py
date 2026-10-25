@@ -217,6 +217,7 @@ class TestGetPython3:
 @pytest.fixture
 def isolated_preferences(tmp_path, monkeypatch):
     import server
+    monkeypatch.setattr(server, 'ROOT', tmp_path / 'runtime')
     monkeypatch.setattr(server, 'CONFIG_FILE', tmp_path / 'config.json')
     monkeypatch.setattr(server, 'PHRASES_FILE', tmp_path / 'phrases.json')
     monkeypatch.setattr(server, 'STYLES_FILE', tmp_path / 'styles.json')
@@ -461,6 +462,58 @@ def test_shutdown_rejected_while_installing(isolated_preferences, monkeypatch):
     assert 'Installation is in progress' in result['error']
     assert not server.stopping
     handler.server.shutdown.assert_not_called()
+
+
+@pytest.mark.parametrize('endpoint', ['/api/update', '/api/update-check'])
+def test_update_actions_require_same_origin(isolated_preferences, monkeypatch, endpoint):
+    server = isolated_preferences
+    start = Mock()
+    monkeypatch.setattr(server.update_service, 'start_update', start)
+    handler = object.__new__(server.Handler)
+    handler.path = endpoint
+    handler.server = Mock(server_port=8111)
+    handler.headers = {'Origin': 'https://example.com', 'X-Soundbar-Request': 'ui'}
+    handler.send_error = Mock()
+    handler.do_POST()
+    assert handler.send_error.call_args.args[0] == 403
+    start.assert_not_called()
+
+
+def test_updates_block_settings_mutation(isolated_preferences):
+    server = isolated_preferences
+    handler = object.__new__(server.Handler)
+    handler.path = '/api/config'
+    handler.read_body = lambda: {'effects_volume': 1}
+    handler.json_response = Mock()
+    before = server.CONFIG_FILE.read_bytes()
+    with server.update_lock(server.ROOT):
+        handler.do_POST()
+    assert not handler.json_response.call_args.args[0]['ok']
+    assert server.CONFIG_FILE.read_bytes() == before
+
+
+def test_manual_update_check_and_start_share_service(isolated_preferences, monkeypatch):
+    server = isolated_preferences
+    result = {'installed': '0.8.0', 'available': True}
+    check = Mock(return_value=result)
+    start = Mock()
+    monkeypatch.setattr(server.update_service, 'check_for_updates', check)
+    monkeypatch.setattr(server.update_service, 'start_update', start)
+    monkeypatch.setattr(server.update_service, 'status', lambda root: result)
+    monkeypatch.setattr(server, 'stopping', False)
+    monkeypatch.setattr(server.kokoro, '_progress', {'status': 'idle'})
+    handler = object.__new__(server.Handler)
+    handler.server = Mock(server_port=8111)
+    handler.headers = {'Origin': 'http://localhost:8111', 'X-Soundbar-Request': 'ui'}
+    handler.read_body = lambda: {}
+    handler.json_response = Mock()
+    handler.path = '/api/update-check'
+    handler.do_POST()
+    check.assert_called_once_with(server.ROOT, force=True)
+    start.assert_not_called()
+    handler.path = '/api/update'
+    handler.do_POST()
+    start.assert_called_once_with(server.ROOT)
 
 
 def test_initial_status_never_imports_kokoro(isolated_preferences):

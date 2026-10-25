@@ -7,6 +7,7 @@ CONFIGS = ROOT / "configs"
 DATA = ROOT / "data"
 ENGINE = ROOT / "engine"
 STATE = ROOT / "state"
+VERSION_STATE = ROOT / "version_state"
 SOUNDBAR = ROOT / "soundbar"
 
 

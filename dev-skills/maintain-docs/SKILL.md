@@ -43,7 +43,7 @@ Read shipped defaults, not personal settings or logs, when writing examples. Kee
 
 ## Maintain release history
 
-Put pending user-visible changes under `Unreleased`, consolidating superseded entries into the final behavior. On an authorized release, move that section into the requested version with the actual release date, leaving an empty `Unreleased` heading for future work. Preserve dated history; do not invent missing release notes.
+Put pending user-visible changes under `Unreleased`, consolidating superseded entries into the final behavior. On an authorized release, set `code-gossip/VERSION` to the release version and move that section into the requested version with the actual release date, leaving an empty `Unreleased` heading for future work. The updater validates that the shipped version matches the stable release tag (with an optional `v` prefix). Preserve dated history; do not invent missing release notes.
 
 Call out breaking changes prominently: what stops working, the affected users, and the supported upgrade steps. Reflect that notice in the release commit and annotated Git tag when releasing. Use the requested tag spelling; inspect existing tags and do not overwrite one. A documentation request alone does not authorize committing, pushing, tagging, or publishing a release.
 

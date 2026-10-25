@@ -10,5 +10,6 @@ TASKS.md
 /code-gossip/configs/narrator_styles.json
 /code-gossip/configs/sounds.json
 /code-gossip/state/
+/code-gossip/version_state/
 /code-gossip/data/sounds/generals/*.aiff
 *.code-gossip-backup
