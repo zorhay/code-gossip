@@ -30,27 +30,26 @@
 
 Requires macOS, Python 3, and jq. SoX enables generated effects.
 
+Install prerequisites if needed, then run the one-command installer:
+
 ```bash
 brew install jq python
 brew install sox          # optional
 
-(
-  set -e
-  install_dir=$(mktemp -d)
-  trap 'rm -rf "$install_dir"' EXIT
-  curl -fL https://github.com/zorhay/code-gossip/releases/latest/download/code-gossip.zip -o "$install_dir/code-gossip.zip"
-  unzip -q "$install_dir/code-gossip.zip" -d "$install_dir"
-  bash "$install_dir/release/install.sh"
-)
+curl -fsSL https://zorhay.github.io/code-gossip/install.sh | bash -s -- --all
 ```
 
-Choose **all** detected agents, or multiple names/numbers such as `codex,cursor` or `2 3`. The package includes `install.sh`; these options also work from an extracted package:
+This downloads the latest stable release package, installs for every detected agent, and removes the temporary download. It requires the release workflow to have finished uploading the package. The command executes a downloaded script; [inspect it first](https://zorhay.github.io/code-gossip/install.sh) if preferred.
+
+Replace `--all` with `--agents codex,claude` to choose agents, or add `--dry-run` to preview changes. These options also work from an extracted release package:
 
 ```bash
 bash ./install.sh --agents codex,claude
 bash ./install.sh --all                  # every detected agent
 bash ./install.sh --dry-run              # preview changes
 ```
+
+Without a selection flag, the extracted installer prompts for names or numbers. Piped installation needs `--all` or `--agents`; development installation requires a permanent checkout as described below.
 
 For Codex, review and trust the commands in the CLI's `/hooks`, then start a new chat. Start a new session in your other selected agents too. Use the same `CODEX_HOME` when installing, updating, and removing a custom Codex setup.
 
@@ -74,7 +73,7 @@ bash ./install.sh --dev --agents codex,claude
 This links `~/.code-gossip/` to the checkout's `code-gossip/` directory. Changes take effect directly; local preferences and runtime state stay gitignored. Development installs work without a release package or network access and report `development` as their version. If a regular installation already exists, preserve any wanted settings, uninstall it, and remove the retained installation directory before switching to dev mode. Review new Codex hook commands in `/hooks`.
 
 ```bash
-python3 -m pytest                         # full suite; requires pytest
+python3 -m pytest                         # test dependencies: see AGENTS.md
 python3 -m unittest tests.test_codex       # standard-library adapter tests
 bash ./test-install.sh                    # validate the installed runtime
 ```

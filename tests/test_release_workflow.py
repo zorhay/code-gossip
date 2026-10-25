@@ -1,6 +1,7 @@
 """Exercise the actual publication step without writing to GitHub."""
 
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -21,6 +22,20 @@ def test_only_release_publication_triggers_upload_and_deployment(workflow, repo_
     assert workflow["jobs"]["pages"]["needs"] == "publish"
     pages = yaml.load((repo_root / ".github/workflows/pages.yml").read_text(), Loader=yaml.BaseLoader)
     assert pages["on"] == {"workflow_call": ""}
+
+
+@pytest.mark.parametrize("tag", ["1.2.3", "v1.2.3"])
+def test_website_version_comes_from_published_release(repo_root, tmp_path, tag):
+    pages = yaml.load((repo_root / ".github/workflows/pages.yml").read_text(), Loader=yaml.BaseLoader)
+    step = next(step for step in pages["jobs"]["deploy"]["steps"] if step.get("name") == "Display the released version")
+    assert step["env"]["RELEASE_TAG"] == "${{ github.event.release.tag_name }}"
+    (tmp_path / "docs").mkdir()
+    page = tmp_path / "docs/index.html"
+    shutil.copy2(repo_root / "docs/index.html", page)
+    subprocess.run(["bash", "-eo", "pipefail", "-c", step["run"]], cwd=tmp_path,
+                   env={**os.environ, "RELEASE_TAG": tag}, check=True)
+    assert f"Latest release · {tag}" in page.read_text()
+    assert "<!-- RELEASE_VERSION -->" not in page.read_text()
 
 
 @pytest.mark.parametrize("assets,lookup_failure,upload_failure,uploads,success", [
