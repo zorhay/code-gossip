@@ -4,9 +4,13 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Fixed
+
+- Publishing a GitHub release now builds and attaches its installation package without trying to create the release again. Tag pushes alone do not publish; website deployment waits for the package, and reruns preserve an already-uploaded package.
+
 ### Changed
 
-- Normal installation and updating now use the same `code-gossip.zip` release package. The tag-triggered release workflow generates its `VERSION`, tests the package, and publishes it; version numbers are no longer edited in the source tree.
+- Normal installation and updating now use the same `code-gossip.zip` release package. The release workflow generates its `VERSION`, tests the package, and publishes it; version numbers are no longer edited in the source tree.
 - Development installs remain local symlinks, work offline, and report `development`. Update them with `git pull` and `install.sh --dev`; Soundbar does not offer release replacement for a checkout.
 
 ### Breaking
