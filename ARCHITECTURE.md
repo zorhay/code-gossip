@@ -319,6 +319,8 @@ Custom Codex homes require the same `CODEX_HOME` for installation and removal. A
 
 Soundbar and [`update.sh`](code-gossip/update.sh) share the [`updates`](code-gossip/updates/) public operations. The runtime's `VERSION` file contains its release number; set it to match the stable release tag before publishing a release. Existing installations without this feature need one checkout-based reinstall to get the updater and record their integrations. Development symlinks receive checkout-based instructions rather than source replacement.
 
+Before publication, run `python3 -B scripts/check_release.py <tag> --ref <commit>` against the exact release commit. It validates an unmodified Git archive with the updater's path, file, and version checks. Use `--archive <downloaded.zip>` to check the actual GitHub source ZIP. The [release check workflow](.github/workflows/release-check.yml) runs this validation for pull requests, `main`, version tags, and manual checks; tag pushes are compared with the tag name. A failed check must be corrected before publishing the release.
+
 ```mermaid
 sequenceDiagram
     participant UI as Soundbar / CLI
