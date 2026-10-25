@@ -6,6 +6,8 @@ consistency with switch.sh and server.py.
 
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,7 +50,20 @@ class TestManifestStructure:
 
 
 class TestAudioFileReferences:
-    """All referenced audio files must exist on disk."""
+    """References must resolve to shipped files or locally generated clips."""
+
+    @pytest.fixture
+    def generated_clips(self, tmp_path):
+        generator = tmp_path / "generate.sh"
+        shutil.copy2(SOUNDBAR_DIR / "data/sounds/generals/generate.sh", generator)
+        # Exercise the real filename generation without requiring macOS voices.
+        subprocess.run(["bash", "-c", '''
+            say() { printf 'stub audio' > "$6"; }
+            afinfo() { test -s "$1" && echo 'audio bytes: 1'; }
+            export -f say afinfo
+            bash "$1"
+        ''', "bash", str(generator)], check=True, capture_output=True, text=True)
+        return tmp_path
 
     def _collect_file_refs(self, sounds_json):
         """Yield (profile_name, dir, filename) for every file ref in the manifest."""
@@ -66,13 +81,15 @@ class TestAudioFileReferences:
                             for f in variant:
                                 yield prof_name, base_dir, f, event
 
-    def test_all_referenced_files_exist(self, sounds_json):
+    def test_all_referenced_files_exist(self, sounds_json, generated_clips):
         missing = []
         for prof, base_dir, filename, event in self._collect_file_refs(sounds_json):
             if filename.startswith("/"):
                 # System files (e.g. /System/Library/Sounds/) -- skip
                 continue
-            if base_dir:
+            if base_dir == "sounds/generals":
+                full = generated_clips / filename
+            elif base_dir:
                 full = SOUNDBAR_DIR / "data" / base_dir / filename
             else:
                 full = SOUNDBAR_DIR / "data" / filename
