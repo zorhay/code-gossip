@@ -15,7 +15,7 @@ def workflow(repo_root):
 
 def test_only_release_publication_triggers_upload_and_deployment(workflow, repo_root):
     assert workflow["on"] == {
-        "pull_request": "", "push": {"branches": ["main"]},
+        "pull_request": "",
         "release": {"types": ["published"]},
     }
     assert workflow["jobs"]["publish"]["if"] == "github.event_name == 'release'"
