@@ -15,7 +15,7 @@ import installer
 
 
 @pytest.fixture
-def sandbox(tmp_path, repo_root):
+def sandbox(tmp_path, repo_root, release_directory):
     home = tmp_path / "home with spaces"
     home.mkdir()
     binaries = tmp_path / "bin"
@@ -24,7 +24,8 @@ def sandbox(tmp_path, repo_root):
     for name, executable in (("python3", sys.executable), ("dirname", shutil.which("dirname")), ("jq", shutil.which("jq"))):
         (binaries / name).symlink_to(executable)
     env = {**os.environ, "HOME": str(home), "CODEX_HOME": str(home / ".codex"),
-           "PATH": str(binaries), "PYTHONDONTWRITEBYTECODE": "1"}
+           "PATH": str(binaries), "PYTHONDONTWRITEBYTECODE": "1",
+           "TEST_RELEASE_DIRECTORY": str(release_directory)}
 
     def run(script, *args, selection=None, success=True):
         path = Path(script)

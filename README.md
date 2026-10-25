@@ -19,6 +19,7 @@
 >
 > ```text
 > Install https://github.com/zorhay/code-gossip for this agent.
+> Use the latest stable release's code-gossip.zip package.
 > Follow the README and verify the installation.
 > ```
 
@@ -33,12 +34,17 @@ Requires macOS, Python 3, and jq. SoX enables generated effects.
 brew install jq python
 brew install sox          # optional
 
-git clone https://github.com/zorhay/code-gossip.git
-cd code-gossip
-bash ./install.sh
+(
+  set -e
+  install_dir=$(mktemp -d)
+  trap 'rm -rf "$install_dir"' EXIT
+  curl -fL https://github.com/zorhay/code-gossip/releases/latest/download/code-gossip.zip -o "$install_dir/code-gossip.zip"
+  unzip -q "$install_dir/code-gossip.zip" -d "$install_dir"
+  bash "$install_dir/release/install.sh"
+)
 ```
 
-Choose **all** detected agents, or multiple names/numbers such as `codex,cursor` or `2 3`. To skip the prompt:
+Choose **all** detected agents, or multiple names/numbers such as `codex,cursor` or `2 3`. The package includes `install.sh`; these options also work from an extracted package:
 
 ```bash
 bash ./install.sh --agents codex,claude
@@ -52,16 +58,20 @@ Installation starts Soundbar in the background and opens it in your browser. Rei
 
 Everything lives in `~/.code-gossip/`. The installer preserves settings and unrelated hooks; repeat installs do not duplicate integrations.
 
+Normal installation and updates use the same published package. Running `install.sh` without `--dev` from a source checkout downloads the latest stable package first; it does not install unreleased checkout code. GitHub's automatic **Source code** downloads are not installation packages.
+
 </details>
 
 <details>
 <summary><strong>Develop from a checkout</strong></summary>
 
 ```bash
+git clone https://github.com/zorhay/code-gossip.git
+cd code-gossip
 bash ./install.sh --dev --agents codex,claude
 ```
 
-This links `~/.code-gossip/` to the checkout's `code-gossip/` directory. Changes take effect directly; local preferences and runtime state stay gitignored. If a regular installation already exists, preserve any wanted settings, uninstall it, and remove the retained installation directory before switching to dev mode. Review new Codex hook commands in `/hooks`.
+This links `~/.code-gossip/` to the checkout's `code-gossip/` directory. Changes take effect directly; local preferences and runtime state stay gitignored. Development installs work without a release package or network access and report `development` as their version. If a regular installation already exists, preserve any wanted settings, uninstall it, and remove the retained installation directory before switching to dev mode. Review new Codex hook commands in `/hooks`.
 
 ```bash
 python3 -m pytest                         # full suite; requires pytest
@@ -120,13 +130,15 @@ Both actions are also available from the installed runtime:
 
 ```bash
 ~/.code-gossip/update.sh check          # check GitHub immediately
-~/.code-gossip/update.sh update         # download fresh source, then run its installer
+~/.code-gossip/update.sh update         # download the release package, then run its installer
 ~/.code-gossip/update.sh status         # cached result and update progress
 ```
 
-Updates use a temporary release archive, so no Git checkout or Git executable is needed. Saved preferences and existing integrations are preserved. Soundbar restarts and reconnects; if installation or verification fails, the updater attempts to restore the previous version. Progress and diagnostic logs live in `~/.code-gossip/version_state/`. Changed hook commands may require review in Codex CLI `/hooks` and a new agent session.
+Updates use the release's `code-gossip.zip` asset in a temporary directory, so no Git checkout or Git executable is needed. Saved preferences and existing integrations are preserved. Soundbar restarts and reconnects; if installation or verification fails, the updater attempts to restore the previous version. Progress and diagnostic logs live in `~/.code-gossip/version_state/`. Changed hook commands may require review in Codex CLI `/hooks` and a new agent session.
 
-If your installation predates `update.sh`, rerun `bash ./install.sh` from a fresh checkout once to get it. Development installations continue to update from their checkout:
+**Moving from 0.9.1 or earlier:** those updaters download source archives and cannot install the new package format. Run the normal installation above once, selecting your existing integrations and using the same custom `CODEX_HOME`, if any. Settings and unrelated hooks are preserved. Subsequent updates use release packages.
+
+Development installations continue to update from their checkout; release checks and installation are disabled in Soundbar's Updates section:
 
 ```bash
 git pull

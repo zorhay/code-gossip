@@ -35,7 +35,7 @@ class Release:
     tag: str
     id: int
     notes_url: str
-    commit: str | None = None
+    asset_id: int | None = None
 
 
 @dataclass(frozen=True)

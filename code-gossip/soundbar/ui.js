@@ -490,10 +490,10 @@ function renderVersions(){
  $('installedVersion').textContent='Installed: '+versions.installed;
  $('versionNotice').hidden=!versions.available&&!running&&!needsAttention;
  $('versionNotice').textContent=running?'Updating Code Gossip…':needsAttention?'Update needs attention':versions.available?`Update available: ${versions.installed} → ${versions.release.version}`:'Code Gossip updates';
- $('availableVersion').textContent=versions.available?'Available: '+versions.release.version:versions.checked_at?'You have the latest stable release.':'Updates are checked automatically while Soundbar runs.';
+ $('availableVersion').textContent=versions.development?'Updates come from your checkout.':versions.available?'Available: '+versions.release.version:versions.checked_at?'You have the latest stable release.':'Updates are checked automatically while Soundbar runs.';
  $('releaseNotes').hidden=!versions.release;
  if(versions.release)$('releaseNotes').href=versions.release.notes_url;
- $('checkUpdates').disabled=running||versionChecking;
+ $('checkUpdates').disabled=versions.development||running||versionChecking;
  $('checkUpdates').textContent=versionChecking?'Checking…':'Check for updates';
  $('checkUpdates').setAttribute('aria-busy',String(versionChecking));
  $('applyUpdate').hidden=versions.development||!versions.available&&!needsAttention&&!running;

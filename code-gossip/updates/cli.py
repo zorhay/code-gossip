@@ -58,6 +58,10 @@ def print_status(result: UpdateStatus, args: argparse.Namespace) -> None:
     if args.json:
         print(json.dumps(status_payload(result)))
         return
+    if result.development:
+        print(f"Installed: {result.installed}")
+        print("Development installation: update the checkout and rerun install.sh --dev.")
+        return
     if args.action == "update" or result.running:
         message = result.message or "An update is already running."
     else:
@@ -67,8 +71,6 @@ def print_status(result: UpdateStatus, args: argparse.Namespace) -> None:
             print("Run ~/.code-gossip/update.sh update to install.")
         else:
             print("Up to date." if result.checked_at else "No update check recorded yet.")
-        if result.development:
-            print("Development installation: update the checkout and rerun install.sh --dev.")
         message = result.message if args.action == "status" else ""
     if message:
         print(message)

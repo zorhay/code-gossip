@@ -2,10 +2,12 @@
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 
 import pytest
+from scripts.package_release import build_package
 
 # Repo layout
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -26,6 +28,23 @@ def offline_release_checks(monkeypatch):
 @pytest.fixture
 def repo_root():
     return REPO_ROOT
+
+
+@pytest.fixture(scope="session")
+def release_package(tmp_path_factory):
+    return build_package(REPO_ROOT, "1.2.3", tmp_path_factory.mktemp("package") / "code-gossip.zip")
+
+
+@pytest.fixture
+def release_directory(tmp_path, release_package):
+    directory = tmp_path / "published-release"
+    directory.mkdir()
+    shutil.copy2(release_package, directory / "release.zip")
+    (directory / "release.json").write_text(json.dumps({
+        "tag_name": "1.2.3", "id": 9, "draft": False, "prerelease": False,
+        "assets": [{"name": "code-gossip.zip", "id": 91, "state": "uploaded"}],
+    }))
+    return directory
 
 
 @pytest.fixture

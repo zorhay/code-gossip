@@ -21,11 +21,16 @@ def prepare_source(plan: UpdatePlan, progress: UpdateProgress) -> Path:
     work = create_workspace(plan.paths)
     progress.work = work
     report_progress(plan.paths, progress, "downloading", f"Downloading Code Gossip {plan.release.version}…")
-    release = github.resolve_release(plan.release, plan.config)
-    archive = github.download_release(release, work, plan.config)
-    source = extract_archive(archive, work / "source", plan.config)
-    validate_source(source, release)
+    source = fetch_source(plan.release, work, plan.config)
     run_installer(source, plan.installation, plan.lock_fd, dry_run=True, config=plan.config)
+    return source
+
+
+def fetch_source(release: Release, work: Path, config: UpdateConfig = DEFAULT_CONFIG) -> Path:
+    """The same package and validation boundary for first installs and updates."""
+    archive = github.download_release(release, work, config)
+    source = extract_archive(archive, work / "source", config)
+    validate_source(source, release)
     return source
 
 
@@ -75,7 +80,7 @@ def validate_source(source: Path, release: Release) -> None:
     if any(not (source / name).is_file() for name in REQUIRED_SOURCE_FILES):
         raise UpdateError("Release is missing required installer/runtime files.")
     if installed_version(source / "code-gossip") != str(release.version):
-        raise UpdateError("Release version does not match its source archive.")
+        raise UpdateError("Release version does not match its installation package.")
 
 
 def cleanup_source(paths: UpdatePaths, work: Path | None) -> None:

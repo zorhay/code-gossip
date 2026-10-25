@@ -1,0 +1,70 @@
+name: Test and package release
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['*.*.*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Build installation package
+        env:
+          PACKAGE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '1.2.3' }}
+        run: python3 -B scripts/package_release.py "$PACKAGE_TAG"
+      - name: Test installers, updates, and development mode
+        run: |
+          python3 -m pip install pytest pytest-subtests
+          python3 -m pytest -q
+          npm install --prefix "$RUNNER_TEMP/browser" playwright
+          "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
+          export NODE_PATH="$RUNNER_TEMP/browser/node_modules"
+          node tests/test_soundbar_ui.cjs
+          E2E_RELEASE_PACKAGE="$PWD/dist/code-gossip.zip" node tests/test_soundbar_e2e.cjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.ref_type == 'tag'
+        with:
+          name: installation-package
+          path: dist/code-gossip.zip
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: installation-package
+          path: dist
+      - name: Publish the completed package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" dist/code-gossip.zip --verify-tag --generate-notes --latest
+
+  pages:
+    needs: publish
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

@@ -1,6 +1,7 @@
 name: Deploy Code Gossip marketing page
 
 on:
+  workflow_call:
   release:
     types: [published]
 

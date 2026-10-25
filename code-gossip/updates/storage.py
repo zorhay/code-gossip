@@ -41,8 +41,8 @@ def serialize(value):
     if isinstance(value, Release):
         result = {"version": str(value.version), "tag": value.tag,
                   "id": value.id, "notes_url": value.notes_url}
-        if value.commit is not None:
-            result["commit"] = value.commit
+        if value.asset_id is not None:
+            result["asset_id"] = value.asset_id
         return result
     if is_dataclass(value):
         return {field.name: getattr(value, field.name) for field in fields(value)}
@@ -57,7 +57,7 @@ def installed_version(root: Path) -> str:
     try:
         return (root / VERSION_FILE).read_text().strip()
     except FileNotFoundError:
-        return "unknown"
+        return "development" if (root.resolve().parent / "install.sh").is_file() else "unknown"
 
 
 def load_installation(paths: UpdatePaths) -> Installation | None:
@@ -91,7 +91,7 @@ def load_check(paths: UpdatePaths) -> CheckResult:
     release = data.get("release")
     if release:
         release = Release(Version.parse(release["version"]), release["tag"], release["id"],
-                          release["notes_url"], release.get("commit"))
+                          release["notes_url"], release.get("asset_id"))
     return CheckResult(release, data.get("checked_at"), data.get("attempted_at"), data.get("error", ""))
 
 
