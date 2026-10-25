@@ -3,6 +3,8 @@ __pycache__/
 .DS_Store
 .idea/
 TASKS.md
+/dist/
+/code-gossip/VERSION
 
 # Code Gossip user configuration and runtime state
 /code-gossip/configs/config.json

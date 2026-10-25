@@ -15,6 +15,8 @@ from .storage import installed_version, load_check, load_installation, load_prog
 
 def check_for_updates(root: Path, force: bool = False, config: UpdateConfig = DEFAULT_CONFIG) -> CheckResult:
     """Manual checks bypass the cache; automatic failures retry at most hourly."""
+    if installed_version(root) == "development":
+        return CheckResult()
     paths = UpdatePaths(root)
     with lock(root, "check", wait=True):
         cached = load_check(paths)
@@ -50,7 +52,7 @@ def status(root: Path) -> UpdateStatus:
     interrupted = progress.interrupted(running)
     return UpdateStatus(
         installed=installed, release=cached.release, available=available, checked_at=cached.checked_at,
-        development=bool(installation and installation.mode == "development"), running=running,
+        development=installed == "development" or bool(installation and installation.mode == "development"), running=running,
         phase="interrupted" if interrupted else progress.phase,
         message="Update was interrupted. Retry Update to recover and continue." if interrupted else progress.message,
         guidance=progress.guidance, operation_id=progress.started_at,

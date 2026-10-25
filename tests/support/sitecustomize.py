@@ -1,6 +1,4 @@
 """Keep release checks offline in disposable subprocess test installations."""
-import io
-import json
 import os
 from pathlib import Path
 from urllib.error import URLError
@@ -18,9 +16,8 @@ def offline_urlopen(request, *args, **kwargs):
         root = Path(fixture)
         if url.endswith("/releases/latest"):
             return (root / "release.json").open("rb")
-        if "/commits/" in url:
-            return io.BytesIO(json.dumps({"sha": "a" * 40}).encode())
-        if url.endswith("/zipball/" + "a" * 40):
+        if url.endswith("/releases/assets/91"):
+            assert request.get_header("Accept") == "application/octet-stream"
             return (root / "release.zip").open("rb")
         raise AssertionError("Unexpected release URL: " + url)
     return _urlopen(request, *args, **kwargs)

@@ -19,6 +19,7 @@ RECOVERY_READY_FILE = "ready.json"
 SOURCE_OWNER_FILE = "owner.json"
 SOURCE_DIRECTORY_PREFIX = "code-gossip-update-"
 ARCHIVE_FILE = "release.zip"
+PACKAGE_ASSET = "code-gossip.zip"
 PRESERVED_DIRECTORIES = {"state", VERSION_STATE_DIRECTORY}
 ACTIVE_PHASES = {"checking", "preparing", "downloading", "installing", "restarting", "recovering"}
 

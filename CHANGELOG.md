@@ -4,6 +4,15 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Changed
+
+- Normal installation and updating now use the same `code-gossip.zip` release package. The tag-triggered release workflow generates its `VERSION`, tests the package, and publishes it; version numbers are no longer edited in the source tree.
+- Development installs remain local symlinks, work offline, and report `development`. Update them with `git pull` and `install.sh --dev`; Soundbar does not offer release replacement for a checkout.
+
+### Breaking
+
+- Updaters from `0.9.1` and earlier cannot consume release packages. Reinstall once using the normal README installation instructions and your existing integrations/custom `CODEX_HOME`. Saved settings and unrelated hooks are preserved. GitHub's automatic source archives are no longer the normal installation/update source.
+
 ## [0.9.1] - 2026-10-25
 
 ### Fixed

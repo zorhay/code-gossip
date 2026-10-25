@@ -107,28 +107,19 @@ def test_metadata_tracks_selected_integrations_and_custom_home(sandbox):
 
 
 @pytest.fixture
-def release_fixture(tmp_path, repo_root):
-    fixture = tmp_path / "release"
-    fixture.mkdir()
-    version = (repo_root / "code-gossip/VERSION").read_text().strip()
-    write_json(fixture / "release.json", {"tag_name": version, "id": 9, "draft": False, "prerelease": False})
-
+def release_fixture(release_directory, release_package):
     def build(failure=None):
-        with zipfile.ZipFile(fixture / "release.zip", "w", zipfile.ZIP_DEFLATED) as bundle:
-            bundle.write(repo_root / "install.sh", "release/install.sh")
-            for path in (repo_root / "code-gossip").rglob("*"):
-                relative = path.relative_to(repo_root)
-                if not path.is_file() or any(part in ("state", "version_state", "__pycache__") for part in relative.parts):
-                    continue
-                if path.name in (*installer.USER_FILES, "sounds.json") and path.parent.name == "configs":
-                    continue
-                data = path.read_bytes()
-                if path.name == "installer.py" and failure == "installer":
+        if not failure:
+            return release_directory
+        with zipfile.ZipFile(release_package) as original, zipfile.ZipFile(release_directory / "release.zip", "w") as bundle:
+            for member in original.infolist():
+                data = original.read(member)
+                if member.filename.endswith("/installer.py") and failure == "installer":
                     data = data.replace(b'if not args.no_panel:', b'raise OSError("fixture installer failure")\n        if not args.no_panel:')
-                elif path.name == "server.py" and failure == "health":
+                elif member.filename.endswith("/server.py") and failure == "health":
                     data = b'raise RuntimeError("fixture server failure")\n' + data
-                bundle.writestr("release/" + str(relative), data)
-        return fixture
+                bundle.writestr(member, data)
+        return release_directory
     return build
 
 
@@ -266,7 +257,7 @@ def test_failed_preparation_keeps_runtime_untouched(sandbox, monkeypatch):
     monkeypatch.setattr(Path, "home", lambda: home)
     monkeypatch.setattr(update, "ensure_panel_idle", lambda *args: None)
     monkeypatch.setattr(update, "check_for_updates", lambda *a, **kw: CheckResult(RELEASE))
-    monkeypatch.setattr(github, "resolve_release", Mock(side_effect=UpdateError("Invalid archive")))
+    monkeypatch.setattr(github, "download_release", Mock(side_effect=UpdateError("Invalid archive")))
     before = {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*")
               if p.is_file() and "version_state" not in p.parts}
     with lock(root) as fd:

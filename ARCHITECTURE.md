@@ -72,7 +72,7 @@ code-gossip/                         installed as ~/.code-gossip/
 ├── configs/                        defaults + gitignored user preferences
 ├── state/                          gitignored logs, sockets, caches, .venv
 ├── version_state/                  gitignored installation/update records and recovery
-├── VERSION                         shipped release version
+├── VERSION                         generated in release packages; absent from checkouts
 ├── updates/                        detection, source preparation, installation, recovery
 ├── update.sh / update.py            installed update CLI
 ├── paths.py                        shared Python path definitions
@@ -83,7 +83,7 @@ code-gossip/                         installed as ~/.code-gossip/
 
 The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package; development installation symlinks it.
 
-The Code Gossip marketing page is hosted on GitHub Pages. Its [deployment workflow](.github/workflows/pages.yml) publishes `docs/` when a GitHub release is published, including prereleases. The workflow checks out the release event's commit, uploads `docs/`, and deploys through the `github-pages` environment. Pushes, merges, draft releases, and release edits do not trigger deployment. Repository **Settings → Pages → Source** must be **GitHub Actions**, and the `github-pages` environment's selected deployment tags must allow version tags matching `*.*.*` (for example, `0.8.0`). These repository settings are separate from the workflow file. The release tag must contain the workflow; existing releases are not redeployed when it is merged.
+The Code Gossip marketing page is hosted on GitHub Pages. Its reusable [deployment workflow](.github/workflows/pages.yml) publishes `docs/` from the released commit through the `github-pages` environment. The release workflow calls it after publication because releases created with `GITHUB_TOKEN` do not trigger another workflow automatically; externally published releases also trigger it. Repository **Settings → Pages → Source** must be **GitHub Actions**, and the `github-pages` environment's selected deployment tags must allow version tags matching `*.*.*` (for example, `0.8.0`). These repository settings are separate from the workflow file. Existing releases are not redeployed when the workflow is merged.
 
 The site's `index.html`, `player.css`, and `player.js` present the demo media in `docs/assets/`. Playback is local to the visitor's browser and independent of the installed Soundbar.
 
@@ -287,7 +287,10 @@ The endpoint definitions and request fields live in [`server.py`](code-gossip/so
 
 ```mermaid
 flowchart TD
-    Entry[install.sh or uninstall.sh] --> Select[Detect and select agents]
+    Entry[install.sh or uninstall.sh] --> Source{Normal install from checkout?}
+    Source -->|yes| Package[Download and validate latest release package]
+    Package --> Select[Detect and select agents]
+    Source -->|no: package, dev, or uninstall| Select
     Select --> Validate[Validate hook documents and plan changes]
     Validate --> Dry{Dry run?}
     Dry -->|yes| Report[Print plan; no mutation]
@@ -317,9 +320,9 @@ Custom Codex homes require the same `CODEX_HOME` for installation and removal. A
 
 ### Release updates
 
-Soundbar and [`update.sh`](code-gossip/update.sh) share the [`updates`](code-gossip/updates/) public operations. The runtime's `VERSION` file contains its release number; set it to match the stable release tag before publishing a release. Existing installations without this feature need one checkout-based reinstall to get the updater and record their integrations. Development symlinks receive checkout-based instructions rather than source replacement.
+Normal installs and updates consume the same `code-gossip.zip` release asset. The [release workflow](.github/workflows/release.yml) starts on a stable tag push, checks out that commit, and runs [`package_release.py`](scripts/package_release.py). The builder includes tracked runtime files and generates `VERSION` from the tag inside the ZIP. It never changes the checkout. The workflow tests that exact package before uploading it and publishing the release; PRs and `main` run the same checks without publication. `VERSION` is generated metadata, not a source-controlled version number.
 
-Before publication, run `python3 -B scripts/check_release.py <tag> --ref <commit>` against the exact release commit. It validates an unmodified Git archive with the updater's path, file, and version checks. Use `--archive <downloaded.zip>` to check the actual GitHub source ZIP. The [release check workflow](.github/workflows/release-check.yml) runs this validation for pull requests, `main`, version tags, and manual checks; tag pushes are compared with the tag name. A failed check must be corrected before publishing the release.
+Soundbar and [`update.sh`](code-gossip/update.sh) share the [`updates`](code-gossip/updates/) public operations. A normal install from a checkout uses [`install_latest()`](code-gossip/installer.py) to download and validate the package before invoking its installer; an extracted package installs directly. Both downloads use [`fetch_source()`](code-gossip/updates/source.py). Development installs bypass release downloads, keep their symlinks, report `development`, and receive checkout-based update instructions. Updaters from `0.9.1` and earlier need one package-based reinstall with their existing integrations and custom `CODEX_HOME`; see [README](README.md#using-code-gossip).
 
 ```mermaid
 sequenceDiagram
@@ -333,8 +336,8 @@ sequenceDiagram
     Note over UI: Notify and wait for explicit Update
     UI->>Worker: Start update
     Worker->>Runtime: Lock and verify installation details
-    Worker->>GitHub: Refresh, pin release, download fresh source
-    GitHub-->>Worker: Archive in temporary directory
+    Worker->>GitHub: Refresh release and download its package by asset ID
+    GitHub-->>Worker: Installation package in temporary directory
     Note over Worker: Validate source and preflight fresh installer
     Worker->>Runtime: Back up, stop panel, run fresh installer
     Worker->>Runtime: Restart and verify version and health
@@ -352,7 +355,7 @@ sequenceDiagram
 | Record — `updates/storage.py`, installer | Record the release version, normal/dev mode, Python, and selected integration configuration paths in `version_state/installation.json`; partial install/removal updates the selection. A recorded custom Codex home is passed to the fresh installer even if Soundbar lacks that environment variable. |
 | Trigger and detect — `updates/check.py` | A server-owned background thread checks the cache on startup and hourly, contacting GitHub only after 24 hours since success. Failed automatic attempts retry at most hourly. The Soundbar button and `update.sh check` bypass the cache. No hook or separate background service checks for releases. |
 | Discover and notify — `updates/github.py`, Soundbar | Use GitHub's [latest stable release API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release); compare numeric major/minor/patch versions, accepting an optional `v`. Short network timeouts and cached results keep automatic failures quiet. Manual errors appear beside the check action. Checking never installs. |
-| Prepare and fetch — `updates/update.py`, `source.py` | An explicit update refreshes release information, validates recorded integrations/Python, pins the selected tag to a commit, and downloads its ZIP archive into an owned OS temporary directory. Reject traversal, unexpected symlinks, special files, oversized archives, missing runtime files, and mismatched versions. Run the downloaded installer's dry run before changing runtime files. |
+| Prepare and fetch — `updates/update.py`, `source.py` | An explicit update refreshes release information, validates recorded integrations/Python, and downloads the uploaded `code-gossip.zip` by its asset ID into an owned OS temporary directory. Missing/incomplete assets are rejected without falling back to source archives. Reject traversal, unexpected symlinks, special files, oversized archives, missing runtime files, and mismatched versions. Run the downloaded installer's dry run before changing runtime files. |
 | Install — `updates/process.py`, `installation.py`, fresh installer | A detached worker survives the panel/terminal closing and holds a process lock inherited by its installer. Settings mutations, another install/update, and new Kokoro installations are blocked during the transaction; an already running Kokoro installation prevents updating. Back up the runtime and selected hook documents, then invoke the fresh Python installer with the recorded interpreter and existing integration selection. |
 | Verify or recover — `updates/soundbar.py`, `recovery.py` | Restart only the identity-checked Soundbar process and verify its root and startup version through `/api/health`. Preserve `state/` and `version_state/` throughout. On failure, restore the previous runtime and our hook handlers, preserving unrelated hook edits. Failed recovery retains the backup and reports its location. A later Update retries interrupted recovery before proceeding. |
 | Report and clean — `updates/storage.py`, `source.py`, Soundbar | Persist progress, result, and log; reconnect and reload the UI after a successful version change. Hook guidance depends on changed owned definitions, ignoring mere ordering. Delete temporary source after completion/failure; clean only directories with this installation's ownership marker. Keep recovery data if recovery still needs attention. |

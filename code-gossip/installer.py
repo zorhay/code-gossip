@@ -355,6 +355,19 @@ def run(args):
             open_panel(dest)
 
 
+def install_latest(arguments):
+    """A source checkout installs the same published package as the updater."""
+    from updates.github import latest_release
+    from updates.source import fetch_source
+
+    release = latest_release()
+    print(f"Installing Code Gossip {release.version} from its release package…", flush=True)
+    with tempfile.TemporaryDirectory(prefix="code-gossip-install-") as temporary:
+        source = fetch_source(release, Path(temporary))
+        subprocess.run([sys.executable, "-B", str(source / "code-gossip/installer.py"),
+                        "install", *arguments], check=True)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("action", choices=("install", "uninstall"))
@@ -372,7 +385,10 @@ def main():
     if args.dev and args.action != "install" or args.purge and args.action != "uninstall":
         parser.error("--dev applies only to install; --purge applies only to uninstall")
     try:
-        run(args)
+        if args.action == "install" and not args.dev and not Path(__file__).with_name("VERSION").is_file():
+            install_latest(sys.argv[2:])
+        else:
+            run(args)
     except (OSError, ValueError, UpdateError, subprocess.CalledProcessError) as exc:
         parser.exit(1, f"Code Gossip: {exc}\n")
     except KeyboardInterrupt:

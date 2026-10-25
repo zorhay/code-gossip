@@ -11,9 +11,11 @@ const { execFile, execFileSync } = require('node:child_process');
 const { promisify } = require('node:util');
 const exec = promisify(execFile);
 const repo = path.resolve(__dirname, '..');
-const releaseVersion = fs.readFileSync(path.join(repo, 'code-gossip/VERSION'), 'utf8').trim();
 const python = process.env.E2E_PYTHON || execFileSync('/usr/bin/which', ['python3'], { encoding: 'utf8' }).trim();
 const jq = execFileSync('/usr/bin/which', ['jq'], { encoding: 'utf8' }).trim();
+function buildPackage(version, output) {
+  execFileSync(python, ['-B', path.join(repo, 'scripts/package_release.py'), version, '--output', output]);
+}
 async function freePort() {
   const server = net.createServer();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -51,17 +53,22 @@ async function until(check, description) {
       fs.writeFileSync(path.join(support, 'sitecustomize.py'), `import os, subprocess\n_real_run = subprocess.run\ndef run(args, *a, **kw):\n    if isinstance(args, list) and args[:1] == ['/usr/bin/open']:\n        with open(os.environ['E2E_OPENED'], 'a') as f: f.write(args[1] + '\\n')\n        return subprocess.CompletedProcess(args, 0)\n    return _real_run(args, *a, **kw)\nsubprocess.run = run\n`);
       fs.appendFileSync(path.join(support, 'sitecustomize.py'), fs.readFileSync(path.join(repo, 'tests/support/sitecustomize.py'), 'utf8'));
       const releaseDirectory=path.join(temp,'release');fs.mkdirSync(releaseDirectory);
-      fs.writeFileSync(path.join(releaseDirectory,'release.json'),JSON.stringify({tag_name:releaseVersion,id:9,draft:false,prerelease:false}));
-      execFileSync(python,['-c',`import pathlib,sys,zipfile
-source=pathlib.Path(sys.argv[1])
-with zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED) as bundle:
-    for file in source.rglob('*'):
-        if file.is_file():
-            bundle.writestr('release/'+str(file.relative_to(source)),file.read_bytes())
-`,checkout,path.join(releaseDirectory,'release.zip')]);
-      // Only the old installation is simulated; the candidate archive stays unchanged.
-      fs.writeFileSync(path.join(checkout,'code-gossip/VERSION'),'0.8.0\n');
-      const env = { ...process.env, TEST_RELEASE_DIRECTORY:releaseDirectory, HOME: home, CODEX_HOME: path.join(home, '.codex'), PATH: bin,
+      const candidate = path.join(temp, 'candidate.zip');
+      if (process.env.E2E_RELEASE_PACKAGE) fs.copyFileSync(process.env.E2E_RELEASE_PACKAGE, candidate);
+      else buildPackage('1.2.3', candidate);
+      const releaseVersion = execFileSync(python, ['-c',
+        'import sys,zipfile; print(zipfile.ZipFile(sys.argv[1]).read("release/code-gossip/VERSION").decode().strip())', candidate], {encoding: 'utf8'}).trim();
+      const publish = (version, archive) => {
+        fs.copyFileSync(archive, path.join(releaseDirectory, 'release.zip'));
+        fs.writeFileSync(path.join(releaseDirectory, 'release.json'), JSON.stringify({
+          tag_name: version, id: 9, draft: false, prerelease: false,
+          assets: [{name: 'code-gossip.zip', id: 91, state: 'uploaded'}],
+        }));
+      };
+      const previous = path.join(temp, 'previous.zip');
+      buildPackage('0.8.0', previous);
+      publish('0.8.0', previous);
+      const env = { ...process.env, TEST_RELEASE_DIRECTORY:dev ? undefined : releaseDirectory, HOME: home, CODEX_HOME: path.join(home, '.codex'), PATH: bin,
         PORT: String(port), PYTHONPATH: support, PYTHONDONTWRITEBYTECODE: '1', E2E_OPENED: opened };
       const run = async (script, ...args) => (await exec('/bin/bash', [script, ...args], { env, cwd: checkout, timeout: 30000 })).stdout;
       const install = (...extra) => run(path.join(checkout, 'install.sh'), '--agents', 'codex,cursor,claude', ...(dev ? ['--dev'] : []), ...extra);
@@ -95,12 +102,25 @@ with zipfile.ZipFile(sys.argv[2], 'w', zipfile.ZIP_DEFLATED) as bundle:
         }
         await page.goto(url);
         await page.waitForFunction(() => document.getElementById('statusText').textContent.startsWith('Active'));
+        if (dev) {
+          await page.locator('#settingsButton').click();
+          assert.equal(await page.locator('#installedVersion').innerText(), 'Installed: development');
+          assert(await page.locator('#checkUpdates').isDisabled());
+          assert(await page.locator('#applyUpdate').isHidden());
+          assert.match(await run(path.join(runtime, 'update.sh'), 'check'), /Development installation/);
+          await assert.rejects(run(path.join(runtime, 'update.sh'), 'update'), /Development installation/);
+          await page.locator('#closeSettings').click();
+          fs.writeFileSync(path.join(checkout, 'code-gossip/dev-change'), 'live checkout');
+          assert.equal(fs.readFileSync(path.join(runtime, 'dev-change'), 'utf8'), 'live checkout');
+          assert(!fs.existsSync(path.join(checkout, 'code-gossip/VERSION')));
+        }
         assert.equal(await page.locator('[role=tab]').count(), 4);
         await page.selectOption('#soundPack', 'paper');
         assert.equal((await status()).effects_profile, 'default', 'Browsing does not save');
         await page.locator('#activateSelection').click();
         await until(async () => (await status()).effects_profile === 'paper', 'activated Effects profile');
         if(!dev){
+          publish(releaseVersion, candidate);
           await page.locator('#settingsButton').click();
           await page.locator('#checkUpdates').click();
           await page.waitForFunction(version=>document.getElementById('availableVersion').textContent==='Available: '+version,releaseVersion);
