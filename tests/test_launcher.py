@@ -1,5 +1,6 @@
 """Panel readiness, reuse, startup cleanup, and installer launch policy."""
 import argparse
+import json
 from pathlib import Path
 import socket
 import subprocess
@@ -10,6 +11,19 @@ from urllib.error import HTTPError
 import pytest
 import installer
 import launcher
+
+
+def test_shipped_python_imports_application(repo_root):
+    """The launcher default must work even when pytest uses a newer Python."""
+    runtime = repo_root / 'code-gossip'
+    python = Path(json.loads((runtime / 'configs/config.defaults.json').read_text())['python3_path'])
+    if not python.is_file():
+        pytest.skip(f'Shipped Python interpreter is unavailable: {python}')
+    result = subprocess.run(
+        [str(python), '-B', '-c', 'import installer; import soundbar.server; import updates.cli'],
+        cwd=runtime, capture_output=True, text=True, timeout=15,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.mark.parametrize('no_panel,dry_run,expected', [(False, False, True), (True, False, False), (False, True, False)])

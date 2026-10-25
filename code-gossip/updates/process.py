@@ -1,5 +1,7 @@
 """Cross-process locking and detached update-worker launch."""
 
+from __future__ import annotations
+
 from contextlib import contextmanager
 import fcntl
 import os

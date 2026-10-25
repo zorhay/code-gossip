@@ -65,7 +65,8 @@ def test_missing_key_and_cli_never_make_network_requests():
         get.assert_not_called()
 
 
-@pytest.mark.parametrize('error', [HTTPError('secret-url', 401, 'secret-key', {}, None), RuntimeError('secret-key')])
+@pytest.mark.parametrize('error', [HTTPError('secret-url', 401, 'secret-key', {}, None), RuntimeError('secret-key')],
+                         ids=['http_error', 'runtime_error'])
 def test_failure_never_exposes_secrets_or_falls_back_to_static_models(error):
     with patch.object(model_catalog, 'urlopen', side_effect=error):
         result = model_catalog.list_models('openai', 'secret-key')

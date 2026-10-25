@@ -1,5 +1,7 @@
 """Restore interrupted/failed updates and retain backups when recovery fails."""
 
+from __future__ import annotations
+
 from pathlib import Path
 import shutil
 

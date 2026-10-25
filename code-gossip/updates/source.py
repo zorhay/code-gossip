@@ -1,5 +1,7 @@
 """Prepare a validated release in temporary storage before running its installer."""
 
+from __future__ import annotations
+
 from pathlib import Path, PurePosixPath
 import shutil
 import stat

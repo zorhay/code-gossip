@@ -1,5 +1,7 @@
 """JSON boundaries for installation records, checks, and update progress."""
 
+from __future__ import annotations
+
 from dataclasses import fields, is_dataclass
 import json
 import os
