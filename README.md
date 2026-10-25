@@ -12,6 +12,12 @@
 
 ## Installation
 
+```bash
+curl -fsSL https://zorhay.github.io/code-gossip/install.sh | bash -s -- --all
+```
+
+Requires macOS, Python 3, and jq. Installs for all detected agents; setup options are below.
+
 ### Install with your agent
 
 > [!TIP]
@@ -30,16 +36,14 @@
 
 Requires macOS, Python 3, and jq. SoX enables generated effects.
 
-Install prerequisites if needed, then run the one-command installer:
+Install prerequisites if needed, then run the command above:
 
 ```bash
 brew install jq python
 brew install sox          # optional
-
-curl -fsSL https://zorhay.github.io/code-gossip/install.sh | bash -s -- --all
 ```
 
-This downloads the latest stable release package, installs for every detected agent, and removes the temporary download. It requires the release workflow to have finished uploading the package. The command executes a downloaded script; [inspect it first](https://zorhay.github.io/code-gossip/install.sh) if preferred.
+The one-command installer downloads the latest stable release package, installs for every detected agent, and removes the temporary download. It requires the release workflow to have finished uploading the package. The command executes a downloaded script; [inspect it first](https://zorhay.github.io/code-gossip/install.sh) if preferred.
 
 Replace `--all` with `--agents codex,claude` to choose agents, or add `--dry-run` to preview changes. These options also work from an extracted release package:
 
