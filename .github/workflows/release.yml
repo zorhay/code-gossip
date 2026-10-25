@@ -2,8 +2,6 @@ name: Test and package release
 
 on:
   pull_request:
-  push:
-    branches: [main]
   release:
     types: [published]
 
