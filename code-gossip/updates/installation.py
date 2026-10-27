@@ -4,25 +4,13 @@ from dataclasses import replace
 import json
 import os
 from pathlib import Path
-import shutil
 import subprocess
 
 import installer
 from .config import DEFAULT_CONFIG, UpdateConfig, UpdatePaths
-from .constants import PRESERVED_DIRECTORIES
-from .entities import Installation, UpdatePlan, UpdateProgress
+from .entities import Installation
 from .errors import UpdateError
-from .storage import load_installation, read_json, report_progress, save_recovery_installation
-
-
-def run_fresh_installer(plan: UpdatePlan, source: Path, progress: UpdateProgress) -> None:
-    from .soundbar import stop_panel
-
-    # Persist recovery intent before the first runtime mutation.
-    progress.needs_recovery = True
-    report_progress(plan.paths, progress, "installing", "Installing update…")
-    stop_panel(plan.paths, plan.config)
-    run_installer(source, plan.installation, plan.lock_fd, config=plan.config)
+from .storage import load_installation, read_json
 
 
 def prepare_installation(paths: UpdatePaths) -> Installation:
@@ -36,7 +24,7 @@ def require_regular_installation(paths: UpdatePaths) -> Installation:
     record = load_installation(paths)
     if (record and record.mode == "development") or (Path.home() / ".code-gossip").is_symlink():
         raise UpdateError("Development installation: update your checkout, then run install.sh --dev with your existing agents.")
-    if (not record or record.root != root.resolve()
+    if (not paths.current.is_symlink() or not record or record.root != root.resolve()
             or root.resolve() != (Path.home() / ".code-gossip").resolve()):
         raise UpdateError("Installation details are missing. Rerun install.sh with your existing agents and CODEX_HOME before updating.")
     return record
@@ -64,22 +52,6 @@ def configured_python(paths: UpdatePaths, record: Installation) -> str:
     return python
 
 
-def backup_installation(paths: UpdatePaths, record: Installation) -> None:
-    root = paths.root
-    backup = paths.recovery
-    backup.mkdir(mode=0o700)
-    shutil.copytree(root, backup / "runtime", symlinks=True,
-                    ignore=lambda directory, names: PRESERVED_DIRECTORIES | {"__pycache__"} if Path(directory) == root else {"__pycache__"})
-    hooks = backup / "hooks"
-    hooks.mkdir()
-    for agent, path in record.integrations.items():
-        shutil.copy2(path, hooks / (agent + ".json"))
-        previous_backup = path.with_name(path.name + ".code-gossip-backup")
-        if previous_backup.exists():
-            shutil.copy2(previous_backup, hooks / (agent + ".backup"))
-    save_recovery_installation(paths, record)
-
-
 def run_installer(source: Path, record: Installation, lock_fd: int, dry_run: bool = False,
                   config: UpdateConfig = DEFAULT_CONFIG) -> None:
     command = [record.python, "-B", str(source / "code-gossip/installer.py"), "install",
@@ -97,12 +69,6 @@ def install_environment(record: Installation) -> dict[str, str]:
     if codex:
         env["CODEX_HOME"] = str(codex.parent)
     return env
-
-
-def changed_hooks(paths: UpdatePaths, record: Installation) -> list[str]:
-    backup = paths.recovery / "hooks"
-    return [agent for agent, path in record.integrations.items()
-            if hook_signature(read_json(backup / (agent + ".json")), agent) != hook_signature(read_json(path), agent)]
 
 
 def hook_signature(document: dict, agent: str) -> list[str]:

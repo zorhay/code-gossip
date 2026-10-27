@@ -22,7 +22,6 @@ import shutil
 import shlex
 import subprocess
 import threading
-import tempfile
 import time
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from contextlib import nullcontext
@@ -623,17 +622,7 @@ def narrator_models(body):
     return list_models(provider, key)
 
 
-def atomic_json(path, data):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".soundbar-")
-    try:
-        with os.fdopen(fd, "w") as stream:
-            json.dump(data, stream, indent=2, ensure_ascii=False)
-            stream.write("\n")
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+atomic_json = write_json
 
 
 def apply_selection(body):
@@ -705,7 +694,16 @@ class ReuseHTTPServer(ThreadingHTTPServer):
 
 class Handler(SimpleHTTPRequestHandler):
 
+    def local_request(self):
+        port = self.server.server_port
+        if self.headers.get("Host") not in {f"localhost:{port}", f"127.0.0.1:{port}"}:
+            self.send_error(403, "Local Soundbar requests only")
+            return False
+        return True
+
     def do_GET(self):
+        if not self.local_request():
+            return
         path = urlparse(self.path).path
         try:
             if path in ("/", "/ui"):
@@ -715,7 +713,7 @@ class Handler(SimpleHTTPRequestHandler):
                 self.wfile.write(UI_FILE.read_bytes())
 
             elif path == "/api/health":
-                self.json_response({"app": "code-gossip", "root": str(UI_FILE.resolve().parents[1]), "version": RUNNING_VERSION})
+                self.json_response({"app": "code-gossip", "root": str(ROOT.resolve()), "version": RUNNING_VERSION})
 
             elif path == "/api/updates":
                 self.json_response(update_service.status(ROOT))
@@ -741,14 +739,15 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         global stopping
+        if not self.local_request():
+            return
         path = urlparse(self.path).path
-        if path in ("/api/shutdown", "/api/update", "/api/update-check"):
-            port = self.server.server_port
-            origins = {f"http://localhost:{port}", f"http://127.0.0.1:{port}"}
-            if (self.headers.get("Origin") not in origins
-                    or self.headers.get("X-Soundbar-Request") != "ui"):
-                self.send_error(403, "This action requires a Soundbar UI request")
-                return
+        port = self.server.server_port
+        origins = {f"http://localhost:{port}", f"http://127.0.0.1:{port}"}
+        if (self.headers.get("Origin") not in origins
+                or self.headers.get("X-Soundbar-Request") != "ui"):
+            self.send_error(403, "This action requires a Soundbar UI request")
+            return
         if path == "/api/shutdown":
             with installation_lock:
                 if kokoro.progress["status"] == "running" or is_busy(ROOT):
@@ -765,7 +764,7 @@ class Handler(SimpleHTTPRequestHandler):
             mutations = {"/api/activate", "/api/config", "/api/phrases", "/api/narrator-style",
                          "/api/narrator-style-delete", "/api/narrator-style-reset", "/api/kokoro-install"}
             with settings_lock if path in mutations else nullcontext(), \
-                    update_lock(ROOT) if path in mutations else nullcontext():
+                    update_lock(ROOT, mutation=True) if path in mutations else nullcontext():
                 self._handle_post(path, body)
         except Exception as e:
             log.error("POST %s failed: %s", path, e)

@@ -2,13 +2,14 @@
 
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+RUNTIME = Path(__file__).resolve().parent
+ROOT = RUNTIME.parents[2] if RUNTIME.parent.name == "releases" and RUNTIME.parent.parent.name == "version_state" else RUNTIME
 CONFIGS = ROOT / "configs"
-DATA = ROOT / "data"
-ENGINE = ROOT / "engine"
+DATA = RUNTIME / "data"
+ENGINE = RUNTIME / "engine"
 STATE = ROOT / "state"
 VERSION_STATE = ROOT / "version_state"
-SOUNDBAR = ROOT / "soundbar"
+SOUNDBAR = RUNTIME / "soundbar"
 
 
 def executable(name):

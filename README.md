@@ -29,6 +29,8 @@ Requires macOS, Python 3, and jq. Installs for all detected agents; setup option
 > Follow the README and verify the installation.
 > ```
 
+**Existing normal installation without `~/.code-gossip/current`?** Uninstall and reinstall once using the [steps below](#existing-flat-installations). Saved settings are retained; there is no automatic layout migration.
+
 **Upgrading from before 0.5.0?** The installation layout changed in 0.5.0, with no automatic migration. Follow the [upgrade steps](CHANGELOG.md#050---2026-10-11) before installing.
 
 <details>
@@ -57,9 +59,9 @@ Without a selection flag, the extracted installer prompts for names or numbers. 
 
 For Codex, review and trust the commands in the CLI's `/hooks`, then start a new chat. Start a new session in your other selected agents too. Use the same `CODEX_HOME` when installing, updating, and removing a custom Codex setup.
 
-Installation starts Soundbar in the background and opens it in your browser. Reinstallation restarts its existing panel to load updates. Use `--no-panel` for unattended installs or to configure it later.
+Installation starts Soundbar in the background and opens it in your browser. Reinstallation restarts its existing panel to load updates. Use `--no-panel` to leave a stopped panel closed; an already running panel still restarts. Updates always verify the new panel before committing.
 
-Everything lives in `~/.code-gossip/`. The installer preserves settings and unrelated hooks; repeat installs do not duplicate integrations.
+The runtime, settings, and state live in `~/.code-gossip/`. Installs prepare a complete release before switching to it. The installer preserves settings and unrelated hooks; repeat installs do not duplicate integrations. A failed install restores the prior release and settings; rerun the installer if an interruption leaves recovery pending.
 
 Normal installation and updates use the same published package. Running `install.sh` without `--dev` from a source checkout downloads the latest stable package first; it does not install unreleased checkout code. GitHub's automatic **Source code** downloads are not installation packages.
 
@@ -137,9 +139,17 @@ Both actions are also available from the installed runtime:
 ~/.code-gossip/update.sh status         # cached result and update progress
 ```
 
-Updates use the release's `code-gossip.zip` asset in a temporary directory, so no Git checkout or Git executable is needed. Saved preferences and existing integrations are preserved. Soundbar restarts and reconnects; if installation or verification fails, the updater attempts to restore the previous version. Progress and diagnostic logs live in `~/.code-gossip/version_state/`. Changed hook commands may require review in Codex CLI `/hooks` and a new agent session.
+Updates use the release's `code-gossip.zip` asset in a temporary directory, so no Git checkout or Git executable is needed. Saved preferences, existing integrations, and custom samples referenced by `configs/sounds.json` are preserved. Use a distinct directory such as `data/sounds/custom/`; edits to shipped sample paths are replaced by the package. See [audio ownership rules](ARCHITECTURE.md#sound-manifest). Soundbar restarts and reconnects. Installation and verification failures switch back to the retained previous release and restore settings and owned hooks. If recovery itself fails, the previous release and journal stay available; retry **Update** or the installer after resolving the reported error. Settings edits are blocked while an install/update is running or recovery is pending. Progress and diagnostic logs live in `~/.code-gossip/version_state/`. Changed hook commands may require review in Codex CLI `/hooks` and a new agent session.
 
-**Moving from 0.9.1 or earlier:** those updaters download source archives and cannot install the new package format. Run the normal installation above once, selecting your existing integrations and using the same custom `CODEX_HOME`, if any. Settings and unrelated hooks are preserved. Subsequent updates use release packages.
+<a id="existing-flat-installations"></a>
+**Existing flat installations:** normal installs without `~/.code-gossip/current` need an explicit reinstall. **Before uninstalling, back up your custom audio outside `~/.code-gossip/`.** Uninstall keeps settings but removes audio, logs, caches, and the Kokoro environment. Download and extract the latest release's **code-gossip.zip** asset, then run these commands from its `release/` directory:
+
+```bash
+bash ./code-gossip/uninstall.sh --all     # keep saved settings; omit --purge
+bash ./install.sh --agents codex,claude   # select your existing integrations
+```
+
+After installation, restore your custom audio to its original `data/sounds/` paths and reinstall Kokoro from Soundbar if you use it. Use your existing custom `CODEX_HOME` for both commands, if any. This applies to `0.9.1` and earlier as well as flat installs made from later source checkouts. Unrelated hooks remain intact. Subsequent updates use release generations; development installs keep their checkout workflow.
 
 Development installations continue to update from their checkout; release checks and installation are disabled in Soundbar's Updates section:
 

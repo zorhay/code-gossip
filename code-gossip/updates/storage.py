@@ -10,9 +10,8 @@ import sys
 import tempfile
 
 from .config import UpdatePaths
-from .constants import INSTALLATION_FILE, RECOVERY_READY_FILE, VERSION_FILE
+from .constants import VERSION_FILE
 from .entities import CheckResult, Installation, Release, UpdateProgress, UpdateStatus, Version
-from .errors import UpdateError
 
 
 def read_json(path: Path, default=None):
@@ -22,17 +21,40 @@ def read_json(path: Path, default=None):
         return {} if default is None else default
 
 
-def write_json(path: Path, value) -> None:
+def sync_directory(path: Path) -> None:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def sync_tree(root: Path) -> None:
+    for directory, _, files in os.walk(root, topdown=False):
+        for name in files:
+            with (Path(directory) / name).open("rb") as stream:
+                os.fsync(stream.fileno())
+        sync_directory(directory)
+    sync_directory(root.parent)
+
+
+def write_text(path: Path, value: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(prefix=".write-", dir=path.parent)
     try:
         with os.fdopen(fd, "w") as stream:
-            json.dump(value, stream, indent=2, default=serialize)
-            stream.write("\n")
+            stream.write(value)
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
+        sync_directory(path.parent)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def write_json(path: Path, value) -> None:
+    write_text(path, json.dumps(value, indent=2, default=serialize) + "\n")
 
 
 def serialize(value):
@@ -62,10 +84,8 @@ def installed_version(root: Path) -> str:
 
 def load_installation(paths: UpdatePaths) -> Installation | None:
     data = read_json(paths.installation)
-    return installation_from_record(data) if data else None
-
-
-def installation_from_record(data: dict) -> Installation:
+    if not data:
+        return None
     return Installation(version=data.get("version", "unknown"), mode=data.get("mode", "regular"),
                         root=Path(data.get("root", "")), python=data.get("python", ""),
                         integrations={agent: Path(path) for agent, path in data.get("integrations", {}).items()})
@@ -108,16 +128,3 @@ def report_progress(paths: UpdatePaths, progress: UpdateProgress, phase: str, me
     progress.message = message
     write_json(paths.progress, progress)
     print(message, flush=True)
-
-
-def load_recovery_installation(paths: UpdatePaths) -> Installation:
-    ready = read_json(paths.recovery / RECOVERY_READY_FILE)
-    if ready.get("root") != str(paths.root.resolve()):
-        raise UpdateError("Recovery backup is incomplete. Inspect version_state/recovery before retrying.")
-    return installation_from_record(ready["record"])
-
-
-def save_recovery_installation(paths: UpdatePaths, installation: Installation) -> None:
-    write_json(paths.recovery / INSTALLATION_FILE, read_json(paths.installation))
-    # Written last: an interrupted backup never authorizes a restore.
-    write_json(paths.recovery / RECOVERY_READY_FILE, {"root": str(paths.root.resolve()), "record": installation})

@@ -42,7 +42,7 @@ def execute(root: Path, args: argparse.Namespace) -> int:
     if args.action == "_run":
         if args.lock_fd is None:
             raise UpdateError("The worker requires an inherited update lock.")
-        return run_update(root, args.lock_fd).exit_code
+        return run_update(root, args.lock_fd)
     if args.action == "check":
         check_for_updates(root, force=True)
     elif args.action == "update":

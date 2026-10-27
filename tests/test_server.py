@@ -426,7 +426,7 @@ def test_slow_check_does_not_block_controls_or_status(isolated_preferences, monk
     serving.start()
     base = f'http://127.0.0.1:{http.server_port}'
     def request(path, body=None):
-        req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, headers={'Content-Type':'application/json'})
+        req = urllib.request.Request(base + path, data=json.dumps(body).encode() if body is not None else None, headers={'Content-Type':'application/json','Origin':base,'X-Soundbar-Request':'ui'})
         with urllib.request.urlopen(req, timeout=2) as response:
             return json.load(response)
     try:
@@ -454,7 +454,7 @@ def test_shutdown_rejected_while_installing(isolated_preferences, monkeypatch):
     handler = object.__new__(server.Handler)
     handler.path = '/api/shutdown'
     handler.server = Mock(server_port=8111)
-    handler.headers = {'Origin':'http://localhost:8111','X-Soundbar-Request':'ui'}
+    handler.headers = {'Host':'localhost:8111', 'Origin':'http://localhost:8111','X-Soundbar-Request':'ui'}
     handler.json_response = Mock()
     handler.do_POST()
     result = handler.json_response.call_args.args[0]
@@ -464,7 +464,7 @@ def test_shutdown_rejected_while_installing(isolated_preferences, monkeypatch):
     handler.server.shutdown.assert_not_called()
 
 
-@pytest.mark.parametrize('endpoint', ['/api/update', '/api/update-check'])
+@pytest.mark.parametrize('endpoint', ['/api/update', '/api/update-check', '/api/kokoro-install', '/api/config', '/api/activate', '/api/draft-preview'])
 def test_update_actions_require_same_origin(isolated_preferences, monkeypatch, endpoint):
     server = isolated_preferences
     start = Mock()
@@ -472,10 +472,12 @@ def test_update_actions_require_same_origin(isolated_preferences, monkeypatch, e
     handler = object.__new__(server.Handler)
     handler.path = endpoint
     handler.server = Mock(server_port=8111)
-    handler.headers = {'Origin': 'https://example.com', 'X-Soundbar-Request': 'ui'}
+    handler.headers = {'Host':'localhost:8111', 'Origin': 'https://example.com', 'X-Soundbar-Request': 'ui'}
     handler.send_error = Mock()
+    handler._handle_post = Mock()
     handler.do_POST()
     assert handler.send_error.call_args.args[0] == 403
+    handler._handle_post.assert_not_called()
     start.assert_not_called()
 
 
@@ -483,6 +485,8 @@ def test_updates_block_settings_mutation(isolated_preferences):
     server = isolated_preferences
     handler = object.__new__(server.Handler)
     handler.path = '/api/config'
+    handler.server = Mock(server_port=8111)
+    handler.headers = {'Host':'localhost:8111','Origin':'http://localhost:8111','X-Soundbar-Request':'ui'}
     handler.read_body = lambda: {'effects_volume': 1}
     handler.json_response = Mock()
     before = server.CONFIG_FILE.read_bytes()
@@ -504,7 +508,7 @@ def test_manual_update_check_and_start_share_service(isolated_preferences, monke
     monkeypatch.setattr(server.kokoro, '_progress', {'status': 'idle'})
     handler = object.__new__(server.Handler)
     handler.server = Mock(server_port=8111)
-    handler.headers = {'Origin': 'http://localhost:8111', 'X-Soundbar-Request': 'ui'}
+    handler.headers = {'Host':'localhost:8111', 'Origin': 'http://localhost:8111', 'X-Soundbar-Request': 'ui'}
     handler.read_body = lambda: {}
     handler.json_response = Mock()
     handler.path = '/api/update-check'
@@ -521,3 +525,14 @@ def test_initial_status_never_imports_kokoro(isolated_preferences):
     with patch.object(server.kokoro, 'is_installed', side_effect=AssertionError('Expensive import during page load')), patch.object(server.kokoro, 'is_present', return_value=True):
         assert server.get_status()['setup']['kokoro'] is True
         assert server.setup_status()['kokoro'] is True
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_foreign_host_is_rejected(isolated_preferences, method):
+    server = isolated_preferences
+    handler = object.__new__(server.Handler)
+    handler.server = Mock(server_port=8111)
+    handler.headers = {"Host": "attacker.example:8111", "Origin": "http://localhost:8111", "X-Soundbar-Request": "ui"}
+    handler.send_error = Mock()
+    getattr(handler, "do_" + method)()
+    assert handler.send_error.call_args.args[0] == 403

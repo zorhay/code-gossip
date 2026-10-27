@@ -9,6 +9,7 @@ from . import github
 from .config import DEFAULT_CONFIG, UpdateConfig, UpdatePaths
 from .entities import CheckResult, UpdateStatus, Version
 from .errors import UpdateError
+from .constants import ACTIVE_PHASES
 from .process import is_busy, lock
 from .storage import installed_version, load_check, load_installation, load_progress, write_json
 
@@ -49,7 +50,7 @@ def status(root: Path) -> UpdateStatus:
     except UpdateError:
         available = False
     running = is_busy(root)
-    interrupted = progress.interrupted(running)
+    interrupted = not running and (paths.transaction.exists() or progress.phase in ACTIVE_PHASES)
     return UpdateStatus(
         installed=installed, release=cached.release, available=available, checked_at=cached.checked_at,
         development=installed == "development" or bool(installation and installation.mode == "development"), running=running,

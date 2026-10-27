@@ -7,7 +7,7 @@ Code Gossip adds audio feedback to Codex, Claude Code, and Cursor. Soundbar is i
 - `code-gossip/hooks/`: agent adapters; `engine/`: playback, narration, and Kokoro.
 - `code-gossip/soundbar/`: UI, server, launcher, and setup tips.
 - `code-gossip/data/`: shipped sound manifest and audio; `configs/`: defaults and local preferences; `state/`: local runtime files.
-- `code-gossip/installer.py`: shared install/uninstall logic. Normal installs copy the runtime to `~/.code-gossip/`; dev installs symlink it.
+- `code-gossip/installer.py`: shared install/uninstall logic. Normal installs stage releases under `~/.code-gossip/version_state/releases/` and switch `current` atomically; dev installs symlink the checkout.
 
 See [README](README.md) for usage and [ARCHITECTURE](ARCHITECTURE.md) for implementation details.
 

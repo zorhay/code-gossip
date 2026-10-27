@@ -5,10 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import re
-from typing import Literal
 
-from .config import UpdateConfig, UpdatePaths
-from .constants import ACTIVE_PHASES
 from .errors import UpdateError
 
 
@@ -55,43 +52,13 @@ class CheckResult:
     error: str = ""
 
 
-@dataclass(frozen=True)
-class UpdatePlan:
-    paths: UpdatePaths
-    installation: Installation
-    release: Release
-    port: int
-    lock_fd: int
-    config: UpdateConfig
-
-
 @dataclass
 class UpdateProgress:
     phase: str = "idle"
     message: str = ""
     started_at: float | None = None
-    needs_recovery: bool = False
-    port: int | None = None
-    target: str | None = None
     work: Path | None = None
     guidance: str = ""
-
-    def interrupted(self, running: bool) -> bool:
-        recovery_pending = self.needs_recovery and self.phase != "failed"
-        return not running and (recovery_pending or self.phase in ACTIVE_PHASES)
-
-
-@dataclass(frozen=True)
-class UpdateResult:
-    outcome: Literal["updated", "up_to_date", "failed"]
-    installed_version: str
-    message: str
-    required_actions: str = ""
-
-    @property
-    def exit_code(self) -> int:
-        return 1 if self.outcome == "failed" else 0
-
 
 @dataclass(frozen=True)
 class UpdateStatus:

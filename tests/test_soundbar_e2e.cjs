@@ -88,8 +88,20 @@ async function until(check, description) {
         const pidFile = path.join(runtime, 'state/.server.pid');
         const pid = fs.readFileSync(pidFile, 'utf8');
         const before = fs.readFileSync(path.join(runtime, 'configs/config.json'), 'utf8');
+        const customSample = path.join(runtime, 'data/sounds/custom/local.wav');
+        fs.mkdirSync(path.dirname(customSample));
+        fs.writeFileSync(customSample, 'user-owned audio');
+        const manifest = JSON.parse(fs.readFileSync(path.join(runtime, 'data/sounds.json'), 'utf8'));
+        manifest.effects.custom = { dir: 'sounds/custom', events: { stop: { file: 'local.wav' } } };
+        const customManifest = JSON.stringify(manifest);
+        fs.writeFileSync(path.join(runtime, 'configs/sounds.json'), customManifest);
+        const assertCustomAudio = () => {
+          assert.equal(fs.readFileSync(customSample, 'utf8'), 'user-owned audio');
+          assert.equal(fs.readFileSync(path.join(runtime, 'configs/sounds.json'), 'utf8'), customManifest);
+        };
         // Reinstallation reloads server code, while a manual open reuses that server.
         await install();
+        assertCustomAudio();
         assert.notEqual(fs.readFileSync(pidFile, 'utf8'), pid);
         const refreshedPid = fs.readFileSync(pidFile, 'utf8');
         await run(path.join(runtime, 'soundbar/panel.sh'), '--background');
@@ -126,10 +138,11 @@ async function until(check, description) {
           await page.waitForFunction(version=>document.getElementById('availableVersion').textContent==='Available: '+version,releaseVersion);
           await page.locator('#applyUpdate').click();
           await page.waitForFunction(version=>document.getElementById('installedVersion').textContent==='Installed: '+version,releaseVersion,{timeout:30000});
+          assertCustomAudio();
           assert.equal((await status()).effects_profile,'paper','Update preserves saved preferences');
           assert.notEqual(fs.readFileSync(pidFile,'utf8'),refreshedPid,'Update restarts Soundbar');
           assert.equal(fs.readFileSync(path.join(runtime,'VERSION'),'utf8').trim(),releaseVersion);
-          assert(!fs.existsSync(path.join(runtime,'version_state/recovery')));
+          assert(!fs.existsSync(path.join(runtime,'version_state/transaction.json')));
         }
         await page.getByRole('tab', { name: 'Phrases', exact: true }).click();
         assert.equal((await status()).effects_profile, 'paper');
@@ -145,6 +158,7 @@ async function until(check, description) {
         await assert.rejects(fetch(url + '/api/health'));
         // --no-panel preserves settings while keeping the panel stopped.
         await install('--no-panel');
+        assertCustomAudio();
         assert(!fs.existsSync(pidFile));
         assert.equal(JSON.parse(fs.readFileSync(path.join(runtime, 'configs/config.json'))).effects_profile, 'paper');
         await run(path.join(runtime, 'soundbar/panel.sh'), '--background');
@@ -156,7 +170,14 @@ async function until(check, description) {
         assert(!fs.existsSync(runtime));
         assert(fs.existsSync(path.join(checkout, 'code-gossip/installer.py')), 'Dev checkout survives uninstall');
         assert.deepEqual(errors, []);
-        console.log(`${dev ? 'Dev' : 'Normal'} end-to-end passed: install, browser opening, reuse, explicit activation, setup drafts, UI shutdown, reopen, partial/full uninstall.`);
+        console.log(`${dev ? 'Dev' : 'Normal'} end-to-end passed: install, custom audio across reinstalls/update, browser opening, reuse, explicit activation, setup drafts, UI shutdown, reopen, partial/full uninstall.`);
+      } catch (error) {
+        console.error('Installed UI:', await page.locator('body').innerText().catch(() => 'unavailable'));
+        for (const file of ['version_state/operation.json', 'version_state/update.log', 'state/panel.log']) {
+          const target = path.join(runtime, file);
+          if (fs.existsSync(target)) console.error(file + ':\n' + fs.readFileSync(target, 'utf8').slice(-16000));
+        }
+        throw error;
       } finally {
         await context.close();
         if (fs.existsSync(path.join(runtime, 'uninstall.sh'))) await run(path.join(runtime, 'uninstall.sh'), '--all', '--purge').catch(() => {});

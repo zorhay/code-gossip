@@ -1,7 +1,8 @@
 #!/bin/bash
 # Check for releases or explicitly update the installed runtime.
 set -euo pipefail
-SND="$(cd "$(dirname "$0")" && pwd)"
+SND="$(cd "$(dirname "$0")" && pwd -P)"
+SND="${SND%/version_state/releases/*}"
 CFG="$SND/configs/config.json"
 [ -f "$CFG" ] || CFG="$SND/configs/config.defaults.json"
 PYTHON3=""
