@@ -15,3 +15,5 @@ TASKS.md
 /code-gossip/version_state/
 /code-gossip/data/sounds/generals/*.aiff
 *.code-gossip-backup
+
+/.code-gossip.lock

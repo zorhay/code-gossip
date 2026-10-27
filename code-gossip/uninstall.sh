@@ -1,7 +1,8 @@
 #!/bin/bash
 # Code Gossip — selective uninstall, or --all for removal without questions.
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+SCRIPT_DIR="${SCRIPT_DIR%/version_state/releases/*}"
 # This script is also symlinked at the repository root.
 if [ -f "$SCRIPT_DIR/code-gossip/installer.py" ]; then
   SCRIPT_DIR="$SCRIPT_DIR/code-gossip"

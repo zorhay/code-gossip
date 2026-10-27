@@ -19,7 +19,7 @@ def bootstrap(sandbox, repo_root, release_package, tmp_path):
     curl = binaries / "curl"
     curl.write_text('''#!/bin/bash
 test "${TEST_DOWNLOAD_FAIL:-0}" = 0 || exit 22
-test "$6" = https://github.com/zorhay/code-gossip/releases/latest/download/code-gossip.zip || exit 99
+test "$8" = https://github.com/zorhay/code-gossip/releases/latest/download/code-gossip.zip || exit 99
 /bin/cp "$TEST_PACKAGE" "${!#}"
 ''')
     curl.chmod(0o755)
@@ -98,3 +98,20 @@ def test_bootstrap_failures_preserve_home_and_clean_downloads(bootstrap, tmp_pat
     assert snapshot(home) == before
     if failure == "dev-install":
         assert (home / ".code-gossip").resolve() == checkout
+
+
+@pytest.mark.parametrize("name,mode", [("release/../../escape", 0), ("/absolute", 0),
+                                       ("release/link", 0o120777), ("release/pipe", 0o010644)])
+def test_bootstrap_rejects_unsafe_package_members(bootstrap, tmp_path, name, mode):
+    import zipfile
+    home, env, run = bootstrap
+    archive = tmp_path / "unsafe.zip"
+    with zipfile.ZipFile(archive, "w") as bundle:
+        member = zipfile.ZipInfo(name)
+        member.external_attr = mode << 16
+        bundle.writestr(member, "unsafe")
+    env["TEST_PACKAGE"] = str(archive)
+    before = snapshot(home)
+    assert "Unsafe installation package" in run("--agents", "codex", success=False).stderr
+    assert snapshot(home) == before
+    assert not (tmp_path / "escape").exists()

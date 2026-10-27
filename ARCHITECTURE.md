@@ -42,7 +42,7 @@ flowchart TB
 ## Package map
 
 ```text
-code-gossip/                         installed as ~/.code-gossip/
+code-gossip/                         source runtime; see installed layout below
 │
 ├── hooks/                          agent-specific input
 │   ├── claude-hooks.json           Claude event → engine command
@@ -81,13 +81,13 @@ code-gossip/                         installed as ~/.code-gossip/
 └── uninstall.sh                    installed removal entrypoint
 ```
 
-The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package; development installation symlinks it.
+The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package into a release generation; development installation symlinks the checkout. Public hook and CLI paths remain under `~/.code-gossip/`.
 
 The Code Gossip marketing page is hosted on GitHub Pages. Its reusable [deployment workflow](.github/workflows/pages.yml) publishes `docs/` from the released commit through the `github-pages` environment. The release workflow calls it only after the installation package is available. It has no separate release-event trigger, so the website cannot deploy ahead of package validation. Repository **Settings → Pages → Source** must be **GitHub Actions**, and the `github-pages` environment's selected deployment tags must allow version tags matching `*.*.*` (for example, `0.8.0`). These repository settings are separate from the workflow file. Existing releases are not redeployed when the workflow is merged.
 
 The site's `index.html`, `player.css`, and `player.js` present the demo media in `docs/assets/` and the installation command. Pages stamps the published release tag into the version link during deployment; there is no manually maintained website version or browser API request. Playback is local to the visitor's browser and independent of the installed Soundbar.
 
-Python modules resolve package locations through [`paths.py`](code-gossip/paths.py). Shell entrypoints derive their package root from their own location. User preferences belong in `configs/`, writable runtime files in `state/`, and relative sound paths resolve against `data/`.
+Python modules resolve package locations through [`paths.py`](code-gossip/paths.py). Shell entrypoints derive the physical release and stable installation roots from their own location. `RUNTIME`, `ENGINE`, `DATA`, and `SOUNDBAR` point into the selected generation; `ROOT`, `CONFIGS`, `STATE`, and `VERSION_STATE` remain outside it. User preferences belong in `configs/`, writable runtime files in `state/`, and relative sound paths resolve against `data/`.
 
 ## Agent events
 
@@ -234,13 +234,13 @@ flowchart LR
     Config -.-> Live[Live hook engine]
 ```
 
-`panel.sh` uses `launcher.py` to reuse a ready server or start one, then opens the browser. Manual launches run in the foreground; installation uses `--background` after hook setup, unless `--no-panel` was passed. Reinstallation restarts only the recorded, identity-checked panel process to load updated Python code. The launcher checks `/api/health` for the application and resolved runtime path before opening the UI. Startup/browser failures report a manual-open command without undoing installation. The Python server binds to `127.0.0.1`, writes `state/.server.pid` after binding, and removes its own PID file on shutdown. The **Close Soundbar** button is unavailable during Kokoro installation, with an explanation that closing the browser tab is safe. The server also rejects shutdown during installation. Outside installation it sends a same-origin `POST /api/shutdown`; the server responds before stopping its request loop, closes the socket, and removes its PID file. The UI shows a closed state with reopening instructions. Closing the browser tab alone does not stop the server. Agent hooks and the separate Kokoro process remain active.
+`panel.sh` uses `launcher.py` to reuse a ready server or start one, then opens the browser. Manual launches run in the foreground; installation uses `--background` after hook setup, unless `--no-panel` was passed. Reinstallation restarts only the recorded, identity-checked panel process to load updated Python code. Install/update transactions stop the owned Kokoro daemon too; speech starts it again when needed. The launcher checks `/api/health` for the application and resolved runtime path before opening the UI. Startup verification failures roll back the transaction. A browser-opening failure after commit reports a manual-open command without undoing installation. The Python server binds to `127.0.0.1`, writes `state/.server.pid` after binding, and removes its own PID file on shutdown. The **Close Soundbar** button is unavailable during Kokoro installation, with an explanation that closing the browser tab is safe. The server also rejects shutdown during installation. Outside installation it sends a same-origin `POST /api/shutdown`; the server responds before stopping its request loop, closes the socket, and removes its PID file. The UI shows a closed state with reopening instructions. Closing the browser tab alone does not stop the server. Agent hooks and the separate Kokoro process remain active.
 
 `ui.html` and `ui.js` present Effects, Clips, Phrases, and AI commentary. Apply sits at the right of the preview action row in each category. The selected tab is a draft; a separate snapshot identifies active audio. Only **Apply** commits a draft through `/api/activate`. The server validates configuration and phrase shapes before writing, atomically replaces each settings file, and restores phrases if the config write fails. The mode is remembered for mute/reload. Existing combined channel settings are displayed and preserved until explicit activation; the hook dispatcher still supports both channels.
 
 `/api/draft-check` and `/api/draft-preview` merge allowed draft keys into a temporary in-memory config. Credentials for a saved provider are never reused for a different provider. `engine/preview.py` receives JSON through stdin using the configured Python executable, without changing config or phrase files. Speech previews use the selected engine, speaker, and exact alternative. Effects and clips expose event/sample identities through `preview_catalog`; draft playback waits for the selected sample to finish. AI sample generation uses the draft provider/model/style and an example edit, returns text without speaking, and replay speaks that text without calling the provider again. These previews bypass live-hook spacing. Kokoro main and subagent voices are configured separately.
 
-The HTTP server handles requests concurrently so slow checks, model discovery, and previews do not block mute or status requests. Settings mutations are serialized and configuration files are replaced atomically. Setup status derives from manifest files, audio tools, and Kokoro installation progress. Initial status uses lightweight Python/package file inventory; it never imports Kokoro. The separate speech check verifies runtime availability after the UI loads. The install endpoint verifies imports rather than trusting a saved installed flag, with a 30-second process-local cache. Missing Python invalidates that cache immediately. Installation has a single guarded worker, keeps the process alive until completion, and offers explicit repair after a failed speech check; repairing an existing environment reinstalls its packages.
+The HTTP server handles requests concurrently so slow checks, model discovery, and previews do not block mute or status requests. Settings mutations share the installer lock and configuration files are replaced atomically. Every POST requires an allowed loopback Origin and the Soundbar request header; GET and POST reject non-loopback Host headers. This blocks browser cross-site mutations and DNS rebinding; it is not authentication against other local processes. Setup status derives from manifest files, audio tools, and Kokoro installation progress. Initial status uses lightweight Python/package file inventory; it never imports Kokoro. The separate speech check verifies runtime availability after the UI loads. The install endpoint verifies imports rather than trusting a saved installed flag, with a 30-second process-local cache. Missing Python invalidates that cache immediately. Installation has a single guarded worker, keeps the process alive until completion, and offers explicit repair after a failed speech check; repairing an existing environment reinstalls its packages.
 
 Provider and speech checks validate only their own settings and have separate scopes and UI results. Installation and verification occupy separate labeled rows, with progress and error details below at full content width. Apply is disabled when setup is incomplete, with a reason and setup link; saving shows progress without changing the button width or activating the draft early. Verification appears only once dependencies are available; installation success does not imply verification. Local checks return to **Check** after **Checking…**; cloud and Ollama checks use **Check connection** / **Connecting…**, while Claude CLI uses **Check CLI** / **Checking…**. Results name what was verified: audio files, the speech engine, the CLI executable, the Ollama server, or a cloud connection. Green means success, orange pending/action needed, red failure, and gray built-in availability. Pending labels appear once, on the action; completed results sit beside it. Expanded setup hides its duplicate summary status. Both speech sections use one template.
 
@@ -287,44 +287,60 @@ The endpoint definitions and request fields live in [`server.py`](code-gossip/so
 
 ```mermaid
 flowchart TD
-    Entry[install.sh or uninstall.sh] --> Source{Normal install from checkout?}
-    Source -->|yes| Package[Download and validate latest release package]
-    Package --> Select[Detect and select agents]
-    Source -->|no: package, dev, or uninstall| Select
-    Select --> Validate[Validate hook documents and plan changes]
-    Validate --> Dry{Dry run?}
+    Entry[Select agents and validate layout/hooks] --> Dry{Dry run?}
     Dry -->|yes| Report[Print plan; no mutation]
-    Dry -->|no| Action{Action}
-    Action -->|install| Files[Copy package or create dev symlink]
-    Files --> Hooks[Back up changed files; merge hooks atomically]
-    Action -->|uninstall| Remove[Remove selected handlers]
-    Remove --> Remaining{Other integrations remain?}
-    Remaining -->|yes| Keep[Keep shared runtime and processes]
-    Remaining -->|no| Cleanup[Stop owned processes; remove installation]
+    Dry -->|no| Lock[Acquire stable lock; recover pending journal]
+    Lock --> Stage[Stage complete release, or prepare integration removal]
+    Stage --> Journal[Persist previous pointer, settings, hooks and metadata]
+    Journal --> Apply[Activate release and write hooks/settings atomically]
+    Apply --> Verify{Required panel health check succeeds?}
+    Verify -->|yes or no panel requested| Commit[Remove journal: commit]
+    Verify -->|failure| Recover[Restore previous pointer and saved files]
+    Recover --> Retry{Recovery succeeds?}
+    Retry -->|yes| Failed[Report original failure]
+    Retry -->|no| Pending[Retain releases and journal; retry installer or Update]
+    Commit --> Cleanup[Keep active and previous release; clean obsolete generations]
+```
+
+A normal install uses complete release generations and a single atomic `current` switch, following the [generation pattern used by Nix](https://nix.dev/manual/nix/2.24/package-management/profiles). [`os.replace()`](https://docs.python.org/3/library/os.html#os.replace) changes the symlink on the same filesystem. Release files, atomic JSON replacements, and the journal are flushed before commit. The journal follows the [rollback-journal principle](https://www.sqlite.org/atomiccommit.html): save what recovery needs before mutating it, and retain that information until verification succeeds.
+
+```text
+~/.code-gossip.lock                  stable install/update/settings lock; survives removal
+~/.code-gossip/
+├── current -> version_state/releases/<generation>
+├── hooks, engine, soundbar, data, updates -> current/<name>
+├── installer.py, paths.py, update.*, switch.sh, uninstall.sh, VERSION -> current/<name>
+├── configs/                        user JSON; defaults link into current/configs/
+├── state/                          logs, caches, Kokoro environment and sockets
+└── version_state/
+    ├── releases/<generation>/      complete runtime copies; active and previous retained
+    ├── transaction.json            private recovery journal, present until commit
+    └── installation.json, check.json, operation.json, update.log, check.lock
 ```
 
 | Contract | Behavior |
 |---|---|
-| Detection | CLI executables, agent config directories, macOS application bundles |
-| Selection | All, names, or menu numbers; multiple selections accepted |
-| Automation | `--agents` skips selection; install `--all` means detected agents; uninstall `--all` means every supported integration |
-| Validation | Install checks selected hook documents; uninstall checks all supported documents before deciding whether the runtime is unused |
-| Merge | Remove only Code Gossip handlers, including those in shared groups; preserve unrelated JSON |
-| Backup | Changed hook files get a `.code-gossip-backup` copy; unchanged reinstalls leave backups alone |
-| Normal install | Copy shipped files; preserve user settings; seed missing defaults; record Python path; generate Generals clips when `say` exists |
-| Dev install | `~/.code-gossip` links to the checkout's `code-gossip/`; settings and state stay in the checkout |
-| Full removal | Stop the panel/Kokoro after checking process identity; keep user settings in `configs/` unless `--purge` |
+| Detection / selection | CLI executables, agent config directories and macOS applications; names, menu numbers, or `--agents`/`--all` |
+| Validation | Install checks selected hook documents; uninstall checks all supported documents before deciding whether the runtime is unused. Unexpected runtime links and symlinked installation directories are rejected. |
+| Preparation | Copy a fresh release without local settings/state, generate Generals clips when `say` exists, preserve [referenced custom audio](#sound-manifest), and flush the copy. Preparation failure leaves the active release untouched. |
+| Merge | Remove only Code Gossip handlers, including those in shared groups; preserve unrelated JSON. Reread after preparation and reject a detected concurrent hook edit. |
+| Journal | Save raw settings, hook documents/backups, installation metadata, previous release pointer and panel state before mutation. Atomic writes never truncate the live JSON file. |
+| Verify | Restart and verify root/version when installing with a panel, replacing a running panel, or updating. `--no-panel` skips startup when the panel was already stopped. |
+| Recovery | Restore the pointer and saved files; merge our old handlers into externally changed hook documents. A failed recovery retains executable releases and the journal; retry before further mutations. Fresh-install recovery may require rerunning the downloaded installer. |
+| Backup / retention | Changed hook documents retain `.code-gossip-backup`; successful normal installs keep active and previous generations. Replacing the generation removes obsolete code from active paths. |
+| Dev install | `~/.code-gossip` links to the checkout's `code-gossip/`; settings and state stay there. The journal protects settings/hooks, but cannot roll back edits already made to checkout code. |
+| Removal | Commit hook removal first. Keep the shared runtime/processes while integrations remain; otherwise stop owned processes and remove files without traversing directory symlinks. Keep user settings unless `--purge`. A cleanup failure can leave unused files to remove on retry. |
 | Dev removal | Remove only the installation symlink, never checkout content, even with `--purge` |
 
-Custom Codex homes require the same `CODEX_HOME` for installation and removal. A normal installation and a dev symlink cannot overwrite each other; uninstall before changing modes. The installer supports only the current package layout.
+Custom Codex homes require the same `CODEX_HOME` for installation and removal. A normal installation and a dev symlink cannot overwrite each other. Flat normal installations are rejected before mutation and require the [explicit uninstall/reinstall procedure](README.md#existing-flat-installations); no automatic migration is attempted. External tools that edit agent JSON do not share this lock, so simultaneous edits should be avoided.
 
 ### Release updates
 
 Normal installs and updates consume the same `code-gossip.zip` release asset. The [release workflow](.github/workflows/release.yml) starts when a GitHub release is published, checks out its tagged commit, and runs [`package_release.py`](scripts/package_release.py). The builder includes tracked runtime files and generates `VERSION` from the tag inside the ZIP. It never changes the checkout. The workflow tests that exact package, uploads it to the already-published release, and then deploys Pages. A rerun preserves an already-uploaded installation package. Creating or pushing a tag alone does not publish anything; PRs run the same checks without publication. Pushes to `main`, including merged PRs, do not trigger another run. The release asset becomes available after the workflow succeeds. `VERSION` is generated metadata, not a source-controlled version number.
 
-The standalone [`docs/install.sh`](docs/install.sh) bootstrap is served by Pages. It checks macOS and prerequisites, downloads the latest installation ZIP to a temporary directory, forwards arguments to its installer, and cleans up on success or failure. It rejects development mode, which must use a permanent checkout. Installation behavior and saved settings remain owned by the existing installer.
+The standalone [`docs/install.sh`](docs/install.sh) bootstrap is served by Pages. It checks macOS and prerequisites, downloads the latest installation ZIP to a temporary directory, rejects unsafe archive paths/types and excessive sizes, forwards arguments to its installer, and cleans up on success or failure. It rejects development mode, which must use a permanent checkout. Installation behavior and saved settings remain owned by the existing installer.
 
-Soundbar and [`update.sh`](code-gossip/update.sh) share the [`updates`](code-gossip/updates/) public operations. A normal install from a checkout uses [`install_latest()`](code-gossip/installer.py) to download and validate the package before invoking its installer; an extracted package installs directly. Both downloads use [`fetch_source()`](code-gossip/updates/source.py). Development installs bypass release downloads, keep their symlinks, report `development`, and receive checkout-based update instructions. Updaters from `0.9.1` and earlier need one package-based reinstall with their existing integrations and custom `CODEX_HOME`; see [README](README.md#using-code-gossip).
+Soundbar and [`update.sh`](code-gossip/update.sh) share the [`updates`](code-gossip/updates/) public operations. A normal install from a checkout uses [`install_latest()`](code-gossip/installer.py) to download and validate the package before invoking its installer; an extracted package installs directly. Both downloads use [`fetch_source()`](code-gossip/updates/source.py). Development installs bypass release downloads, keep their symlinks, report `development`, and receive checkout-based update instructions. Older flat installations require the explicit reinstall described above.
 
 ```mermaid
 sequenceDiagram
@@ -341,12 +357,12 @@ sequenceDiagram
     Worker->>GitHub: Refresh release and download its package by asset ID
     GitHub-->>Worker: Installation package in temporary directory
     Note over Worker: Validate source and preflight fresh installer
-    Worker->>Runtime: Back up, stop panel, run fresh installer
-    Worker->>Runtime: Restart and verify version and health
+    Worker->>Runtime: Run fresh transactional installer
+    Note over Runtime: Stage, journal, activate, verify, commit
     alt Installation and verification succeed
         Runtime-->>Worker: Healthy
     else Installation or verification fails
-        Worker->>Runtime: Restore previous installation
+        Worker->>Runtime: Retry journal recovery if needed
     end
     Worker-->>UI: Persist result and reconnect Soundbar
     Note over Worker: Clean temporary source and retain logs
@@ -358,22 +374,24 @@ sequenceDiagram
 | Trigger and detect — `updates/check.py` | A server-owned background thread checks the cache on startup and hourly, contacting GitHub only after 24 hours since success. Failed automatic attempts retry at most hourly. The Soundbar button and `update.sh check` bypass the cache. No hook or separate background service checks for releases. |
 | Discover and notify — `updates/github.py`, Soundbar | Use GitHub's [latest stable release API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release); compare numeric major/minor/patch versions, accepting an optional `v`. Short network timeouts and cached results keep automatic failures quiet. Manual errors appear beside the check action. Checking never installs. |
 | Prepare and fetch — `updates/update.py`, `source.py` | An explicit update refreshes release information, validates recorded integrations/Python, and downloads the uploaded `code-gossip.zip` by its asset ID into an owned OS temporary directory. Missing/incomplete assets are rejected without falling back to source archives. Reject traversal, unexpected symlinks, special files, oversized archives, missing runtime files, and mismatched versions. Run the downloaded installer's dry run before changing runtime files. |
-| Install — `updates/process.py`, `installation.py`, fresh installer | A detached worker survives the panel/terminal closing and holds a process lock inherited by its installer. Settings mutations, another install/update, and new Kokoro installations are blocked during the transaction; an already running Kokoro installation prevents updating. Back up the runtime and selected hook documents, then invoke the fresh Python installer with the recorded interpreter and existing integration selection. |
-| Verify or recover — `updates/soundbar.py`, `recovery.py` | Restart only the identity-checked Soundbar process and verify its root and startup version through `/api/health`. Preserve `state/` and `version_state/` throughout. On failure, restore the previous runtime and our hook handlers, preserving unrelated hook edits. Failed recovery retains the backup and reports its location. A later Update retries interrupted recovery before proceeding. |
+| Install — `updates/process.py`, `installation.py`, fresh installer | A detached worker survives the panel/terminal closing and holds a process lock inherited by its installer. Settings mutations, another install/update, and new Kokoro installations are blocked during the transaction; an already running Kokoro installation prevents updating. Invoke the fresh transactional installer with the recorded interpreter and existing integration selection. The same journal and activation code handles direct installation and updates. |
+| Verify or recover — `updates/soundbar.py`, `recovery.py` | Restart only the identity-checked Soundbar process and verify its root and startup version through `/api/health`. Preserve `state/` and `version_state/` throughout. On failure, restore the previous runtime and our hook handlers, preserving unrelated hook edits. Failed recovery retains the journal and previous generation. A later Update or installer run retries recovery before proceeding. |
 | Report and clean — `updates/storage.py`, `source.py`, Soundbar | Persist progress, result, and log; reconnect and reload the UI after a successful version change. Hook guidance depends on changed owned definitions, ignoring mere ordering. Delete temporary source after completion/failure; clean only directories with this installation's ownership marker. Keep recovery data if recovery still needs attention. |
 
-[`run_update()`](code-gossip/updates/update.py) is the main workflow: recover an interrupted update, prepare the plan, prepare fresh source, back up, install, verify, and report. Each workflow module puts its entrypoint before the supporting functions. [`prepare_source()`](code-gossip/updates/source.py) owns download, extraction, validation, and installer preflight; [`recover_interrupted_update()`](code-gossip/updates/recovery.py) owns recovery before another attempt.
+[`run_update()`](code-gossip/updates/update.py) recovers pending work, downloads and preflights the package, invokes its installer, persists the result, and returns a CLI exit code. [`fetch_source()`](code-gossip/updates/source.py) owns download/extraction validation; [`installer.run()`](code-gossip/installer.py) owns mutations; [`recover()`](code-gossip/updates/recovery.py) restores a pending journal. There is no separate updater backup/copy path.
 
 | Supporting module | Responsibility |
 |---|---|
-| [`entities.py`](code-gossip/updates/entities.py) | Typed versions, releases, installations, check results, update plans, progress, and results exchanged between steps |
+| [`entities.py`](code-gossip/updates/entities.py) | Typed versions, releases, installations, check results, progress, and status exchanged between steps |
 | [`config.py`](code-gossip/updates/config.py) | Check intervals, timeouts, archive limits, and paths resolved from the selected runtime |
-| [`constants.py`](code-gossip/updates/constants.py) | Repository identity, filenames, preserved directories, and required source files |
+| [`constants.py`](code-gossip/updates/constants.py) | Repository identity, filenames and required source files |
 | [`storage.py`](code-gossip/updates/storage.py) | Atomic JSON persistence and conversion between saved records and typed entities |
 | [`errors.py`](code-gossip/updates/errors.py) | Explicit update and busy errors |
 | [`cli.py`](code-gossip/updates/cli.py), [`__init__.py`](code-gossip/updates/__init__.py) | CLI argument/output handling and Soundbar-facing operations; JSON payloads stay at these boundaries and storage |
 
-The CLI supports `check`, `update`, and `status`, with `--json` for machine-readable results. `version_state/` contains `installation.json`, `check.json`, `operation.json`, `update.log`, locks, and a transient `recovery/` backup. These local files are gitignored and excluded when copying a source checkout into an installation. Source downloads are temporary; `~/.code-gossip/` remains a runtime directory without a Git repository. Update/check HTTP actions require a same-origin Soundbar request; `GET /api/updates` only reads status. Automatic checks continue when the browser tab closes, until the Soundbar server stops.
+The CLI supports `check`, `update`, and `status`, with `--json` for machine-readable results. Local records, release generations and the journal are excluded from source copies and Git. Downloads use owned temporary directories; the installed runtime has no Git repository. `GET /api/updates` only reads status. Automatic checks continue until the Soundbar server stops.
+
+Packages are trusted code delivered over HTTPS from this repository’s GitHub releases. Archive validation prevents extraction escapes and rejects malformed packages; it does not provide independent release signatures or protect against a compromised publisher. Recovery is tested across process termination and injected write/health failures, not physical disk loss. If both retained releases are damaged, reinstall from a fresh package.
 
 ## Data contracts
 
@@ -426,6 +444,27 @@ This illustrates the schema; copy the full shipped manifest when creating an ove
 | `rate: [min, max]` | Optional randomized playback rate for file-based mappings |
 
 Relative file names combine with the profile's `dir` under `data/`; absolute paths stay absolute. Manifest arguments and paths are trusted local configuration. Keep custom sound specs under your control.
+
+Normal reinstalls and updates preserve registered audio while staging each release:
+
+```text
+configs/sounds.json ── file / files / sequence ──> referenced samples
+old release/data/sounds/custom/local.wav ──copy──> staged release/data/sounds/custom/local.wav
+                                                verify + flush → activate
+```
+
+| Referenced sample | Preparation rule |
+|---|---|
+| Shipped by both old and new releases | Use the new package, including when the old sample was edited locally |
+| Absent from the new package | Copy from the active release; this also retains retired shipped samples still referenced by the override |
+| Custom path now occupied by the new package | Accept identical bytes; otherwise abort and ask the user to rename the custom sample |
+| Missing custom source, traversal, or a symlink escaping `data/sounds/` | Abort before activation; the active release stays intact |
+| Absolute path outside the installation | Leave the external file and reference untouched |
+| Absolute path through `~/.code-gossip/data/` | Preserve as above; references to individual release generations are rejected |
+| File absent from the override manifest | Do not carry it forward; only the new package supplies it |
+
+Use distinct custom filenames under `data/sounds/`. A missing old shipped sample may remain absent (for example, Generals clips on a system without `say`). Preservation repeats on every install/update, without version checks, path migration, or rewriting the override. A fresh install with retained settings has no previous runtime to copy; restore backed-up custom samples after installing. Full uninstall removes audio even without `--purge`; see the [manual reinstall steps](README.md#existing-flat-installations).
+
 
 Wood Thrush (`wood-thrush`) uses a C minor pentatonic palette from C3 to C5. Its profile-level `melody` defines a MIDI `root`, semitone `scale` offsets, and an inclusive MIDI `range`. Each event's `melody` supplies a `phrase` (`note`, `rise`, `fall`, `question`, or `resolve`) and the sine envelope: total `duration`, `gain`, `attack`, `release`, and `reverb`. The weighted walk favors nearby scale notes, avoids immediate repeats, reduces recent-note reuse, and favors reversing direction after a leap. Attention cues repeat a pitch; completion alone uses a fifth-to-tonic resolution. The new profile uses Submarine-inspired volumes, cue lengths, fades, and reverb. Submarine retains its original fixed tones and glides.
 

@@ -13,14 +13,17 @@ import installer
 import launcher
 
 
-def test_shipped_python_imports_application(repo_root):
+@pytest.mark.parametrize("imports", ["import installer; import soundbar.server; import updates.cli",
+                                     "import updates.installation; import installer; import updates.recovery",
+                                     "import soundbar.server; import updates.installation; import updates.cli"])
+def test_shipped_python_imports_application(repo_root, imports):
     """The launcher default must work even when pytest uses a newer Python."""
     runtime = repo_root / 'code-gossip'
     python = Path(json.loads((runtime / 'configs/config.defaults.json').read_text())['python3_path'])
     if not python.is_file():
         pytest.skip(f'Shipped Python interpreter is unavailable: {python}')
     result = subprocess.run(
-        [str(python), '-B', '-c', 'import installer; import soundbar.server; import updates.cli'],
+        [str(python), '-B', '-c', imports],
         cwd=runtime, capture_output=True, text=True, timeout=15,
     )
     assert result.returncode == 0, result.stdout + result.stderr
@@ -29,7 +32,10 @@ def test_shipped_python_imports_application(repo_root):
 @pytest.mark.parametrize('no_panel,dry_run,expected', [(False, False, True), (True, False, False), (False, True, False)])
 def test_install_opens_panel_only_after_success(tmp_path, monkeypatch, no_panel, dry_run, expected):
     monkeypatch.setattr(Path, 'home', lambda: tmp_path)
-    monkeypatch.setattr(installer, 'install_files', Mock())
+    from updates import soundbar
+    monkeypatch.setattr(soundbar, 'ensure_panel_idle', lambda *a: False)
+    monkeypatch.setattr(soundbar, 'restart_and_verify', Mock())
+    monkeypatch.setattr(installer.shutil, 'which', lambda name: '/usr/bin/jq' if name == 'jq' else None)
     monkeypatch.setattr(installer, 'write_hooks', Mock())
     monkeypatch.setattr(installer, 'open_panel', opened := Mock())
     args = argparse.Namespace(action='install', agents=['codex'], all=False, dev=False,
@@ -43,6 +49,8 @@ def test_install_opens_panel_only_after_success(tmp_path, monkeypatch, no_panel,
 
 def test_failed_install_does_not_open_panel(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, 'home', lambda: tmp_path)
+    from updates import soundbar
+    monkeypatch.setattr(soundbar, 'ensure_panel_idle', lambda *a: False)
     monkeypatch.setattr(installer, 'install_files', Mock(side_effect=OSError('disk full')))
     monkeypatch.setattr(installer, 'open_panel', opened := Mock())
     args = argparse.Namespace(action='install', agents=['codex'], all=False, dev=False,

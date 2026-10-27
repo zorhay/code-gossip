@@ -4,6 +4,8 @@ import json
 from copy import deepcopy
 from pathlib import Path
 import socket
+import shutil
+import time
 import stat
 import subprocess
 import sys
@@ -20,7 +22,7 @@ from updates.entities import CheckResult, Release, Version
 from updates.errors import Busy, UpdateError
 from updates.process import is_busy, lock
 from updates.storage import read_json, serialize, write_json
-from tests.test_installer import sandbox
+from tests.test_installer import custom_audio, sandbox
 
 
 RELEASE = Release(Version.parse("0.9.0"), "0.9.0", 9,
@@ -115,7 +117,7 @@ def release_fixture(release_directory, release_package):
             for member in original.infolist():
                 data = original.read(member)
                 if member.filename.endswith("/installer.py") and failure == "installer":
-                    data = data.replace(b'if not args.no_panel:', b'raise OSError("fixture installer failure")\n        if not args.no_panel:')
+                    data = data.replace(b'            record_installation(root,', b'            raise OSError("fixture installer failure")\n            record_installation(root,')
                 elif member.filename.endswith("/server.py") and failure == "health":
                     data = b'raise RuntimeError("fixture server failure")\n' + data
                 bundle.writestr(member, data)
@@ -140,11 +142,12 @@ def test_update_runs_fresh_installer_and_recovers(sandbox, release_fixture, fail
     preferences = read_json(config)
     preferences.update(effects_volume=23, narrator_api_key="fixture-private-key")
     write_json(config, preferences)
-    (root / "configs/sounds.json").write_text('{"custom":true}')
+    sample = custom_audio(root)
+    manifest = (root / "configs/sounds.json").read_bytes()
     (root / "state").mkdir(exist_ok=True)
     (root / "state/keep").write_text("runtime state")
-    (root / "__pycache__").mkdir(exist_ok=True)
-    (root / "__pycache__/old.pyc").write_bytes(b"stale module")
+    (root / "current/__pycache__").mkdir(exist_ok=True)
+    (root / "current/__pycache__/old.pyc").write_bytes(b"stale module")
     hooks_path = home / "custom codex/hooks.json"
     hooks = read_json(hooks_path)
     hooks["other_setting"] = "keep"
@@ -159,7 +162,13 @@ def test_update_runs_fresh_installer_and_recovers(sandbox, release_fixture, fail
     # Soundbar normally has no CODEX_HOME override; the updater must use its record.
     env.pop("CODEX_HOME")
     env.update(PORT=str(port), TEST_RELEASE_DIRECTORY=str(fixture))
+    panel = subprocess.Popen([sys.executable, str(root / "soundbar/server.py")], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
+        for _ in range(100):
+            if (root / "state/.server.pid").exists():
+                break
+            time.sleep(.02)
+        assert (root / "state/.server.pid").exists()
         result = run(root / "update.sh", "check")
         assert f"Available: {target_version}" in result.stdout
         assert (root / "VERSION").read_text().strip() == old_version
@@ -183,20 +192,29 @@ def test_update_runs_fresh_installer_and_recovers(sandbox, release_fixture, fail
         assert operation.get("guidance", "") == "", "Reordering unchanged hooks must not require approval"
         assert not (home / ".cursor/hooks.json").exists()
         assert not (home / ".codex/hooks.json").exists()
-        assert (root / "configs/sounds.json").read_text() == '{"custom":true}'
+        assert (root / "configs/sounds.json").read_bytes() == manifest
+        assert sample.read_bytes() == b"user-owned audio"
         assert (root / "state/keep").read_text() == "runtime state"
-        assert not (root / "__pycache__/old.pyc").exists()
+        assert (root / "current/__pycache__/old.pyc").exists() == bool(failure)
         assert not Path(operation["work"]).exists()
-        assert not (root / "version_state/recovery").exists()
+        assert not (root / "version_state/transaction.json").exists()
         assert read_json(root / "version_state/installation.json")["version"] == expected
         assert operation["message"] in run(root / "update.sh", "status").stdout
         status = json.loads(run(root / "update.sh", "status", "--json").stdout)
         assert (status["installed"], status["message"], status["guidance"]) == (expected, operation["message"], "")
-        if failure:
-            assert "Previous version restored" in operation["message"]
     finally:
         env["CODEX_HOME"] = str(home / "custom codex")
         run(root / "uninstall.sh", "--all", "--purge")
+
+
+def staged_transaction(root, record):
+    paths = UpdatePaths(root)
+    candidate = paths.releases / ("a" * 32)
+    shutil.copytree(paths.current.resolve(), candidate)
+    target = str(candidate.relative_to(root))
+    recovery.begin(paths, record.integrations, [paths.installation], candidate=target)
+    recovery.activate(paths, target)
+    return paths
 
 
 @pytest.mark.parametrize("agent", installer.AGENTS)
@@ -213,7 +231,7 @@ def test_recovery_preserves_external_hook_changes(sandbox, monkeypatch, agent):
     group["timeout"] = 42  # Group/handler metadata must survive recovery too.
     original["hooks"][event].append(group)
     write_json(hook_path, original)
-    installation.backup_installation(UpdatePaths(root), record)
+    paths = staged_transaction(root, record)
     current = deepcopy(original)
     for groups in current["hooks"].values():
         groups.reverse()
@@ -221,12 +239,12 @@ def test_recovery_preserves_external_hook_changes(sandbox, monkeypatch, agent):
     handlers = current["hooks"][event] if agent == "cursor" else current["hooks"][event][0]["hooks"]
     handlers.append({"type": "command", "command": "echo keep"})
     write_json(hook_path, current)
-    assert installation.changed_hooks(UpdatePaths(root), record) == []
+    assert installation.hook_signature(original, agent) == installation.hook_signature(current, agent)
     handlers[0]["command"] += " --changed-command"
     write_json(hook_path, current)
-    assert installation.changed_hooks(UpdatePaths(root), record) == [agent]
+    assert installation.hook_signature(original, agent) != installation.hook_signature(current, agent)
     (root / "VERSION").write_text("0.9.0")
-    recovery.restore_installation(UpdatePaths(root))
+    recovery.recover(paths)
     assert read_json(hook_path) == installer.merge_hooks(current, agent, original["hooks"])
     assert (root / "VERSION").read_text().strip() == record.version
 
@@ -255,13 +273,12 @@ def test_failed_preparation_keeps_runtime_untouched(sandbox, monkeypatch):
     root = home / ".code-gossip"
     (root / "VERSION").write_text("0.8.0\n")
     monkeypatch.setattr(Path, "home", lambda: home)
-    monkeypatch.setattr(update, "ensure_panel_idle", lambda *args: None)
     monkeypatch.setattr(update, "check_for_updates", lambda *a, **kw: CheckResult(RELEASE))
     monkeypatch.setattr(github, "download_release", Mock(side_effect=UpdateError("Invalid archive")))
     before = {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*")
               if p.is_file() and "version_state" not in p.parts}
     with lock(root) as fd:
-        assert update.run_update(root, fd).exit_code == 1
+        assert update.run_update(root, fd) == 1
     after = {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*")
              if p.is_file() and "version_state" not in p.parts}
     assert before == after
@@ -276,37 +293,40 @@ def test_interrupted_update_restores_before_next_detection(sandbox, monkeypatch)
     root = home / ".code-gossip"
     monkeypatch.setattr(Path, "home", lambda: home)
     record = installation.prepare_installation(UpdatePaths(root))
-    installation.backup_installation(UpdatePaths(root), record)
+    paths = staged_transaction(root, record)
     (root / "VERSION").write_text("0.9.0")
-    write_json(root / "version_state/operation.json", {"phase": "installing", "needs_recovery": True, "port": 8111})
+    write_json(root / "version_state/operation.json", {"phase": "installing"})
     assert update_api.status(root)["phase"] == "interrupted"
     restart = Mock()
-    monkeypatch.setattr(recovery, "restart_and_verify", restart)
+    monkeypatch.setattr(soundbar, "restart_and_verify", restart)
     def detect(*a, **kw):
         assert (root / "VERSION").read_text().strip() == record.version
         return CheckResult(Release(Version.parse(record.version), record.version, 9, RELEASE.notes_url))
     monkeypatch.setattr(update, "check_for_updates", detect)
     with lock(root) as fd:
-        assert update.run_update(root, fd).exit_code == 0
-    restart.assert_called_once_with(UpdatePaths(root), record, 8111, record.version, DEFAULT_CONFIG)
-    assert not (root / "version_state/recovery").exists()
+        assert update.run_update(root, fd) == 0
+    restart.assert_not_called()  # Recovery preserves a previously stopped panel.
+    assert not (root / "version_state/transaction.json").exists()
 
 
-def test_recovery_failure_retains_backup_and_error(sandbox, monkeypatch):
+@pytest.mark.parametrize("failure", ["restore_file", "activate", "commit"])
+def test_recovery_failure_keeps_executable_and_retries(sandbox, monkeypatch, failure):
     home, _, run = sandbox
     run("install.sh", "--agents", "codex")
     root = home / ".code-gossip"
-    backup = root / "version_state/recovery"
-    backup.mkdir()
-    (backup / "keep").write_text("backup")
-    write_json(root / "version_state/operation.json", {"phase": "recovering", "needs_recovery": True, "port": 8111})
-    monkeypatch.setattr(recovery, "restore_installation", Mock(side_effect=OSError("disk full")))
-    with lock(root) as fd:
-        assert update.run_update(root, fd).exit_code == 1
-    assert (backup / "keep").read_text() == "backup"
-    status = update_api.status(root)
-    assert status["phase"] == "failed"
-    assert "disk full" in status["message"]
+    monkeypatch.setattr(Path, "home", lambda: home)
+    record = installation.prepare_installation(UpdatePaths(root))
+    paths = staged_transaction(root, record)
+    with monkeypatch.context() as fault:
+        fault.setattr(recovery, failure, Mock(side_effect=OSError("disk full")))
+        with lock(root) as fd:
+            assert update.run_update(root, fd) == 1
+    assert paths.transaction.exists()
+    assert (root / "update.sh").is_file()
+    assert (root / "VERSION").read_text().strip() == record.version
+    assert "disk full" in read_json(paths.progress)["message"]
+    run(root / "update.sh", "update")
+    assert not paths.transaction.exists()
 
 
 def test_scheduler_checks_without_installing(monkeypatch, tmp_path):
