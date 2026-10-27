@@ -113,7 +113,7 @@ async function until(check, description) {
           assert(Object.keys(doc.hooks).length > 0);
         }
         await page.goto(url);
-        await page.waitForFunction(() => document.getElementById('statusText').textContent.startsWith('Active'));
+        await page.waitForFunction(() => document.getElementById('statusText').textContent.startsWith('In use'));
         if (dev) {
           await page.locator('#settingsButton').click();
           assert.equal(await page.locator('#installedVersion').innerText(), 'Installed: development');
@@ -127,7 +127,7 @@ async function until(check, description) {
           assert(!fs.existsSync(path.join(checkout, 'code-gossip/VERSION')));
         }
         assert.equal(await page.locator('[role=tab]').count(), 4);
-        await page.selectOption('#soundPack', 'paper');
+        await page.locator('#packList label', {hasText:'Paper'}).click();
         assert.equal((await status()).effects_profile, 'default', 'Browsing does not save');
         await page.locator('#activateSelection').click();
         await until(async () => (await status()).effects_profile === 'paper', 'activated Effects profile');
@@ -146,7 +146,27 @@ async function until(check, description) {
         }
         await page.getByRole('tab', { name: 'Phrases', exact: true }).click();
         assert.equal((await status()).effects_profile, 'paper');
-        await page.locator('#setup-phrases > summary').click();
+        const installedVoice = (await status()).voices[0].name;
+        await page.selectOption('#mainAgentVoice', installedVoice);
+        await page.selectOption('#subagentVoice', installedVoice);
+        await page.locator('#phraseRows input').first().fill('Saved integration draft');
+        await page.locator('#panel-phrases [data-act=save]').click();
+        await until(async () => (await status()).phrases.subagent_start[0][0] === 'Saved integration draft', 'saved phrase draft');
+        assert.equal((await status()).effects_on, true, 'Saving another tab preserves the Effects channel');
+        assert.equal((await status()).voice_on, false);
+        await page.getByRole('button', {name:'Use Phrases', exact:true}).click();
+        await until(async () => (await status()).voice_profile === 'senior' && (await status()).voice_on, 'activated Phrases');
+        assert.equal((await status()).effects_on, false);
+        await page.locator('#soundOn').uncheck();
+        await until(async () => !(await status()).voice_on, 'muted Phrases');
+        await page.locator('#tab-effects').click();
+        await page.getByRole('button', {name:'Use Effects', exact:true}).click();
+        await until(async () => (await status()).soundbar_mode === 'effects', 'selected Effects while muted');
+        assert.equal((await status()).effects_on, false, 'Using another mode preserves mute');
+        await page.locator('#soundOn').check();
+        await until(async () => (await status()).effects_on, 'unmuted Effects');
+        await page.getByRole('tab', { name: 'Phrases', exact: true }).click();
+        await page.locator('#panel-phrases .strip [data-drawer=speech]').click();
         await page.selectOption('#phraseEngine', 'kokoro');
         assert.equal((await status()).tts_engine, 'say', 'Setup choices stay in the draft');
         assert(!fs.existsSync(path.join(runtime, 'state/.venv')));

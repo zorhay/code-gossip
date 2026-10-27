@@ -157,7 +157,7 @@ class TestGetStatus:
         status = get_status()
         required = {
             "effects_profiles", "voice_profiles", "voice_profile_names",
-            "phrases", "events", "dialogue_events", "voices",
+            "phrases", "phrases_defaults", "events", "dialogue_events", "voices",
             "tts_engines", "kokoro_voices",
             "narrator_providers", "narrator_styles", "narrator_styles_defaults",
         }
@@ -241,6 +241,20 @@ def test_activation_preserves_unrelated_settings_and_saves_dialogue(isolated_pre
     assert config['narrator_api_key'] == 'private-example'
     assert server.read_phrases()['subagent_start'] == [['Main', 'Sub']]
     assert server.read_phrases()['edit']
+
+
+def test_save_keeps_active_mode_and_channels(isolated_preferences):
+    server = isolated_preferences
+    before = server.read_config()
+    server.apply_selection({'mode': 'phrases', 'config': {'voice_main': 'Samantha'},
+                            'phrases': {'edit': ['Saved for later']}}, activate=False)
+    config = server.read_config()
+    assert config['voice_main'] == 'Samantha'
+    for key in ('soundbar_mode', 'effects_on', 'voice_on', 'voice_profile'):
+        assert config[key] == before[key]
+    assert server.read_phrases()['edit'] == ['Saved for later']
+    with pytest.raises(ValueError):
+        server.apply_selection({'mode': 'phrases', 'config': {}, 'phrases': {'edit': ['']}}, activate=False)
 
 
 @pytest.mark.parametrize('phrases', [

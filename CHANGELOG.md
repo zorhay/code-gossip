@@ -18,8 +18,8 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
+- Soundbar uses a compact list and detail layout. **Save** writes the open tab without changing the active mode; **Use** and **Save & use** switch what agents play. Amber and Mint live in **Settings → Appearance**. Cloud provider checks run only when you ask. **Getting started** replaces the topic-tip column.
 - Normal installs and updates share one transaction: stage a complete release, atomically switch the active pointer, verify Soundbar, then commit. The previous release remains available for recovery.
-
 - Normal installation and updating now use the same `code-gossip.zip` release package. The release workflow generates its `VERSION`, tests the package, and publishes it; version numbers are no longer edited in the source tree.
 - Development installs remain local symlinks, work offline, and report `development`. Update them with `git pull` and `install.sh --dev`; Soundbar does not offer release replacement for a checkout.
 
