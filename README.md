@@ -107,7 +107,7 @@ At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phr
 
 Previews play the selected event and alternative. Phrases also have per-row playback. AI commentary’s **Play sample** generates and plays a sample on the first click; replaying the displayed text does not make another AI request.
 
-**Save** writes the open tab without switching what agents play. **Use** switches to a tab that has no unsaved edits. **Save & use** writes those edits and switches to that tab. A dot marks unsaved edits; the tab in use is labeled. **Discard** drops unsaved edits.
+**Save** writes the open tab without changing the active mode. Saving settings used by active audio requires its playback dependencies to be available. **Use** switches to a tab that has no unsaved edits. **Save & use** writes those edits and switches to that tab. A dot marks unsaved edits; the tab in use is labeled. **Discard** drops unsaved edits.
 
 Each tab keeps setup in a details drawer. Effects, clips, and speech are checked for the visible tab. Cloud provider checks run only when you ask, because they can be billed. Claude CLI and Ollama may be checked when AI commentary is open. **Play sample** also verifies the provider. Kokoro installs only when you click **Install Kokoro**. SoX setup shows the installation command to run in your terminal. Using a tab selects one channel and preserves mute. Existing combined Effects + Voice settings remain unchanged until you use a tab; the CLI still supports independent channels.
 

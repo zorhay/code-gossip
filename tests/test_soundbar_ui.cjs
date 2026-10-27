@@ -88,6 +88,33 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#helpPopover').isVisible(), false);
   assert.deepEqual({writes:writes.length, previews:previews.length, checks:checks.length, models:modelRequests.length}, beforeHelp, 'Getting started does not save, play, or check');
 
+  await page.locator('#packList label', {hasText:'Sci-fi'}).click();
+  assert(await page.locator('#panel-effects [data-act=save]').isDisabled(), 'Saving the active pack must not bypass missing audio dependencies');
+  const beforePackSample = previews.length;
+  await page.getByRole('button', {name:'Play a System sounds sample', exact:true}).click();
+  await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
+  assert.equal(previews.length, beforePackSample + 1, 'A ready pack can be auditioned even when the selected pack is unavailable');
+  assert.equal(previews.at(-1).config.effects_profile, 'default');
+  await page.locator('#panel-effects [data-act=discard]').click();
+
+  await page.locator('#tab-ai').click();
+  await page.locator('#panel-ai .strip [data-drawer=provider]').click();
+  await page.selectOption('#provider', 'openai');
+  await page.locator('#closeDrawer').click();
+  await page.locator('#panel-ai [data-act=discard]').click();
+  await page.locator('#panel-ai .strip [data-drawer=provider]').click();
+  assert.equal(await page.locator('#provider').inputValue(), 'claude_cli', 'Discard restores the visible provider as well as the request configuration');
+  await page.locator('#closeDrawer').click();
+  await page.locator('#panel-ai .strip [data-drawer=speech]').click();
+  await page.selectOption('#phraseEngine', 'kokoro');
+  await page.locator('#closeDrawer').click();
+  await page.locator('#tab-phrases').click();
+  assert.equal(await page.locator('#phraseEngineLabel').innerText(), 'macOS speech', 'An AI engine draft must not change the Phrases draft');
+  assert.equal(await page.locator('#badges-phrases .dirty-dot').count(), 0);
+  await page.locator('#tab-ai').click();
+  await page.locator('#panel-ai [data-act=discard]').click();
+  await page.locator('#tab-effects').click();
+
   await page.locator('#packList label', {hasText:'Paper'}).click();
   assert.equal(writes.filter(item => item.endpoint).length, 0, 'Choosing a pack stays a draft');
   assert((await page.locator('#statusText').innerText()).includes('System sounds'));
@@ -107,8 +134,10 @@ const server = http.createServer((req,res)=>{
   assert.equal(state.soundbar_mode, 'effects');
 
   await page.locator('#effectsEvents button', {hasText:'Stop'}).first().click();
+  await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
   assert.equal(previews.at(-1).event, 'stop');
   assert.equal(previews.at(-1).config.effects_profile, 'paper');
+  assert(await page.locator('#previewMainAgent').isEnabled(), 'Speech preview controls recover after an effects preview');
   await page.locator('#packList label', {hasText:'Silent'}).click();
   assert.equal(await page.locator('#effectsEvents [data-preview]').count(), 0);
   await page.locator('#packList label', {hasText:'Paper'}).click();
@@ -138,6 +167,9 @@ const server = http.createServer((req,res)=>{
   await page.getByRole('button', {name:'Preview alternative 1', exact:true}).click();
   assert.equal(previews.at(-1).variant, 0);
   await page.getByRole('button', {name:'Preview alternative 2', exact:true}).click();
+  await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
+  assert(await page.locator('#previewMainAgent').isEnabled());
+  assert(await page.locator('#previewSubagent').isEnabled());
   assert.equal(previews.at(-1).variant, 1);
   assert.equal(previews.at(-1).config.voice_main, 'Samantha');
   assert.equal(previews.at(-1).config.voice_sub, 'Aman');
@@ -150,6 +182,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(state.phrases.subagent_start[0][0], 'Please investigate');
   assert.equal(state.effects_on, false);
   assert.equal(state.voice_on, true);
+  assert.equal(await page.locator('#badges-ai .dirty-dot').count(), 0, 'Saving a shared voice must not manufacture an AI draft');
   await page.reload();
   await page.locator('#tab-phrases[aria-selected=true]').waitFor();
   await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Engine available');
@@ -261,6 +294,11 @@ const server = http.createServer((req,res)=>{
   assert.equal(state.voice_on, false);
   assert.equal(state.effects_on, false);
   assert.equal(state.narrator_provider, 'openai');
+  assert.equal(await page.locator('#sampleKey').inputValue(), '', 'A saved API key is no longer an unsaved edit');
+  assert.equal(await page.locator('#badges-ai .dirty-dot').count(), 0);
+  assert.equal(await page.locator('#checkStatus-ai').innerText(), 'Connection verified');
+  assert.equal(await page.locator('#sampleLabel').innerText(), 'Replay', 'Saving a key preserves the generated sample');
+  assert(await page.locator('#previewAIVoice').isEnabled());
   const beforeReload = checks.length;
   await page.reload();
   await page.locator('#tab-ai[aria-selected=true]').waitFor();
@@ -282,6 +320,11 @@ const server = http.createServer((req,res)=>{
   await page.getByRole('tab', {name:/^Effects/}).click();
   await page.locator('#packList label', {hasText:'Sci-fi'}).click();
   assert(await page.locator('#activateSelection').isDisabled());
+  const saveInactivePack = page.waitForResponse('**/api/save');
+  await page.locator('#panel-effects [data-act=save]').click();
+  await saveInactivePack;
+  assert.equal(state.effects_profile, 'sci-fi', 'An unavailable inactive pack can still be saved for later');
+  assert.equal(state.soundbar_mode, 'ai');
   assert((await page.locator('#panel-effects .state-issue').innerText()).includes('Install SoX'));
   await page.locator('#panel-effects .state-issue .link').click();
   assert(await page.locator('#soxCommand').isHidden(), true);
@@ -299,6 +342,22 @@ const server = http.createServer((req,res)=>{
    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, 'No overflow in ' + name);
   }
   await page.setViewportSize({width:1280, height:900});
+  await page.locator('#tab-effects').click();
+  await page.locator('#packList label', {hasText:'Paper'}).click();
+  const restorePack = page.waitForResponse('**/api/save');
+  await page.locator('#panel-effects [data-act=save]').click();
+  await restorePack;
+  Object.assign(state, {effects_on:true, voice_on:true, voice_profile:'senior'});
+  await page.reload();
+  await page.waitForFunction(() => document.getElementById('statusText').textContent.includes(' + Phrases'));
+  await page.locator('#tab-effects').click();
+  await page.getByRole('button', {name:'Use Effects', exact:true}).click();
+  await ready('In use · Effects · Paper');
+  assert.equal(state.voice_on, false, 'Using an already-playing mode exits combined playback');
+  assert.equal(writes.at(-1).endpoint, '/api/activate');
+  Object.assign(state, {effects_on:false, voice_on:true, voice_profile:'narrator', soundbar_mode:'ai'});
+  await page.reload();
+  await page.locator('#tab-ai[aria-selected=true]').waitFor();
   await page.locator('#settingsButton').click();
   const preferenceSaved = page.waitForResponse('**/api/config');
   await page.locator('#approvalCues').uncheck();

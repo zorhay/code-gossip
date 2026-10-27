@@ -146,6 +146,26 @@ async function until(check, description) {
         }
         await page.getByRole('tab', { name: 'Phrases', exact: true }).click();
         assert.equal((await status()).effects_profile, 'paper');
+        const installedVoice = (await status()).voices[0].name;
+        await page.selectOption('#mainAgentVoice', installedVoice);
+        await page.selectOption('#subagentVoice', installedVoice);
+        await page.locator('#phraseRows input').first().fill('Saved integration draft');
+        await page.locator('#panel-phrases [data-act=save]').click();
+        await until(async () => (await status()).phrases.subagent_start[0][0] === 'Saved integration draft', 'saved phrase draft');
+        assert.equal((await status()).effects_on, true, 'Saving another tab preserves the Effects channel');
+        assert.equal((await status()).voice_on, false);
+        await page.getByRole('button', {name:'Use Phrases', exact:true}).click();
+        await until(async () => (await status()).voice_profile === 'senior' && (await status()).voice_on, 'activated Phrases');
+        assert.equal((await status()).effects_on, false);
+        await page.locator('#soundOn').uncheck();
+        await until(async () => !(await status()).voice_on, 'muted Phrases');
+        await page.locator('#tab-effects').click();
+        await page.getByRole('button', {name:'Use Effects', exact:true}).click();
+        await until(async () => (await status()).soundbar_mode === 'effects', 'selected Effects while muted');
+        assert.equal((await status()).effects_on, false, 'Using another mode preserves mute');
+        await page.locator('#soundOn').check();
+        await until(async () => (await status()).effects_on, 'unmuted Effects');
+        await page.getByRole('tab', { name: 'Phrases', exact: true }).click();
         await page.locator('#panel-phrases .strip [data-drawer=speech]').click();
         await page.selectOption('#phraseEngine', 'kokoro');
         assert.equal((await status()).tts_engine, 'say', 'Setup choices stay in the draft');

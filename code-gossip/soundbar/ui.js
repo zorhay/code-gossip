@@ -93,13 +93,16 @@ function normalizePhrases(source) {
  return Object.fromEntries(saved.events.map(event => [event, clone(source?.[event] || [])]));
 }
 function voiceLabel(engine, id) { return (voiceChoices[engine] || []).find(([value]) => value === id)?.[1] || id; }
+function speechEngine(mode=state.viewMode) { return mode === 'ai' ? state.engine : state.phraseEngine; }
 function needsKey() { return !!saved.narrator_providers[state.provider]?.needs_key; }
-function hasProviderKey() { return !needsKey() || !!state.apiKey.trim() || (state.provider === saved.narrator_provider && !!saved.narrator_api_key); }
-function connectionIdentity() { return JSON.stringify([state.provider, state.model, state.apiKey]); }
+function providerKey() { return state.apiKey || (state.provider === saved.narrator_provider ? saved.narrator_api_key : '') || ''; }
+function hasProviderKey() { return !needsKey() || !!providerKey().trim(); }
+function connectionIdentity() { return JSON.stringify([state.provider, state.model, providerKey()]); }
 function aiIdentity() { return connectionIdentity(); }
 function speechIdentity(mode) {
- const voices = mode === 'phrases' ? state.phraseVoices[state.engine] : [state.voices[state.engine]];
- return JSON.stringify([state.engine, voices]);
+ const engine = speechEngine(mode);
+ const voices = mode === 'phrases' ? state.phraseVoices[engine] : [state.voices[engine]];
+ return JSON.stringify([engine, voices]);
 }
 function sampleIdentity() { return JSON.stringify([connectionIdentity(), state.style]); }
 function catalog(mode, pack=state.pack) {
@@ -117,7 +120,7 @@ function packSource(id) {
 function selectionDraft(mode=state.viewMode) {
  if (mode === 'effects') return {mode, pack:state.pack};
  if (mode === 'clips') return {mode, profile:'generals'};
- if (mode === 'phrases') return {mode, engine:state.engine, voices:clone(state.phraseVoices[state.engine]), phrases:clone(state.phrases)};
+ if (mode === 'phrases') return {mode, engine:state.phraseEngine, voices:clone(state.phraseVoices[state.phraseEngine]), phrases:clone(state.phrases)};
  return {mode, style:state.style, engine:state.engine, voice:state.voices[state.engine], provider:state.provider, model:state.model, context:state.context, apiKey:state.apiKey};
 }
 function savedDraft(mode) {
@@ -147,7 +150,7 @@ function selectionLabel(selection=activeSelection) {
 function draftConfig(mode=state.viewMode) {
  if (mode === 'effects') return {effects_profile:state.pack};
  if (mode === 'clips') return {};
- const engine = state.engine, config = {tts_engine:engine};
+ const engine = speechEngine(mode), config = {tts_engine:engine};
  if (mode === 'phrases') {
   const voices = state.phraseVoices[engine];
   Object.assign(config, engine === 'kokoro' ? {kokoro_voice:voices.main, kokoro_voice_sub:voices.sub} : {voice_main:voices.main, voice_sub:voices.sub});
@@ -166,28 +169,28 @@ function saveIssue(mode) {
  if (mode === 'ai' && !hasProviderKey()) return 'API key required';
  return '';
 }
-function speechInstallation(engine=state.engine) {
+function speechInstallation(engine=speechEngine()) {
  if (engine !== 'kokoro') return {available:!!setup.say, message:setup.say ? 'Built into macOS' : 'Unavailable', tone:setup.say ? 'neutral' : 'error'};
  if (setup.installing) return {available:false, message:'Installing…', tone:'warning'};
  if (setup.installStatus === 'error') return {available:false, message:'Installation failed', tone:'error'};
  return {available:!!setup.kokoro, message:setup.kokoro ? 'Installed' : 'Not installed', tone:setup.kokoro ? 'success' : 'warning'};
 }
 function speechReadiness(mode) {
- const installation = speechInstallation();
+ const engine = speechEngine(mode), installation = speechInstallation(engine);
  if (!installation.available) return {ready:false, message:installation.message};
- const voices = mode === 'phrases' ? Object.values(state.phraseVoices[state.engine]) : [state.voices[state.engine]];
- if (voices.some(voice => !(voiceChoices[state.engine] || []).some(([id]) => id === voice))) return {ready:false, message:'Choose installed voices'};
+ const voices = mode === 'phrases' ? Object.values(state.phraseVoices[engine]) : [state.voices[engine]];
+ if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) return {ready:false, message:'Choose installed voices'};
  const key = mode === 'phrases' ? 'phrases' : 'aiSpeech';
  const check = setupChecks[key], current = check?.identity === speechIdentity(mode);
  if (current && check.status === 'failed') return {ready:false, message:'Check failed'};
  if (current && check.status === 'checking') return {ready:false, message:'Checking speech…'};
  return {ready:true, message:current && check.status === 'checked' ? 'Engine available' : 'Not checked'};
 }
-function setupReadiness(mode) {
+function setupReadiness(mode, pack=state.pack) {
  if (mode === 'effects' || mode === 'clips') {
-  const available = mode === 'effects' ? setup.effects?.[state.pack] : setup.clips?.generals;
+  const available = mode === 'effects' ? setup.effects?.[pack] : setup.clips?.generals;
   if (!available?.ready) return available || {ready:false, message:'Audio unavailable'};
-  const check = setupChecks[mode], current = check?.identity === checkIdentity(mode);
+  const check = setupChecks[mode], current = check?.identity === checkIdentity(mode, pack);
   if (current && check.status === 'failed') return {ready:false, message:'Check failed'};
   if (current && check.status === 'checking') return {ready:false, message:'Checking…'};
   return {ready:true, message:current && check.status === 'checked' ? 'Audio available' : 'Not checked'};
@@ -197,6 +200,12 @@ function setupReadiness(mode) {
  if (mode === 'ai' && checkedAI !== aiIdentity()) return {ready:false, message:'Check the provider first'};
  return speech;
 }
+function saveReadiness(mode) {
+ if (mode === 'effects' && modeInUse(mode)) return setupReadiness(mode);
+ // Both spoken modes write the runtime's shared speech settings.
+ if (['phrases','ai'].includes(mode) && (modeInUse('phrases') || modeInUse('ai'))) return speechReadiness(mode);
+ return {ready:true};
+}
 function blockerDrawer(mode) {
  if (mode === 'effects') return 'effects';
  if (mode === 'clips') return 'clips';
@@ -205,9 +214,10 @@ function blockerDrawer(mode) {
 }
 
 const checkModes = {effects:'effects', clips:'clips', phrases:'phrases', aiSpeech:'ai', ai:'ai'};
-function checkIdentity(key) {
+function checkIdentity(key, pack=state.pack) {
  if (key === 'ai') return aiIdentity();
  if (key === 'phrases' || key === 'aiSpeech') return speechIdentity(checkModes[key]);
+ if (key === 'effects') return JSON.stringify({effects_profile:pack});
  return JSON.stringify(draftConfig(checkModes[key]));
 }
 function speechKey() { return state.viewMode === 'ai' ? 'aiSpeech' : 'phrases'; }
@@ -230,7 +240,7 @@ function checkPresentation(key) {
   if (!resource?.ready) prerequisite = {message:resource?.message || 'Audio unavailable', tone:resource?.missing?.length ? 'error' : 'warning'};
  }
  if (key === 'phrases' || key === 'aiSpeech') {
-  const installation = speechInstallation();
+  const installation = speechInstallation(speechEngine(checkModes[key]));
   if (!installation.available) prerequisite = installation;
   else if (!speechReadiness(checkModes[key]).ready && status !== 'failed' && status !== 'checking') prerequisite = {message:'Choose installed voices', tone:'warning'};
  }
@@ -288,7 +298,7 @@ function providerNote() {
  if (state.provider === 'ollama') return 'Checks the local server. Play a sample to test the selected model.';
  return `${saved.narrator_providers[state.provider]?.description || ''} A connection check sends a short request and may be billed. It runs only when you ask.`;
 }
-function modelListIdentity() { return JSON.stringify([state.provider, state.apiKey]); }
+function modelListIdentity() { return JSON.stringify([state.provider, providerKey()]); }
 function renderModelList() {
  const current = modelList?.identity === modelListIdentity() ? modelList : null;
  $('modelChoices').replaceChildren(...(current?.models || []).map(name => new Option(name, name)));
@@ -342,22 +352,24 @@ function renderNow() {
  $('volume').disabled = busy || mediaBusy || savingVolume;
 }
 function renderPanelState(mode) {
- const inUse = modeInUse(mode), dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
+ const inUse = modeInUse(mode), exclusive = activeSelection.mode === mode, dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
  const readiness = setupReadiness(mode), blocked = !readiness.ready, drawer = blockerDrawer(mode);
+ const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume;
  const link = `<button type="button" class="link" data-drawer="${drawer}">${drawer === 'provider' ? 'Configure' : 'Details'}</button>`;
  let html = '';
  if (dirty) {
   html += '<span class="unsaved"><i class="dirty-dot"></i>Unsaved changes</span>';
   if (issue) html += `<span class="state-issue">${icon('warn')}${esc(issue)}</span>`;
-  else if (!inUse && blocked) html += `<span class="state-issue">${icon('warn')}${esc(readiness.message)} · ${link}</span>`;
+  else if (!saveReady.ready || !exclusive && blocked) html += `<span class="state-issue">${icon('warn')}${esc(!saveReady.ready ? saveReady.message : readiness.message)} · ${link}</span>`;
   const saveDisabled = busy || mediaBusy || !!issue;
   html += `<button type="button" class="btn ghost" data-act="discard" ${busy || mediaBusy ? 'disabled' : ''}>Discard</button>`;
-  html += `<button type="button" class="btn ${inUse ? 'primary' : ''}" data-act="save" ${saveDisabled ? 'disabled' : ''}${mode === state.viewMode && inUse ? ' id="activateSelection"' : ''}${busy && inUse ? ' aria-busy="true"' : ''}>${inUse ? 'Save changes' : 'Save'}</button>`;
-  if (!inUse) html += `<button type="button" class="btn primary" data-act="save-use" ${saveDisabled || blocked ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Save &amp; use</button>`;
- } else if (inUse) html += `<span class="pill success">${icon('check')}In use</span>`;
+  html += `<button type="button" class="btn ${exclusive ? 'primary' : ''}" data-act="save" ${saveDisabled || saving || !saveReady.ready ? 'disabled' : ''}${mode === state.viewMode && exclusive ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>${inUse ? 'Save changes' : 'Save'}</button>`;
+  if (!exclusive) html += `<button type="button" class="btn primary" data-act="save-use" ${saveDisabled || saving || blocked ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Save &amp; use</button>`;
+ } else if (exclusive) html += `<span class="pill success">${icon('check')}In use</span>`;
  else {
+  if (inUse) html += `<span class="pill success">${icon('check')}In use</span>`;
   if (blocked) html += `<span class="state-issue">${icon('warn')}${esc(readiness.message)} · ${link}</span>`;
-  html += `<button type="button" class="btn primary" data-act="use" ${busy || mediaBusy || blocked ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
+  html += `<button type="button" class="btn primary" data-act="use" ${saving || blocked ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
  }
  document.querySelector(`[data-state="${mode}"]`).innerHTML = html;
 }
@@ -440,7 +452,7 @@ function renderPhraseRows() {
   return `<div class="row"><span class="row-num">${index + 1}</span><div class="inputs ${roles ? 'pair' : ''}">${texts.map((text, part) => `<input type="text" value="${esc(text)}" data-index="${index}" data-part="${part}" class="${String(text).trim() ? '' : 'invalid'}" placeholder="${part ? 'Reply…' : 'Write a phrase…'}" aria-label="${esc(roles ? roleName(roles[part]) : 'Phrase')} ${index + 1}">`).join('')}</div><button class="play-btn" type="button" data-preview="phrases" data-event="${esc(event)}" data-variant="${index}" aria-label="Preview alternative ${index + 1}" ${playable ? '' : 'disabled'}>${icon('play')}</button><button class="icon-sm" type="button" data-remove="${index}" aria-label="Remove ${index + 1}">${icon('x')}</button></div>`;
  }).join('') : '<p class="empty">No phrases yet, so this event stays silent. Add one below.</p>';
 }
-function roleName(role) { return (role === 'main' ? 'Main agent · ' : 'Subagent · ') + voiceLabel(state.engine, state.phraseVoices[state.engine][role]); }
+function roleName(role) { return (role === 'main' ? 'Main agent · ' : 'Subagent · ') + voiceLabel(state.phraseEngine, state.phraseVoices[state.phraseEngine][role]); }
 function fillSelect(id, entries, selected) {
  const element = $(id), signature = entries.map(([value]) => value).join('\0');
  if (element.dataset.options !== signature) {
@@ -451,10 +463,10 @@ function fillSelect(id, entries, selected) {
  if (element.value !== (selected || '')) element.value = selected || entries[0]?.[0] || '';
 }
 function renderVoices() {
- const engine = state.engine, choices = voiceChoices[engine] || [];
- fillSelect('mainAgentVoice', choices, state.phraseVoices[engine].main);
- fillSelect('subagentVoice', choices, state.phraseVoices[engine].sub);
- fillSelect('speaker', choices, state.voices[engine]);
+ const choices = voiceChoices[state.phraseEngine] || [];
+ fillSelect('mainAgentVoice', choices, state.phraseVoices[state.phraseEngine].main);
+ fillSelect('subagentVoice', choices, state.phraseVoices[state.phraseEngine].sub);
+ fillSelect('speaker', voiceChoices[state.engine] || [], state.voices[state.engine]);
 }
 function renderStyles() {
  $('styleCount').textContent = Object.keys(styleNames).length;
@@ -475,10 +487,10 @@ function renderSample() {
  $('sampleBtn').disabled = mediaBusy;
 }
 function renderSpeech() {
- const kokoro = state.engine === 'kokoro', installation = speechInstallation();
- $('phraseEngine').value = state.engine;
- $('phraseEngineLabel').textContent = kokoro ? 'Kokoro' : 'macOS speech';
- $('aiEngineLabel').textContent = kokoro ? 'Kokoro' : 'macOS speech';
+ const engine = speechEngine(), kokoro = engine === 'kokoro', installation = speechInstallation(engine);
+ $('phraseEngine').value = engine;
+ $('phraseEngineLabel').textContent = state.phraseEngine === 'kokoro' ? 'Kokoro' : 'macOS speech';
+ $('aiEngineLabel').textContent = state.engine === 'kokoro' ? 'Kokoro' : 'macOS speech';
  $('engineName').textContent = kokoro ? 'Installation' : 'Availability';
  $('engineStatus').textContent = installation.message;
  $('engineStatus').dataset.tone = installation.tone;
@@ -519,6 +531,7 @@ function render() {
  renderVersions();
 }
 function showProvider() {
+ $('provider').value = state.provider;
  $('keyField').hidden = !needsKey();
  $('sampleKey').placeholder = state.provider === saved.narrator_provider && saved.narrator_api_key ? 'Key saved — enter a new one to replace' : 'Paste your API key';
  $('providerHint').textContent = providerNote();
@@ -553,13 +566,19 @@ async function commit(mode, activate) {
  const issue = saveIssue(mode);
  if (issue) { showError(issue); return; }
  if (activate && !setupReadiness(mode).ready) { openDrawer(blockerDrawer(mode)); return; }
+ if (!activate && !saveReadiness(mode).ready) { openDrawer(blockerDrawer(mode)); return; }
  const draft = selectionDraft(mode), config = draftConfig(mode);
  busy = true; clearError(); renderChrome();
  try {
   const body = {mode, config, ...(mode === 'phrases' ? {phrases:draft.phrases} : {})};
   if (activate) body.enabled = state.enabled;
   await api(activate ? '/api/activate' : '/api/save', body);
+  syncSpeechDrafts(config);
   Object.assign(saved, config);
+  if (mode === 'ai' && state.provider === draft.provider && state.apiKey === draft.apiKey) {
+   state.apiKey = '';
+   $('sampleKey').value = '';
+  }
   if (mode === 'phrases') saved.phrases = clone(draft.phrases);
   if (activate) {
    saved.soundbar_mode = mode;
@@ -576,19 +595,29 @@ async function commit(mode, activate) {
  } catch (error) { showError(error.message); }
  finally { busy = false; render(); }
 }
-function restoreEngine() {
- state.engine = saved.tts_engine;
- state.phraseEngine = saved.tts_engine;
+function syncSpeechDrafts(config) {
+ // Rebase untouched shared fields without overwriting edits in the other tab.
+ const fields = {
+  tts_engine:[[state,'engine'], [state,'phraseEngine']],
+  voice_main:[[state.voices,'say'], [state.phraseVoices.say,'main']],
+  voice_sub:[[state.phraseVoices.say,'sub']],
+  kokoro_voice:[[state.voices,'kokoro'], [state.phraseVoices.kokoro,'main']],
+  kokoro_voice_sub:[[state.phraseVoices.kokoro,'sub']],
+ };
+ for (const [key, targets] of Object.entries(fields)) {
+  if (!Object.hasOwn(config, key)) continue;
+  for (const [target, field] of targets) if (target[field] === saved[key]) target[field] = config[key];
+ }
 }
 function discard(mode) {
  if (mode === 'effects') state.pack = saved.effects_profile;
  if (mode === 'phrases') {
-  restoreEngine();
+  state.phraseEngine = saved.tts_engine;
   state.phraseVoices = {say:{main:saved.voice_main, sub:saved.voice_sub}, kokoro:{main:saved.kokoro_voice, sub:saved.kokoro_voice_sub || 'am_adam'}};
   state.phrases = normalizePhrases(saved.phrases);
  }
  if (mode === 'ai') {
-  restoreEngine();
+  state.engine = saved.tts_engine;
   state.voices = {say:saved.voice_main, kokoro:saved.kokoro_voice};
   state.style = saved.narrator_style;
   state.provider = saved.narrator_provider;
@@ -640,21 +669,23 @@ async function mediaAction(button, work) {
  clearError();
  mediaBusy = true;
  button?.setAttribute('aria-busy', 'true');
- document.querySelectorAll('[data-preview]').forEach(control => { control.disabled = true; });
+ const controls = [...document.querySelectorAll('[data-preview]')].map(control => [control, control.disabled]);
+ controls.forEach(([control]) => { control.disabled = true; });
  renderChrome();
  try { await work(); }
  catch (error) { showError(error.message); }
  finally {
   mediaBusy = false;
   button?.setAttribute('aria-busy', 'false');
+  controls.forEach(([control, disabled]) => { control.disabled = disabled; });
   render();
  }
 }
 async function preview(mode, button) {
  const role = button?.dataset.role || null;
  if (mode === 'ai' && !role) { await playCommentarySample(button); return; }
- const readiness = mode === 'phrases' || mode === 'ai' ? speechReadiness(mode) : setupReadiness(mode);
  const pack = button?.dataset.pack;
+ const readiness = mode === 'phrases' || mode === 'ai' ? speechReadiness(mode) : setupReadiness(mode, pack);
  if (pack && !setup.effects?.[pack]?.ready) { openDrawer('effects'); showError(setup.effects?.[pack]?.message || 'Audio unavailable'); return; }
  if (!readiness.ready) { openDrawer(blockerDrawer(mode)); return; }
  const event = button?.dataset.event || (mode === 'phrases' ? state.phraseEvent : 'edit');
@@ -867,9 +898,9 @@ function wire() {
  };
  $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; state.pack = event.target.value; render(); scheduleSetupChecks(); });
  $('styleList').addEventListener('change', event => { if (event.target.name !== 'style') return; state.style = event.target.value; generatedSample = null; renderStyles(); renderSample(); renderChrome(); });
- $('phraseEngine').onchange = () => { state.engine = $('phraseEngine').value; state.phraseEngine = state.engine; generatedSample = null; render(); scheduleSetupChecks(); };
- $('mainAgentVoice').onchange = () => { state.phraseVoices[state.engine].main = $('mainAgentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
- $('subagentVoice').onchange = () => { state.phraseVoices[state.engine].sub = $('subagentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
+ $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); scheduleSetupChecks(); };
+ $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
+ $('subagentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].sub = $('subagentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
  $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; renderChrome(); scheduleSetupChecks(); };
  $('phraseRows').addEventListener('input', event => {
   const input = event.target;
