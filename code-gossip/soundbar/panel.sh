@@ -2,7 +2,8 @@
 # Soundbar — Control panel
 # Opens an existing panel, or starts one. --background leaves it running.
 
-SND="$(cd "$(dirname "$0")/.." && pwd)"
+SND="$(cd "$(dirname "$0")/.." && pwd -P)"
+SND="${SND%/version_state/releases/*}"
 LAUNCHER="$SND/soundbar/launcher.py"
 
 # Resolve python3: config → which → fallback

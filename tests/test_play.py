@@ -136,7 +136,7 @@ class TestPlayShLayerDispatch:
 
     def test_narrator_pipes_to_narrate_py(self, play_script):
         """When voice_profile is narrator, stdin should be piped to narrate.py."""
-        assert 'echo "$STDIN_DATA" | "$PYTHON3" "$SND/engine/narrate.py"' in play_script
+        assert 'echo "$STDIN_DATA" | "$PYTHON3" "$RUNTIME/engine/narrate.py"' in play_script
 
     def test_senior_reads_phrases_json(self, play_script):
         """When voice_profile is senior, play.sh reads phrases.json."""
@@ -151,7 +151,7 @@ class TestPlayShLayerDispatch:
         """play.sh must capture stdin BEFORE the background block."""
         # STDIN_DATA should be set before the { ... } & block
         stdin_pos = play_script.find("STDIN_DATA=$(cat)")
-        bg_start = play_script.find("{\n\nSND=")
+        bg_start = play_script.find("{\n\nRUNTIME=")
         assert stdin_pos < bg_start, (
             "STDIN_DATA must be captured before the background block"
         )

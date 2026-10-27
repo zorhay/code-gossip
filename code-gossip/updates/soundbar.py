@@ -69,7 +69,7 @@ def panel_request(port: int, endpoint: str, config: UpdateConfig = DEFAULT_CONFI
         return json.load(response)
 
 
-def ensure_panel_idle(paths: UpdatePaths, port: int, config: UpdateConfig = DEFAULT_CONFIG) -> None:
+def ensure_panel_idle(paths: UpdatePaths, port: int, config: UpdateConfig = DEFAULT_CONFIG) -> bool:
     root = paths.root
     try:
         health = panel_request(port, "/api/health", config)
@@ -77,16 +77,17 @@ def ensure_panel_idle(paths: UpdatePaths, port: int, config: UpdateConfig = DEFA
         raise UpdateError("Soundbar's port is occupied by another application.") from exc
     except URLError as exc:
         if isinstance(exc.reason, ConnectionRefusedError):
-            return
+            return False
         raise UpdateError("Could not verify the service on Soundbar's port. Close it before updating.") from exc
     except (ValueError, TimeoutError) as exc:
         raise UpdateError("Could not verify the service on Soundbar's port. Close it before updating.") from exc
     except OSError:
-        return
+        return False
     if not isinstance(health, dict) or health.get("app") != "code-gossip" or health.get("root") != str(root.resolve()):
         raise UpdateError("Soundbar's port is occupied by another application or installation.")
     if panel_request(port, "/api/setup", config).get("installing"):
         raise UpdateError("Wait for Kokoro installation to finish before updating.")
+    return True
 
 
 def stop_panel(paths: UpdatePaths, config: UpdateConfig = DEFAULT_CONFIG) -> None:

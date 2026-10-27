@@ -2,7 +2,9 @@
 # Code Gossip — CLI control for Claude Code sound layers
 # Usage: switch.sh <command> [value]
 
-SOUNDBAR="$(cd "$(dirname "$0")" && pwd)"
+set -e
+SOUNDBAR="$(cd "$(dirname "$0")" && pwd -P)"
+SOUNDBAR="${SOUNDBAR%/version_state/releases/*}"
 CFG="$SOUNDBAR/configs/config.json"
 [ ! -f "$CFG" ] && CFG="$SOUNDBAR/configs/config.defaults.json"
 [ ! -f "$CFG" ] && { echo "Code Gossip not installed. Run install.sh first."; exit 1; }
@@ -13,28 +15,28 @@ VOICE_PROFILES="senior narrator generals"
 # Read a config value
 cfg_get() { jq -r ".$1 // \"$2\"" "$CFG" 2>/dev/null || echo "$2"; }
 
-# Write a config value (string or boolean)
+# All settings writers share the install/update lock and atomic JSON replacement.
 cfg_set() {
-  local key="$1" val="$2"
-  local user_cfg="$SOUNDBAR/configs/config.json"
-  # Ensure user config exists
-  if [ ! -f "$user_cfg" ]; then
-    cp "$SOUNDBAR/configs/config.defaults.json" "$user_cfg" 2>/dev/null || echo '{}' > "$user_cfg"
-  fi
-  # Build new JSON
-  local tmp
-  if [ "$val" = "true" ] || [ "$val" = "false" ]; then
-    tmp=$(jq ".$key = $val" "$user_cfg")
-  else
-    tmp=$(jq ".$key = \"$val\"" "$user_cfg")
-  fi
-  # Validate before writing
-  if echo "$tmp" | jq . > /dev/null 2>&1; then
-    echo "$tmp" > "$user_cfg"
-  else
-    echo "Error: failed to update config" >&2
-    return 1
-  fi
+  local python
+  python=$(cfg_get python3_path "")
+  [ -x "$python" ] || python=$(command -v python3)
+  "$python" -B - "$SOUNDBAR" "$1" "$2" <<'PYTHON'
+import sys
+from pathlib import Path
+root = Path(sys.argv[1])
+sys.path.insert(0, str((root / "current").resolve() if (root / "current").is_symlink() else root))
+from updates.process import lock
+from updates.storage import read_json, write_json
+try:
+    with lock(root, mutation=True):
+        path = root / "configs/config.json"
+        data = read_json(path if path.exists() else root / "configs/config.defaults.json")
+        key, value = sys.argv[2:]
+        data[key] = {"true": True, "false": False}.get(value, value)
+        write_json(path, data)
+except (OSError, ValueError, RuntimeError) as error:
+    sys.exit(str(error))
+PYTHON
 }
 
 CMD="$1"

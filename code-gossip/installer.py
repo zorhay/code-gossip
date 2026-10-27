@@ -13,12 +13,14 @@ import signal
 import subprocess
 import sys
 import tempfile
-import time
+import uuid
 
 from hooks import codex, cursor
 from updates.errors import UpdateError
 from updates.process import lock
-from updates.storage import record_installation
+from updates.storage import record_installation, write_json, write_text, load_installation, installed_version, sync_tree, read_json
+from updates.config import UpdatePaths
+from updates import recovery
 
 
 AGENTS = ("codex", "cursor", "claude")
@@ -145,81 +147,149 @@ def definitions(agent, source, dest):
 
 
 def write_hooks(path, original, updated):
-    if original == updated:
+    if read_document(path) != original:
+        raise ValueError(f"{path}: hooks changed during installation; retry.")
+    if original != updated:
+        if path.exists():
+            write_text(path.with_name(path.name + ".code-gossip-backup"), path.read_text())
+        write_json(path, updated)
+
+
+PUBLIC_FILES = "VERSION paths.py installer.py update.py update.sh uninstall.sh switch.sh hooks engine soundbar data updates".split()
+
+
+def validate_layout(source, dest, dev):
+    if dev:
+        if dest.exists() and (not dest.is_symlink() or dest.resolve() != source):
+            raise ValueError("Uninstall the existing installation before changing development checkouts or modes.")
+    elif dest.is_symlink():
+        raise ValueError(f"{dest} is a dev symlink; use --dev or uninstall it first.")
+    root = source if dev else dest
+    for name in ("configs", "state", "version_state", "version_state/releases"):
+        if (root / name).is_symlink():
+            raise ValueError(f"{root / name}: installation directories must not be symlinks.")
+    if not dev:
+        current = root / "current"
+        if current.is_symlink():
+            recovery.validate_target(UpdatePaths(root), os.readlink(current))
+        elif current.exists():
+            raise ValueError("The current release pointer must be a symbolic link.")
+        for name in PUBLIC_FILES:
+            path = root / name
+            if path.exists() and not path.is_symlink():
+                raise ValueError("Flat installation layout: back up custom audio, uninstall all integrations without --purge, then reinstall. Settings are retained; audio and Kokoro setup are removed.")
+            if path.is_symlink() and os.readlink(path) != "current/" + name:
+                raise ValueError(f"Unexpected runtime link: {path}")
+    config = root / "configs/config.json"
+    if config.exists() and not isinstance(json.loads(config.read_text()), dict):
+        raise ValueError(f"{config}: expected a JSON object")
+    return root
+
+
+def sound_files(manifest):
+    for layer in ("effects", "voice"):
+        for profile in manifest.get(layer, {}).values():
+            for spec in profile.get("events", {}).values():
+                names = ([spec["file"]] if "file" in spec else spec.get("files", []))
+                names = names + [name for sequence in spec.get("sequence", []) for name in sequence]
+                yield from (Path(profile.get("dir", "")) / name for name in names)
+
+
+def preserve_audio(root, candidate):
+    """Carry manifest-referenced audio forward without overriding shipped updates."""
+    if not (root / "current").is_symlink():
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.exists():
-        shutil.copy2(path, path.with_name(path.name + ".code-gossip-backup"))
-    fd, temporary = tempfile.mkstemp(prefix=".code-gossip-hooks-", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w") as stream:
-            json.dump(updated, stream, indent=2)
-            stream.write("\n")
-        os.replace(temporary, path)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    data = (root / "current").resolve() / "data"
+    shipped = set(sound_files(read_json(data / "sounds.json")))
+    for name in sorted(set(sound_files(read_json(root / "configs/sounds.json")))):
+        if name.is_absolute():
+            if name.is_relative_to(root / "data"):
+                name = name.relative_to(root / "data")
+            elif name.resolve().is_relative_to((root / "version_state").resolve()):
+                raise ValueError(f"Use the stable data path for custom audio: {name}")
+            else:
+                continue
+        if name.parts[:1] != ("sounds",) or ".." in name.parts:
+            raise ValueError(f"Custom audio must stay under data/sounds: {name}")
+        original, target = data / name, candidate / "data" / name
+        if not original.resolve().is_relative_to(data / "sounds"):
+            raise ValueError(f"Custom audio link escapes data/sounds: {name}")
+        if target.exists():
+            if not target.is_file() or (name not in shipped and original.read_bytes() != target.read_bytes()):
+                raise ValueError(f"Custom audio conflicts with the release package; rename it: {name}")
+            continue
+        if not original.exists() and name in shipped:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(original, target)
 
 
 def install_files(source, dest, dev):
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dev:
-        if dest.is_symlink():
-            dest.unlink()
-        dest.symlink_to(source, target_is_directory=True)
-    else:
-        # Never copy a developer's private settings, environments, or runtime state.
-        ignored = shutil.ignore_patterns(*USER_FILES, ".venv", "__pycache__", ".pytest_cache",
-            ".DS_Store", "*.log", "*.sock", ".server.pid", ".manifest", ".soundbar-window",
-            "integrations.json", "session_context", "*.code-gossip-backup", "state", "version_state")
-        def ignore_local(directory, names):
-            excluded = ignored(directory, names)
-            if Path(directory) == source / "configs":
-                excluded.add("sounds.json")
-            return excluded
-        shutil.copytree(source, dest, dirs_exist_ok=True, ignore=ignore_local)
-    # A rapid update can reuse a .pyc timestamp/size even when its source changed.
-    # Keep optional environments intact; discard only runtime module caches.
-    for directory in (dest, *(dest / name for name in ("hooks", "engine", "soundbar", "updates"))):
-        cache = directory / "__pycache__"
-        if cache.is_dir() and not cache.is_symlink():
-            shutil.rmtree(cache)
-    configs = dest / "configs"
+    """Prepare a complete generation; never copy over executable runtime files."""
+    if any(not (source / name).exists() for name in PUBLIC_FILES if name != "VERSION"):
+        raise ValueError("Installation source is missing required runtime files.")
+    candidate = source if dev else UpdatePaths(dest).releases / uuid.uuid4().hex
+    try:
+        if not dev:
+            candidate.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            ignored = shutil.ignore_patterns(*USER_FILES, "__pycache__",
+                ".venv", ".pytest_cache", ".DS_Store", "*.log", "*.sock", "*.code-gossip-backup", "state", "version_state")
+            def ignore_local(directory, names):
+                return ignored(directory, names) | ({"sounds.json"} if Path(directory) == source / "configs" else set())
+            shutil.copytree(source, candidate, ignore=ignore_local)
+        if shutil.which("say"):
+            subprocess.run(["/bin/bash", str(candidate / "data/sounds/generals/generate.sh")], check=True, timeout=120)
+        if not dev:
+            preserve_audio(dest, candidate)
+            sync_tree(candidate)
+    except BaseException:
+        if not dev:
+            recovery.remove_path(candidate)
+        raise
+    return candidate
+
+
+def initialize_files(source, root, dev):
+    configs = root / "configs"
+    configs.mkdir(parents=True, exist_ok=True, mode=0o700)
     for name in USER_FILES:
         target = configs / name
         if not target.exists():
-            shutil.copy2(configs / name.replace(".json", ".defaults.json"), target)
-    config_path = configs / "config.json"
-    config = json.loads(config_path.read_text())
-    config["python3_path"] = sys.executable
-    config_path.write_text(json.dumps(config, indent=2) + "\n")
-    for name in ("engine/play.sh", "switch.sh", "soundbar/panel.sh", "uninstall.sh", "update.sh"):
-        script = dest / name
-        script.chmod(script.stat().st_mode | 0o111)
-    if shutil.which("say"):
-        subprocess.run(["/bin/bash", str(dest / "data/sounds/generals/generate.sh")], check=True)
-    else:
-        print("Skipping Generals voice generation (macOS say is unavailable).")
+            write_json(target, json.loads((source / "configs" / name.replace(".json", ".defaults.json")).read_text()))
+    config = json.loads((configs / "config.json").read_text())
+    if config.get("python3_path") != sys.executable:
+        write_json(configs / "config.json", {**config, "python3_path": sys.executable})
+    if not dev:
+        links = {root / name: "current/" + name for name in PUBLIC_FILES}
+        links.update({configs / name.replace(".json", ".defaults.json"): "../current/configs/" + name.replace(".json", ".defaults.json") for name in USER_FILES})
+        for path, target in links.items():
+            if not path.is_symlink():
+                path.symlink_to(target)
+
+
+def owned_process(pid, script):
+    if pid <= 1:
+        return False
+    result = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True)
+    generations = script.parents[1] / "version_state/releases"
+    scripts = (script, script.resolve(), *generations.glob("*/" + script.parent.name + "/" + script.name))
+    return any(result.stdout.strip().endswith(" " + str(path)) for path in scripts)
 
 
 def stop_process(pid, script):
-    """A stale PID must never terminate an unrelated process that reused it."""
-    if pid <= 1:
-        return
-    result = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "command="],
-                            capture_output=True, text=True)
-    command = result.stdout.strip()
-    if not any(command.endswith(" " + str(path)) for path in (script, script.resolve())):
-        return
-    try:
-        os.kill(pid, signal.SIGTERM)
-        return True
-    except ProcessLookupError:
-        pass
+    """Only terminate an identity-checked process, including a retained generation."""
+    if owned_process(pid, script):
+        try:
+            os.kill(pid, signal.SIGTERM)
+            return True
+        except ProcessLookupError:
+            pass
 
 
 def stop_processes(dest):
     state = dest / "state"
+    if state.is_symlink():
+        return
     server_script = dest / "soundbar/server.py"
     daemon_script = dest / "engine/kokoro_server.py"
     pid_file = state / ".server.pid"
@@ -231,8 +301,9 @@ def stop_processes(dest):
         stop_process(pid, server_script)
         pid_file.unlink()
     sock = state / "kokoro.sock"
-    if sock.exists() and shutil.which("lsof"):
-        result = subprocess.run(["lsof", "-t", str(sock)], capture_output=True, text=True)
+    lsof = shutil.which("lsof") or "/usr/sbin/lsof"
+    if sock.exists() and Path(lsof).is_file():
+        result = subprocess.run([lsof, "-t", str(sock)], capture_output=True, text=True)
         for value in result.stdout.split():
             stop_process(int(value), daemon_script)
         sock.unlink(missing_ok=True)
@@ -244,111 +315,101 @@ def remove_files(dest, purge):
         dest.unlink()  # Never remove a development checkout.
     elif dest.exists():
         for child in dest.iterdir():
-            if not purge and child.name == "configs":
+            if not purge and child.name == "configs" and not child.is_symlink():
                 for config in child.iterdir():
                     if config.name not in (*USER_FILES, "sounds.json"):
-                        if config.is_dir() and not config.is_symlink():
-                            shutil.rmtree(config)
-                        else:
-                            config.unlink()
-                continue
-            if child.is_dir() and not child.is_symlink():
-                shutil.rmtree(child)
+                        recovery.remove_path(config)
             else:
-                child.unlink()
+                recovery.remove_path(child)
         if not any(dest.iterdir()):
             dest.rmdir()
 
 
 def open_panel(dest):
     try:
-        # Reinstallation replaces Python code that an existing server has already
-        # imported. Restart only our recorded process so new API routes take effect.
-        pid_file = dest / "state/.server.pid"
-        if pid_file.exists():
-            try:
-                pid = int(pid_file.read_text().strip())
-            except ValueError:
-                pid = 0
-            if stop_process(pid, dest / "soundbar/server.py"):
-                for _ in range(50):
-                    process = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "stat="],
-                                             capture_output=True, text=True)
-                    if process.returncode != 0 or process.stdout.strip().startswith("Z"):
-                        break
-                    time.sleep(0.1)
-                else:
-                    raise OSError("The previous Soundbar process did not stop.")
-                if pid_file.exists() and pid_file.read_text().strip() == str(pid):
-                    pid_file.unlink()
-        subprocess.run([sys.executable, str(dest / "soundbar/launcher.py"), "--background"],
-                       check=True, timeout=30)
+        subprocess.run([sys.executable, str(dest / "soundbar/launcher.py"), "--background"], check=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as exc:
-        print(f"Installation succeeded, but Soundbar could not open: {exc}", file=sys.stderr)
-        print(f"Open it later: {shlex.quote(str(dest / 'soundbar/panel.sh'))}", file=sys.stderr)
+        print(f"Installation succeeded; open Soundbar later: {dest / 'soundbar/panel.sh'} ({exc})", file=sys.stderr)
 
 
 def run(args):
+    from updates.soundbar import ensure_panel_idle, panel_port, restart_and_verify, stop_panel
+
     home = Path.home()
     source = Path(__file__).resolve().parent
     dest = home / ".code-gossip"
-    paths = targets(home)
+    targets_by_agent = targets(home)
     uninstall = args.action == "uninstall"
-    # Uninstall must inspect every integration before deciding whether the shared
-    # runtime is unused. Install only needs to validate the selected hook files.
-    documents = {agent: read_document(path) for agent, path in paths.items()} if uninstall else {}
-    installed = [agent for agent in documents if is_connected(documents[agent], agent)]
-    available = installed if uninstall else detected_agents(home, paths)
+    documents = {agent: read_document(path) for agent, path in targets_by_agent.items()} if uninstall else {}
+    available = [agent for agent in documents if is_connected(documents[agent], agent)] if uninstall else detected_agents(home, targets_by_agent)
     selected = choose(args, available)
     if not selected:
         raise ValueError("No agents detected or selected. Specify --agents codex, cursor, or claude.")
-    if not uninstall:
-        documents = {agent: read_document(paths[agent]) for agent in selected}
-        if not shutil.which("jq"):
-            raise ValueError("jq is required for sound playback. Install jq and try again.")
-        if args.dev and dest.exists() and not dest.is_symlink():
-            raise ValueError(f"{dest} is a regular installation; uninstall it before using --dev.")
-        if not args.dev and dest.is_symlink():
-            raise ValueError(f"{dest} is a dev symlink; use --dev or uninstall it first.")
-        config_path = (source if args.dev else dest) / "configs/config.json"
-        if config_path.exists() and not isinstance(json.loads(config_path.read_text()), dict):
-            raise ValueError(f"{config_path}: expected a JSON object")
-    updated = {agent: merge_hooks(documents[agent], agent,
-               {} if uninstall else definitions(agent, source, dest)) for agent in selected}
-    remaining = [agent for agent in installed if agent not in selected]
+    root = dest.resolve() if uninstall else validate_layout(source, dest, args.dev)
+    paths = UpdatePaths(root)
+    if paths.version_state.is_symlink():
+        raise ValueError("Installation metadata must not be a symbolic link.")
+    if not uninstall and not shutil.which("jq"):
+        raise ValueError("jq is required for sound playback. Install jq and try again.")
+    # Validate every selected document even for a dry run.
+    for agent in selected:
+        read_document(targets_by_agent[agent])
     print(f"{'Preview: would ' if args.dry_run else ''}{args.action.capitalize()} for {', '.join(selected)}")
     for agent in selected:
-        print(f"  {'Remove' if uninstall else 'Merge'} Code Gossip hooks: {paths[agent]}")
-    if uninstall and remaining:
-        print(f"Keep shared Code Gossip files and processes for: {', '.join(remaining)}")
-    elif uninstall:
-        print(f"Remove shared installation: {dest}")
-        if not args.purge:
-            print("Keep configs/config.json, configs/phrases.json, and configs/narrator_styles.json (use --purge to remove them).")
-    else:
-        print(f"{'Symlink' if args.dev else 'Copy'} shared Code Gossip files: {dest}")
+        print(f"  {'Remove' if uninstall else 'Merge'} Code Gossip hooks: {targets_by_agent[agent]}")
     if args.dry_run:
         print("No changes made.")
         return
-    with lock(source if args.dev else dest, inherited=getattr(args, "update_lock_fd", None)):
-        # Re-read shared documents after acquiring the mutation lock; a panel
-        # save may have completed while selection/validation was in progress.
-        documents = {agent: read_document(paths[agent]) for agent in (AGENTS if uninstall else selected)}
-        updated = {agent: merge_hooks(documents[agent], agent,
-                   {} if uninstall else definitions(agent, source, dest)) for agent in selected}
-        if uninstall:
-            remaining = [agent for agent in AGENTS if agent not in selected and is_connected(documents[agent], agent)]
+    with lock(root, inherited=getattr(args, "update_lock_fd", None)):
+        recovery.recover(paths)
         if not uninstall:
-            install_files(source, dest, args.dev)
-        for agent in selected:
-            write_hooks(paths[agent], documents[agent], updated[agent])
+            validate_layout(source, dest, args.dev)
+        documents = {agent: read_document(path) for agent, path in targets_by_agent.items() if uninstall or agent in selected}
+        remaining = [agent for agent in documents if agent not in selected and is_connected(documents[agent], agent)]
+        port = panel_port(paths)
+        verify = not uninstall and (not args.no_panel or getattr(args, "update_lock_fd", None) is not None or paths.panel_pid.exists())
+        running = ensure_panel_idle(paths, port) if verify else False
+        if uninstall and not remaining and paths.panel_pid.exists():
+            pid = paths.panel_pid.read_text().strip()
+            if pid.isdigit() and owned_process(int(pid), root / "soundbar/server.py"):
+                ensure_panel_idle(paths, port)
+        candidate = install_files(source, root, args.dev) if not uninstall else None
+        documents = {agent: read_document(targets_by_agent[agent]) for agent in selected}
+        updated = {agent: merge_hooks(documents[agent], agent, {} if uninstall else definitions(agent, source, dest)) for agent in selected}
+        new_target = str(candidate.relative_to(root)) if candidate and not args.dev else None
+        dev_link = dest if not uninstall and args.dev and not dest.is_symlink() else None
+        files = [paths.installation] + ([] if uninstall else [root / "configs" / name for name in USER_FILES])
+        journal = recovery.begin(paths, {agent: targets_by_agent[agent] for agent in selected}, files,
+                                 new_target, dev_link, port if running else None, runtime=not uninstall)
+        try:
+            if not uninstall:
+                stop_panel(paths)
+                stop_processes(dest)
+                if dev_link:
+                    dev_link.symlink_to(root, target_is_directory=True)
+                initialize_files(candidate, root, args.dev)
+                if new_target:
+                    recovery.activate(paths, new_target)
+            for agent in selected:
+                write_hooks(targets_by_agent[agent], documents[agent], updated[agent])
+            record_installation(root, targets_by_agent, selected, dev=dest.is_symlink(), uninstall=uninstall)
+            if verify:
+                restart_and_verify(paths, load_installation(paths), port, installed_version(root))
+            recovery.commit(paths)
+        except BaseException:
+            recovery.recover(paths)
+            raise
         if uninstall and not remaining:
             remove_files(dest, args.purge)
-        else:
-            record_installation(dest, paths, selected, dev=dest.is_symlink(), uninstall=uninstall)
+        elif not uninstall and not args.dev:
+            try:
+                recovery.collect_releases(paths, journal["previous"])
+            except OSError as error:
+                print(f"Installed; old release cleanup can be retried: {error}", file=sys.stderr)
+        elif uninstall:
+            print("Keep shared Code Gossip files and processes for: " + ", ".join(remaining))
     print(f"Code Gossip {'uninstalled' if uninstall else 'installed'} for {', '.join(selected)}.")
     if not uninstall:
-        print(f"Panel: {dest / 'soundbar/panel.sh'}\nUninstall: {dest / 'uninstall.sh'}")
         if "codex" in selected:
             print("Open /hooks in Codex CLI to review and trust the commands, then start a new chat.")
         if not args.no_panel:
@@ -389,7 +450,7 @@ def main():
             install_latest(sys.argv[2:])
         else:
             run(args)
-    except (OSError, ValueError, UpdateError, subprocess.CalledProcessError) as exc:
+    except (OSError, ValueError, UpdateError, subprocess.SubprocessError) as exc:
         parser.exit(1, f"Code Gossip: {exc}\n")
     except KeyboardInterrupt:
         parser.exit(130, "\nCancelled.\n")

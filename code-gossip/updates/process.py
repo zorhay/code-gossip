@@ -10,7 +10,6 @@ import subprocess
 
 from .config import DEFAULT_CONFIG, UpdateConfig, UpdatePaths
 from .errors import Busy, UpdateError
-from .storage import load_progress, load_recovery_installation
 
 
 def start_update(root: Path, config: UpdateConfig = DEFAULT_CONFIG) -> subprocess.Popen | None:
@@ -21,10 +20,13 @@ def start_update(root: Path, config: UpdateConfig = DEFAULT_CONFIG) -> subproces
     paths = UpdatePaths(root)
     try:
         with lock(root) as fd:
-            recovering = load_progress(paths).needs_recovery
-            record = load_recovery_installation(paths) if recovering else prepare_installation(paths)
-            ensure_panel_idle(paths, panel_port(paths, config), config)
-            return launch_worker(paths, record.python, fd)
+            if paths.transaction.exists():
+                import sys
+                python = sys.executable
+            else:
+                python = prepare_installation(paths).python
+                ensure_panel_idle(paths, panel_port(paths, config), config)
+            return launch_worker(paths, python, fd)
     except Busy:
         return None
 
@@ -39,10 +41,10 @@ def launch_worker(paths: UpdatePaths, python: str, fd: int) -> subprocess.Popen:
 
 
 @contextmanager
-def lock(root: Path, name: str = "update", inherited: int | None = None, wait: bool = False):
-    directory = UpdatePaths(root).version_state
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    path = directory / (name + ".lock")
+def lock(root: Path, name: str = "update", inherited: int | None = None, wait: bool = False, mutation: bool = False):
+    root = root.resolve()
+    path = root.parent / ("." + root.name.lstrip(".") + ".lock") if name == "update" else UpdatePaths(root).version_state / (name + ".lock")
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if inherited is not None:
         # Only the independent updater passes this descriptor to its installer.
         if not os.path.samestat(os.fstat(inherited), path.stat()):
@@ -56,6 +58,8 @@ def lock(root: Path, name: str = "update", inherited: int | None = None, wait: b
             raise Busy("An installation or update is already running. Wait for it to finish.") from None
         # Closing releases the lock, unless a detached worker/installer inherited
         # this same descriptor. Explicit LOCK_UN would also unlock its copy.
+        if mutation and UpdatePaths(root).transaction.exists():
+            raise Busy("Installation recovery is pending. Retry the installer or Update first.")
         yield stream.fileno()
 
 

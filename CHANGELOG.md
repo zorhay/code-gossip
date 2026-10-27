@@ -10,17 +10,22 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Fixed
 
+- Reinstalls and updates carry forward custom audio referenced by `configs/sounds.json`, including after old releases are cleaned up. Unsafe paths, missing custom samples, or conflicting new package filenames stop before activation.
+- Install/update failures retain a runnable release and durable recovery journal; settings writes are atomic, rollback is retryable, and obsolete code disappears from active paths. Concurrent Soundbar and CLI settings writes are rejected while installation or recovery is pending.
+- All Soundbar POST endpoints require a same-origin UI request, and loopback Host validation blocks browser DNS rebinding. Uninstallation never follows a settings-directory symlink into unrelated files.
+
 - Publishing a GitHub release now builds and attaches its installation package without trying to create the release again. Tag pushes alone do not publish; website deployment waits for the package, and reruns preserve an already-uploaded package.
 
 ### Changed
 
 - Soundbar uses a compact list and detail layout. **Save** writes the open tab without switching playback; **Use** and **Save & use** switch what agents play. Amber and Mint live in **Settings → Appearance**. Cloud provider checks run only when you ask. **Getting started** replaces the topic-tip column.
+- Normal installs and updates share one transaction: stage a complete release, atomically switch the active pointer, verify Soundbar, then commit. The previous release remains available for recovery.
 - Normal installation and updating now use the same `code-gossip.zip` release package. The release workflow generates its `VERSION`, tests the package, and publishes it; version numbers are no longer edited in the source tree.
 - Development installs remain local symlinks, work offline, and report `development`. Update them with `git pull` and `install.sh --dev`; Soundbar does not offer release replacement for a checkout.
 
 ### Breaking
 
-- Updaters from `0.9.1` and earlier cannot consume release packages. Reinstall once using the normal README installation instructions and your existing integrations/custom `CODEX_HOME`. Saved settings and unrelated hooks are preserved. GitHub's automatic source archives are no longer the normal installation/update source.
+- Existing flat normal installations (without `~/.code-gossip/current`), including `0.9.1` and earlier, require an explicit uninstall/reinstall. Use the new package’s uninstaller with `--all` **without `--purge`**, then install for your existing integrations and custom `CODEX_HOME`. Saved settings and unrelated hooks are retained. Back up custom audio outside the installation before uninstalling, restore it after reinstalling, and set up Kokoro again if used; uninstall removes audio and runtime state. See the [README steps](README.md#existing-flat-installations). There is no automatic layout migration; GitHub source archives are not installation packages.
 
 ## [0.9.1] - 2026-10-25
 

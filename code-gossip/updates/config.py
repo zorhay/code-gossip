@@ -41,7 +41,9 @@ class UpdatePaths:
         self.check = self.version_state / constants.CHECK_FILE
         self.progress = self.version_state / constants.PROGRESS_FILE
         self.log = self.version_state / constants.UPDATE_LOG_FILE
-        self.recovery = self.version_state / constants.RECOVERY_DIRECTORY
+        self.transaction = self.version_state / "transaction.json"
+        self.releases = self.version_state / "releases"
+        self.current = self.root / "current"
         self.panel_state = self.root / "state/panel.json"
         self.panel_pid = self.root / "state/.server.pid"
         self.panel_log = self.root / "state/panel.log"

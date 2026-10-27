@@ -15,7 +15,8 @@ EVENT="${1:-stop}"
 # Background all work — script exits in ~2ms, Claude Code proceeds immediately
 {
 
-SND="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+RUNTIME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+SND="${RUNTIME%/version_state/releases/*}"
 CFG="$SND/configs/config.json"
 [ ! -f "$CFG" ] && CFG="$SND/configs/config.defaults.json"
 [ ! -f "$CFG" ] && exit 0
@@ -55,7 +56,7 @@ say_vol() {
 }
 
 MANIFEST="$SND/configs/sounds.json"
-[ ! -f "$MANIFEST" ] && MANIFEST="$SND/data/sounds.json"
+[ ! -f "$MANIFEST" ] && MANIFEST="$RUNTIME/data/sounds.json"
 PHRASES="$SND/configs/phrases.json"
 [ ! -f "$PHRASES" ] && PHRASES="$SND/configs/phrases.defaults.json"
 
@@ -67,8 +68,8 @@ PHRASES="$SND/configs/phrases.json"
 
 # Coordinate independently launched hooks. Manual previews always play.
 if [ -z "$FORCE_LAYER$FORCE_EFFECTS_PROFILE$FORCE_VOICE_PROFILE" ] && \
-   [ -f "$SND/engine/playback_gate.py" ] && { [ "$EFFECTS_ON" = "on" ] || [ "$VOICE_ON" = "on" ]; }; then
-  GATED=$(printf '%s' "$STDIN_DATA" | "$PYTHON3" "$SND/engine/playback_gate.py" \
+   [ -f "$RUNTIME/engine/playback_gate.py" ] && { [ "$EFFECTS_ON" = "on" ] || [ "$VOICE_ON" = "on" ]; }; then
+  GATED=$(printf '%s' "$STDIN_DATA" | "$PYTHON3" "$RUNTIME/engine/playback_gate.py" \
     "$SND" "$EVENT" "$EFFECTS_ON" "$EFFECTS_PROFILE" "$VOICE_ON" "$VOICE_PROFILE")
   case "$GATED" in
     'on on'|'on off'|'off on'|'off off') read -r EFFECTS_ON VOICE_ON <<< "$GATED" ;;
@@ -113,14 +114,14 @@ play_sound() {
 
   case "$stype" in
     file)
-      [[ "$val" != /* ]] && [ -n "$dir" ] && val="$SND/data/$dir/$val"
+      [[ "$val" != /* ]] && [ -n "$dir" ] && val="$RUNTIME/data/$dir/$val"
       afplay -v "$vol" $rate_flag "$val" &
       ;;
     files)
       local idx=$((RANDOM % val))
       val=$(jq -r --arg l "$layer" --arg p "$profile" --arg e "$event" --argjson i "$idx" \
         '.[$l][$p].events[$e].files[$i]' "$MANIFEST")
-      [ -n "$dir" ] && val="$SND/data/$dir/$val"
+      [ -n "$dir" ] && val="$RUNTIME/data/$dir/$val"
       afplay -v "$vol" $rate_flag "$val" &
       ;;
     sox)
@@ -129,7 +130,7 @@ play_sound() {
     melody)
       local preview_flag=""
       [ -n "$FORCE_LAYER$FORCE_EFFECTS_PROFILE$FORCE_VOICE_PROFILE" ] && preview_flag="--preview"
-      "$PYTHON3" "$SND/engine/melody.py" "$MANIFEST" "$layer" "$profile" "$event" "$vol" $preview_flag &
+      "$PYTHON3" "$RUNTIME/engine/melody.py" "$MANIFEST" "$layer" "$profile" "$event" "$vol" $preview_flag &
       ;;
     seq)
       local idx=$((RANDOM % val))
@@ -144,7 +145,7 @@ play_sound() {
         for ((j=0; j<${#seq_files[@]}; j++)); do
           [ $j -gt 0 ] && sleep "$gap"
           local f="${seq_files[$j]}"
-          [[ "$f" != /* ]] && [ -n "$dir" ] && f="$SND/data/$dir/$f"
+          [[ "$f" != /* ]] && [ -n "$dir" ] && f="$RUNTIME/data/$dir/$f"
           afplay -v "$vol" $rate_flag "$f"
         done
       ) &
@@ -159,7 +160,7 @@ play_sound() {
 if [ "$VOICE_ON" = "on" ]; then
   if [ "$VOICE_PROFILE" = "narrator" ]; then
     # Narrator: LLM-powered commentary via narrate.py
-    echo "$STDIN_DATA" | "$PYTHON3" "$SND/engine/narrate.py" &
+    echo "$STDIN_DATA" | "$PYTHON3" "$RUNTIME/engine/narrate.py" &
   elif [ "$VOICE_PROFILE" = "senior" ]; then
     # Narration reads phrases.json (TTS, not in manifest)
     if [ -f "$PHRASES" ] && command -v jq &>/dev/null; then
@@ -180,16 +181,16 @@ if [ "$VOICE_ON" = "on" ]; then
             subagent_start)
               MAIN_P=$(jq -r ".[\"$EVENT\"][$IDX][0]" "$EVENT_PHRASES")
               SUB_P=$(jq -r ".[\"$EVENT\"][$IDX][1]" "$EVENT_PHRASES")
-              ("$PYTHON3" "$SND/engine/narrate.py" --speak "$MAIN_P" && "$PYTHON3" "$SND/engine/narrate.py" --speak-sub "$SUB_P") &
+              ("$PYTHON3" "$RUNTIME/engine/narrate.py" --speak "$MAIN_P" && "$PYTHON3" "$RUNTIME/engine/narrate.py" --speak-sub "$SUB_P") &
               ;;
             subagent_stop)
               SUB_P=$(jq -r ".[\"$EVENT\"][$IDX][0]" "$EVENT_PHRASES")
               MAIN_P=$(jq -r ".[\"$EVENT\"][$IDX][1]" "$EVENT_PHRASES")
-              ("$PYTHON3" "$SND/engine/narrate.py" --speak-sub "$SUB_P" && "$PYTHON3" "$SND/engine/narrate.py" --speak "$MAIN_P") &
+              ("$PYTHON3" "$RUNTIME/engine/narrate.py" --speak-sub "$SUB_P" && "$PYTHON3" "$RUNTIME/engine/narrate.py" --speak "$MAIN_P") &
               ;;
             *)
               PHRASE=$(jq -r ".[\"$EVENT\"][$IDX]" "$EVENT_PHRASES")
-              "$PYTHON3" "$SND/engine/narrate.py" --speak "$PHRASE" &
+              "$PYTHON3" "$RUNTIME/engine/narrate.py" --speak "$PHRASE" &
               ;;
           esac
         else

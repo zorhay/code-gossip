@@ -11,19 +11,9 @@ import zipfile
 from . import github
 from .config import DEFAULT_CONFIG, UpdateConfig, UpdatePaths
 from .constants import REQUIRED_SOURCE_FILES, SOURCE_DIRECTORY_PREFIX, SOURCE_OWNER_FILE
-from .entities import Release, UpdatePlan, UpdateProgress
+from .entities import Release
 from .errors import UpdateError
-from .installation import run_installer
-from .storage import installed_version, read_json, report_progress, write_json
-
-
-def prepare_source(plan: UpdatePlan, progress: UpdateProgress) -> Path:
-    work = create_workspace(plan.paths)
-    progress.work = work
-    report_progress(plan.paths, progress, "downloading", f"Downloading Code Gossip {plan.release.version}…")
-    source = fetch_source(plan.release, work, plan.config)
-    run_installer(source, plan.installation, plan.lock_fd, dry_run=True, config=plan.config)
-    return source
+from .storage import installed_version, read_json, write_json
 
 
 def fetch_source(release: Release, work: Path, config: UpdateConfig = DEFAULT_CONFIG) -> Path:

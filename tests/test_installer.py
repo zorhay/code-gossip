@@ -327,3 +327,427 @@ def test_cached_hooks_are_silent_after_uninstall(sandbox):
                                 text=True, capture_output=True, timeout=5)
         assert result.returncode == 0, command
         assert result.stdout == result.stderr == "", command
+
+
+@pytest.mark.parametrize("checkpoint", ["activate", "write_hooks", "record_installation", "commit"])
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("crash", [False, True])
+def test_install_transaction_failure_boundaries(sandbox, release_package, tmp_path, checkpoint, existing, crash):
+    """Exercise real entrypoints; os._exit bypasses every in-process finally block."""
+    from updates.source import extract_archive
+    home, env, run = sandbox
+    hooks = home / ".codex/hooks.json"
+    hooks.parent.mkdir()
+    hooks.write_text('{"keep":true,"hooks":{"Stop":[{"hooks":[{"command":"echo unrelated"}]}]}}')
+    if existing:
+        run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    config = root / "configs/config.json"
+    if existing:
+        config.write_text(json.dumps({"python3_path": sys.executable, "effects_volume":23, "narrator_api_key":"fixture-secret"}))
+        doc = json.loads(hooks.read_text())
+        doc["hooks"]["Stop"][0]["hooks"].append({"command":"echo old code-gossip/hooks/codex.py"})
+        hooks.write_text(json.dumps(doc))
+    files = [hooks, home / ".claude/settings.json", config, root / "version_state/installation.json"]
+    before = {path: path.read_bytes() if path.exists() else None for path in files}
+    previous = os.readlink(root / "current") if existing else None
+    package = extract_archive(release_package, tmp_path / "candidate")
+    driver = tmp_path / "fault.py"
+    driver.write_text('''import os, sys
+sys.path.insert(0, sys.argv.pop(1))
+import installer
+from updates import recovery
+name = os.environ['FAULT_POINT']
+module = recovery if name in ('activate', 'commit') else installer
+original = getattr(module, name)
+fired = False
+def fault(*args, **kwargs):
+    global fired
+    if fired:
+        return original(*args, **kwargs)
+    fired = True
+    result = original(*args, **kwargs) if name != 'commit' else None
+    if os.environ['FAULT_CRASH'] == '1':
+        os._exit(23)
+    raise OSError('injected transaction failure')
+setattr(module, name, fault)
+installer.main()
+''')
+    result = subprocess.run([sys.executable, "-B", str(driver), str(package / "code-gossip"),
+                             "install", "--agents", "codex,claude", "--no-panel"],
+                            env={**env, "FAULT_POINT":checkpoint, "FAULT_CRASH":str(int(crash))}, capture_output=True, text=True)
+    assert result.returncode == (23 if crash else 1), result.stdout + result.stderr
+    journal = root / "version_state/transaction.json"
+    if crash:
+        assert journal.exists()
+        assert json.loads(run(root / "update.sh", "status", "--json").stdout)["phase"] == "interrupted"
+        run(root / "update.sh", "update", success=existing)
+    assert not journal.exists()
+    assert {path: path.read_bytes() if path.exists() else None for path in files} == before
+    assert (os.readlink(root / "current") if (root / "current").is_symlink() else None) == previous
+    run(package / "install.sh", "--agents", "codex,claude")
+    assert installer.is_connected(document(home, "claude"), "claude")
+
+
+@pytest.mark.parametrize("purge", [False, True])
+def test_uninstall_never_traverses_settings_symlink(tmp_path, purge):
+    root, external = tmp_path / "runtime", tmp_path / "dotfiles"
+    root.mkdir()
+    external.mkdir()
+    sentinel = external / "unrelated.txt"
+    sentinel.write_text("preserve me")
+    (root / "configs").symlink_to(external, target_is_directory=True)
+    installer.remove_files(root, purge)
+    assert sentinel.read_text() == "preserve me"
+
+
+def test_reinstall_replaces_obsolete_code_and_preserves_state(sandbox):
+    home, _, run = sandbox
+    run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    old = (root / "current").resolve()
+    (old / "engine/obsolete.py").write_text("old code")
+    (root / "state").mkdir()
+    (root / "state/keep").write_text("runtime state")
+    run("install.sh", "--agents", "codex")
+    assert (root / "current").resolve() != old
+    assert not (root / "engine/obsolete.py").exists()
+    assert (old / "engine/obsolete.py").exists()
+    assert (root / "state/keep").read_text() == "runtime state"
+
+
+@pytest.mark.parametrize("pending", [False, True])
+def test_switch_obeys_install_lock_and_pending_recovery(sandbox, pending):
+    from contextlib import nullcontext
+    from updates.process import lock
+    home, _, run = sandbox
+    run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    config = root / "configs/config.json"
+    before = config.read_bytes()
+    journal = root / "version_state/transaction.json"
+    if pending:
+        journal.write_text('{}')
+    with nullcontext() if pending else lock(root):
+        result = run(root / "switch.sh", "effects", "off", success=False)
+        assert "Effects:" not in result.stdout
+        assert config.read_bytes() == before
+    journal.unlink(missing_ok=True)
+    run(root / "switch.sh", "effects", "off")
+    assert json.loads(config.read_text())["effects_on"] is False
+
+
+def test_failed_atomic_settings_write_preserves_contents(tmp_path, monkeypatch):
+    from updates import storage
+    path = tmp_path / "config.json"
+    path.write_text('{"secret":"keep"}')
+    monkeypatch.setattr(storage.os, "replace", lambda *args: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError):
+        storage.write_json(path, {"secret":"changed"})
+    assert path.read_text() == '{"secret":"keep"}'
+    assert list(tmp_path.iterdir()) == [path]
+
+
+def test_flat_install_requires_explicit_reinstall_preserving_settings(sandbox):
+    home, _, run = sandbox
+    root = home / ".code-gossip"
+    (root / "engine").mkdir(parents=True)
+    (root / "configs").mkdir()
+    (root / "configs/config.json").write_text('{"effects_volume":17}')
+    before = snapshot(home)
+    assert "Flat installation" in run("install.sh", "--agents", "codex", success=False).stderr
+    assert snapshot(home) == before
+    run("uninstall.sh", "--all")
+    run("install.sh", "--agents", "codex")
+    assert json.loads((root / "configs/config.json").read_text())["effects_volume"] == 17
+
+
+@pytest.mark.parametrize("location", ["configs", "state", "version_state", "version_state/releases", "current", "current-file"])
+def test_install_rejects_unsafe_layout_before_mutation(sandbox, tmp_path, location):
+    home, _, run = sandbox
+    root = home / ".code-gossip"
+    external = tmp_path / "unrelated"
+    external.mkdir()
+    (external / "keep").write_text("untouched")
+    target = root / location.replace("-file", "")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if location == "current-file":
+        target.write_text("not a pointer")
+    else:
+        target.symlink_to(external, target_is_directory=True)
+    before = snapshot(home)
+    run("install.sh", "--agents", "codex", success=False)
+    assert snapshot(home) == before
+    assert list(external.iterdir()) == [external / "keep"]
+
+
+@pytest.mark.parametrize("change", ["external-hooks", "stage-failure", "missing-source"])
+def test_preparation_preserves_active_install_and_concurrent_hook_edits(sandbox, release_package, tmp_path, change):
+    from updates.source import extract_archive
+    home, env, run = sandbox
+    run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    current = os.readlink(root / "current")
+    config = (root / "configs/config.json").read_bytes()
+    hooks = home / ".codex/hooks.json"
+    before = hooks.read_bytes()
+    package = extract_archive(release_package, tmp_path / "candidate")
+    if change == "missing-source":
+        (package / "code-gossip/update.sh").unlink()
+    driver = tmp_path / "prepare.py"
+    driver.write_text('''import json, os, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv.pop(1))
+import installer
+original = installer.install_files
+def prepare(*args):
+    candidate = original(*args)
+    if os.environ['CHANGE'] == 'stage-failure':
+        raise OSError('preparation failed')
+    hooks = Path.home() / '.codex/hooks.json'
+    document = json.loads(hooks.read_text())
+    document['external'] = 'keep concurrent edit'
+    document['hooks']['Stop'].append({'hooks':[{'command':'echo unrelated'}]})
+    hooks.write_text(json.dumps(document))
+    return candidate
+installer.install_files = prepare
+installer.main()
+''')
+    result = subprocess.run([str(Path(env["PATH"]) / "python3"), "-B", str(driver), str(package / "code-gossip"),
+                             "install", "--agents", "codex", "--no-panel"],
+                            env={**env, "CHANGE":change}, capture_output=True, text=True)
+    assert (result.returncode == 0) == (change == "external-hooks"), result.stderr
+    if change == "external-hooks":
+        assert json.loads(hooks.read_text())["external"] == "keep concurrent edit"
+        assert "echo unrelated" in hooks.read_text()
+    else:
+        assert os.readlink(root / "current") == current
+        assert hooks.read_bytes() == before
+    assert (root / "configs/config.json").read_bytes() == config
+    assert not (root / "version_state/transaction.json").exists()
+
+
+def test_hook_write_refuses_concurrent_changes(tmp_path):
+    path = tmp_path / "hooks.json"
+    original = {"external": "before"}
+    path.write_text('{"external":"after"}')
+    with pytest.raises(ValueError, match="changed during installation"):
+        installer.write_hooks(path, original, {**original, "hooks": {}})
+    assert json.loads(path.read_text()) == {"external": "after"}
+
+
+def test_dev_install_still_prepares_generals(tmp_path, repo_root, monkeypatch):
+    from unittest.mock import Mock
+    monkeypatch.setattr(installer.shutil, "which", lambda name: "/usr/bin/say")
+    monkeypatch.setattr(installer.subprocess, "run", generated := Mock())
+    source = repo_root / "code-gossip"
+    assert installer.install_files(source, tmp_path, True) == source
+    assert generated.call_args.args[0] == ["/bin/bash", str(source / "data/sounds/generals/generate.sh")]
+
+
+def test_partial_release_copy_is_cleaned_before_retry(tmp_path, repo_root, monkeypatch):
+    def fail_copy(source, candidate, **kwargs):
+        candidate.mkdir()
+        (candidate / "partial").write_text("incomplete copy")
+        raise OSError("disk full")
+    monkeypatch.setattr(installer.shutil, "copytree", fail_copy)
+    with pytest.raises(OSError, match="disk full"):
+        installer.install_files(repo_root / "code-gossip", tmp_path, False)
+    assert list((tmp_path / "version_state/releases").iterdir()) == []
+
+
+@pytest.mark.parametrize("action", ["install", "uninstall"])
+def test_install_and_full_removal_refuse_running_kokoro_setup(sandbox, monkeypatch, action):
+    import argparse
+    from updates import soundbar
+    from updates.errors import UpdateError
+    home, _, run = sandbox
+    run("install.sh", "--agents", "codex,claude")
+    root = home / ".code-gossip"
+    (root / "state").mkdir()
+    (root / "state/.server.pid").write_text(str(os.getpid()))
+    monkeypatch.setattr(Path, "home", lambda: home)
+    monkeypatch.setenv("CODEX_HOME", str(home / ".codex"))
+    monkeypatch.setattr(installer, "owned_process", lambda *args: True)
+    def installing(*args):
+        raise UpdateError("Wait for Kokoro installation to finish")
+    monkeypatch.setattr(soundbar, "ensure_panel_idle", installing)
+    before = snapshot(home)
+    args = argparse.Namespace(action=action, agents=["codex", "claude"], all=False,
+                              dev=False, no_panel=True, dry_run=False, purge=True)
+    with pytest.raises(UpdateError, match="Kokoro"):
+        installer.run(args)
+    assert snapshot(home) == before
+
+
+@pytest.mark.parametrize("owned", [False, True])
+def test_stop_process_recognizes_retained_generations_only(tmp_path, owned):
+    root = tmp_path / "runtime"
+    directory = root / ("version_state/releases/" + "a" * 32 + "/engine") if owned else tmp_path / "unrelated/engine"
+    directory.mkdir(parents=True)
+    script = directory / "kokoro_server.py"
+    script.write_text("import time\nprint('ready', flush=True)\ntime.sleep(30)\n")
+    child = subprocess.Popen([sys.executable, str(script)], stdout=subprocess.PIPE, text=True)
+    try:
+        assert child.stdout.readline().strip() == "ready"
+        assert bool(installer.stop_process(child.pid, root / "engine/kokoro_server.py")) == owned
+        if owned:
+            assert child.wait(timeout=5) < 0
+        else:
+            assert child.poll() is None
+    finally:
+        if child.poll() is None:
+            child.terminate()
+        child.wait(timeout=5)
+
+
+def custom_audio(root):
+    """A registered user sample, absent from the published release package."""
+    audio = root / "data/sounds/custom/local.wav"
+    audio.parent.mkdir(parents=True, exist_ok=True)
+    audio.write_bytes(b"user-owned audio")
+    manifest = json.loads((root / "data/sounds.json").read_text())
+    manifest["effects"]["custom"] = {"dir": "sounds/custom", "events": {"stop": {"file": "local.wav"}}}
+    (root / "configs/sounds.json").write_text(json.dumps(manifest))
+    return audio
+
+
+def test_custom_audio_survives_repeated_reinstalls_and_release_cleanup(sandbox):
+    home, _, run = sandbox
+    run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    first = (root / "current").resolve()
+    local = custom_audio(root)
+    manifest = json.loads((root / "configs/sounds.json").read_text())
+    events = manifest["effects"]["custom"]["events"]
+    events["edit"] = {"files": ["one.wav", "nested/two.wav"]}
+    events["subagent_stop"] = {"sequence": [["three.wav", "four.wav"], ["five.wav"]]}
+    events["permission"] = {"file": str(local)}  # Absolute stable installation path.
+    manifest["voice"]["custom"] = {"dir": "sounds/custom", "events": {"stop": {"file": "voice.wav"}}}
+    expected = {"local.wav": local.read_bytes()}
+    for name in ["one.wav", "nested/two.wav", "three.wav", "four.wav", "five.wav", "voice.wav"]:
+        path = local.parent / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(name.encode())
+        expected[name] = path.read_bytes()
+    external = home / "external.wav"
+    external.write_bytes(b"external audio")
+    events["session_start"] = {"file": str(external)}
+    override = root / "configs/sounds.json"
+    override.write_text(json.dumps(manifest))
+    settings = override.read_bytes()
+    shipped = root / "data/sounds/paper/book_open.mp3"
+    release_bytes = shipped.read_bytes()
+    shipped.write_bytes(b"old shipped sample")
+    unused = local.parent / "unused.wav"
+    unused.write_bytes(b"not registered")
+    for _ in range(3):
+        run("install.sh", "--agents", "codex")
+        assert {name: (local.parent / name).read_bytes() for name in expected} == expected
+        assert override.read_bytes() == settings
+        assert shipped.read_bytes() == release_bytes, "New package owns shipped sample paths"
+        assert not unused.exists(), "Unreferenced files must not accumulate across releases"
+        assert external.read_bytes() == b"external audio"
+    assert not first.exists(), "Custom samples must survive collection of their original generation"
+    assert len(list((root / "version_state/releases").iterdir())) == 2
+
+
+def test_still_referenced_retired_sample_is_preserved(sandbox):
+    home, _, run = sandbox
+    run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    sample = custom_audio(root)
+    # Simulate an old shipped sample still explicitly selected by the override.
+    (root / "data/sounds.json").write_bytes((root / "configs/sounds.json").read_bytes())
+    for _ in range(2):
+        run("install.sh", "--agents", "codex")
+        assert sample.read_bytes() == b"user-owned audio"
+
+
+@pytest.mark.parametrize("problem", ["missing", "traversal", "file-link", "directory-link", "generation-path"])
+def test_unsafe_custom_audio_stops_before_activation(sandbox, problem):
+    home, _, run = sandbox
+    run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    sample = custom_audio(root)
+    external = home / "external"
+    external.mkdir()
+    (external / "local.wav").write_bytes(b"do not copy external content")
+    manifest = json.loads((root / "configs/sounds.json").read_text())
+    profile = manifest["effects"]["custom"]
+    if problem == "missing":
+        sample.unlink()
+    elif problem == "traversal":
+        profile["events"]["stop"]["file"] = "../../../installer.py"
+    elif problem == "file-link":
+        sample.unlink()
+        sample.symlink_to(external / "local.wav")
+    elif problem == "directory-link":
+        sample.unlink()
+        sample.parent.rmdir()
+        sample.parent.symlink_to(external, target_is_directory=True)
+    else:
+        profile["events"]["stop"]["file"] = str(sample.resolve())
+    (root / "configs/sounds.json").write_text(json.dumps(manifest))
+    before, pointer = snapshot(home), os.readlink(root / "current")
+    run("install.sh", "--agents", "codex", success=False)
+    assert snapshot(home) == before
+    assert os.readlink(root / "current") == pointer
+    assert len(list((root / "version_state/releases").iterdir())) == 1
+    assert not (root / "version_state/transaction.json").exists()
+
+
+@pytest.mark.parametrize("same_contents", [False, True])
+def test_custom_audio_collision_does_not_silently_replace_user_file(sandbox, release_package, tmp_path, same_contents):
+    from updates.source import extract_archive
+    home, _, run = sandbox
+    run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    sample = custom_audio(root)
+    package = extract_archive(release_package, tmp_path / "candidate")
+    incoming = package / "code-gossip/data/sounds/custom/local.wav"
+    incoming.parent.mkdir()
+    incoming.write_bytes(sample.read_bytes() if same_contents else b"different incoming sample")
+    before, pointer = snapshot(home), os.readlink(root / "current")
+    result = run(package / "install.sh", "--agents", "codex", success=same_contents)
+    assert sample.read_bytes() == b"user-owned audio"
+    if not same_contents:
+        assert "conflicts with the release package" in result.stderr
+        assert snapshot(home) == before
+        assert os.readlink(root / "current") == pointer
+
+
+def test_audio_copy_failure_leaves_active_release_and_cleans_candidate(sandbox, release_package, tmp_path, monkeypatch):
+    from updates.source import extract_archive
+    home, _, run = sandbox
+    run("install.sh", "--agents", "codex")
+    root = home / ".code-gossip"
+    sample = custom_audio(root)
+    package = extract_archive(release_package, tmp_path / "candidate")
+    before, pointer = snapshot(home), os.readlink(root / "current")
+    copy = installer.shutil.copy2
+    def fail_sample(source, target, **kwargs):
+        if Path(source) == sample.resolve():
+            raise OSError("audio copy failed")
+        return copy(source, target, **kwargs)
+    monkeypatch.setattr(installer.shutil, "copy2", fail_sample)
+    monkeypatch.setattr(installer.shutil, "which", lambda name: None)
+    with pytest.raises(OSError, match="audio copy failed"):
+        installer.install_files(package / "code-gossip", root, False)
+    assert snapshot(home) == before
+    assert os.readlink(root / "current") == pointer
+    assert len(list((root / "version_state/releases").iterdir())) == 1
+
+
+def test_explicit_reinstall_can_restore_backed_up_audio_after_install(sandbox):
+    home, _, run = sandbox
+    root = home / ".code-gossip"
+    (root / "configs").mkdir(parents=True)
+    manifest = {"effects": {"custom": {"dir":"sounds/custom", "events":{"stop":{"file":"local.wav"}}}}, "voice": {}}
+    (root / "configs/sounds.json").write_text(json.dumps(manifest))
+    run("install.sh", "--agents", "codex")
+    sample = root / "data/sounds/custom/local.wav"
+    sample.parent.mkdir()
+    sample.write_bytes(b"restored from user backup")
+    run("install.sh", "--agents", "codex")
+    assert sample.read_bytes() == b"restored from user backup"
