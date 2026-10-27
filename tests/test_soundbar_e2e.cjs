@@ -101,7 +101,7 @@ async function until(check, description) {
           assert(Object.keys(doc.hooks).length > 0);
         }
         await page.goto(url);
-        await page.waitForFunction(() => document.getElementById('statusText').textContent.startsWith('Active'));
+        await page.waitForFunction(() => document.getElementById('statusText').textContent.startsWith('In use'));
         if (dev) {
           await page.locator('#settingsButton').click();
           assert.equal(await page.locator('#installedVersion').innerText(), 'Installed: development');
@@ -115,7 +115,7 @@ async function until(check, description) {
           assert(!fs.existsSync(path.join(checkout, 'code-gossip/VERSION')));
         }
         assert.equal(await page.locator('[role=tab]').count(), 4);
-        await page.selectOption('#soundPack', 'paper');
+        await page.locator('#packList label', {hasText:'Paper'}).click();
         assert.equal((await status()).effects_profile, 'default', 'Browsing does not save');
         await page.locator('#activateSelection').click();
         await until(async () => (await status()).effects_profile === 'paper', 'activated Effects profile');
@@ -133,7 +133,7 @@ async function until(check, description) {
         }
         await page.getByRole('tab', { name: 'Phrases', exact: true }).click();
         assert.equal((await status()).effects_profile, 'paper');
-        await page.locator('#setup-phrases > summary').click();
+        await page.locator('#panel-phrases .strip [data-drawer=speech]').click();
         await page.selectOption('#phraseEngine', 'kokoro');
         assert.equal((await status()).tts_engine, 'say', 'Setup choices stay in the draft');
         assert(!fs.existsSync(path.join(runtime, 'state/.venv')));

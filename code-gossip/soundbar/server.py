@@ -224,6 +224,14 @@ def read_phrases():
     return phrases
 
 
+def read_default_phrases():
+    try:
+        data = json.loads(PHRASES_DEFAULTS.read_text())
+        return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
 def write_phrases(data):
     atomic_json(PHRASES_FILE, data)
     log.info("wrote %s", PHRASES_FILE.name)
@@ -363,6 +371,7 @@ def get_status():
         "voice_profiles": parse_voice_profiles(),
         "voice_profile_names": VOICE_PROFILES,
         "phrases": read_phrases(),
+        "phrases_defaults": read_default_phrases(),
         "events": EVENTS,
         "dialogue_events": list(DIALOGUE_EVENTS),
         "voices": get_voices(),
@@ -636,16 +645,17 @@ def atomic_json(path, data):
             os.unlink(temporary)
 
 
-def apply_selection(body):
+def apply_selection(body, activate=True):
     mode = body.get("mode")
-    if mode not in MODES or not isinstance(body.get("enabled"), bool):
+    if mode not in MODES or (activate and not isinstance(body.get("enabled"), bool)):
         raise ValueError("Invalid mode or sound state")
     config = draft_config(body)
     phrases = validate_phrases(body["phrases"]) if mode == "phrases" else None
-    config.update(soundbar_mode=mode, effects_on=body["enabled"] and mode == "effects",
-                  voice_on=body["enabled"] and mode != "effects")
-    if mode != "effects":
-        config["voice_profile"] = {"clips": "generals", "phrases": "senior", "ai": "narrator"}[mode]
+    if activate:
+        config.update(soundbar_mode=mode, effects_on=body["enabled"] and mode == "effects",
+                      voice_on=body["enabled"] and mode != "effects")
+        if mode != "effects":
+            config["voice_profile"] = {"clips": "generals", "phrases": "senior", "ai": "narrator"}[mode]
     previous_phrases = PHRASES_FILE.read_bytes() if PHRASES_FILE.exists() else None
     try:
         if phrases is not None:
@@ -762,7 +772,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         body = self.read_body()
         try:
-            mutations = {"/api/activate", "/api/config", "/api/phrases", "/api/narrator-style",
+            mutations = {"/api/activate", "/api/save", "/api/config", "/api/phrases", "/api/narrator-style",
                          "/api/narrator-style-delete", "/api/narrator-style-reset", "/api/kokoro-install"}
             with settings_lock if path in mutations else nullcontext(), \
                     update_lock(ROOT) if path in mutations else nullcontext():
@@ -782,8 +792,8 @@ class Handler(SimpleHTTPRequestHandler):
                 update_service.start_update(ROOT)
             self.json_response({"ok": True, **update_service.status(ROOT)})
 
-        elif path == "/api/activate":
-            apply_selection(body)
+        elif path in ("/api/activate", "/api/save"):
+            apply_selection(body, activate=path == "/api/activate")
             self.json_response({"ok": True})
 
         elif path in ("/api/draft-check", "/api/draft-preview"):
