@@ -1,62 +1,33 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="amber" data-demo>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Hear Code Gossip: sound effects, Senior voice cues, and AI commentary for coding agents.">
-  <meta name="theme-color" content="#0c141e">
-  <title>Hear Code Gossip</title>
+  <meta name="description" content="Hear your coding agents work. Try Code Gossip's sound packs and prerecorded Kokoro voices in Soundbar.">
+  <title>Code Gossip — Hear your agents work</title>
+  <!-- SOUNDBAR_HEAD -->
   <link rel="stylesheet" href="player.css">
-  <script src="player.js" defer></script>
 </head>
 <body>
-  <main>
-    <nav aria-label="Main navigation">
-      <span class="brand">CODE GOSSIP<span aria-hidden="true"> ▪</span></span>
-      <a class="repo-link" href="https://github.com/zorhay/code-gossip">GitHub ↗</a>
-    </nav>
-    <header>
-      <h1>Hear your agents work.</h1>
-    </header>
-    <section class="players" aria-label="Compare sound profiles">
-      <article class="player" id="default" style="--accent:#91c7ff">
-        <div class="card-title"><span class="number">01</span><div><p>Sound effects</p><h2>Default</h2></div><span class="duration">12 sec</span></div>
-        <video controls playsinline preload="metadata" poster="assets/demo-default.webp" aria-label="Default sound effects demo">
-          <source src="assets/demo-default.mp4" type="video/mp4">
-          <a href="assets/demo-default.mp4">Download the Default demo</a>
-        </video>
-        <p class="error" role="alert" hidden>Couldn't load the demo. <a href="assets/demo-default.mp4">Open the video</a>.</p>
-      </article>
-      <article class="player" id="senior" style="--accent:#a5f3cb">
-        <div class="card-title"><span class="number">02</span><div><p>Fixed phrases</p><h2>Senior</h2></div><span class="duration">12 sec</span></div>
-        <video controls playsinline preload="metadata" poster="assets/demo.webp" aria-label="Senior voice demo">
-          <source src="assets/demo.mp4" type="video/mp4">
-          <a href="assets/demo.mp4">Download the Senior demo</a>
-        </video>
-        <p class="error" role="alert" hidden>Couldn't load the demo. <a href="assets/demo.mp4">Open the video</a>.</p>
-      </article>
-      <article class="player" id="narrator" style="--accent:#ffbc7c">
-        <div class="card-title"><span class="number">03</span><div><p>AI commentary</p><h2>LLM narrator</h2></div><span class="duration">16 sec</span></div>
-        <video controls playsinline preload="metadata" poster="assets/demo-narrator.webp" aria-label="LLM narrator demo">
-          <source src="assets/demo-narrator.mp4" type="video/mp4">
-          <a href="assets/demo-narrator.mp4">Download the narrator demo</a>
-        </video>
-        <p class="error" role="alert" hidden>Couldn't load the demo. <a href="assets/demo-narrator.mp4">Open the video</a>.</p>
-      </article>
-    </section>
-    <p class="note">Demo: AI-written narrator · Kokoro voices.</p>
-    <section class="installation" id="install" aria-labelledby="install-title">
-      <div class="install-heading">
-        <h2 id="install-title">Install</h2>
-        <a class="release" href="https://github.com/zorhay/code-gossip/releases/latest">Latest release<!-- RELEASE_VERSION --></a>
-      </div>
-      <div class="install-command">
-        <pre><code id="install-command">curl -fsSL https://zorhay.github.io/code-gossip/install.sh | bash -s -- --all</code></pre>
-        <button id="copy-install" type="button" hidden>Copy command</button>
-      </div>
-      <p id="copy-status" class="copy-status" role="status"></p>
-    </section>
-    <footer>Code Gossip · Made for macOS</footer>
-  </main>
+  <header class="site-header">
+    <nav aria-label="Main navigation"><a class="site-brand" href="#">CODE GOSSIP <span>▪</span></a><div><a href="https://github.com/zorhay/code-gossip">GitHub ↗</a><a class="btn" href="#install">Install</a></div></nav>
+    <div class="intro"><p class="eyebrow">FOR CODEX · CLAUDE CODE · CURSOR</p><h1>Hear your agents work.</h1><p>Know when code changes, tests finish, or your agent needs you.<br> Find your sound in the real Soundbar interface below.</p></div>
+  </header>
+  <section class="demo-bar" aria-label="Try an example session">
+    <div><strong>Try Soundbar</strong><p>Click any play button. Voice previews are prerecorded with Kokoro.</p></div>
+    <div class="demo-actions"><button class="btn primary" id="demoSession" type="button" disabled>Play an example session</button><button class="btn" id="demoStop" type="button" disabled>Stop</button></div>
+    <p id="demoProgress" role="status">Choose a sound pack or voice, then listen.</p>
+  </section>
+  <!-- SOUNDBAR_BODY -->
+  <section class="installation" id="install" aria-labelledby="install-title">
+    <div><p class="eyebrow">TAKE IT INTO YOUR NEXT SESSION</p><h2 id="install-title">Your agents. With sound.</h2><p>Install on macOS for Codex, Claude Code, and Cursor.<br> Edit phrases and connect AI commentary in your local Soundbar.</p></div>
+    <div class="install-command"><pre><code id="install-command">curl -fsSL https://zorhay.github.io/code-gossip/install.sh | bash -s -- <!-- INSTALL_RELEASE -->--all</code></pre><button class="btn" id="copy-install" type="button">Copy command</button></div>
+    <p id="copy-status" role="status"></p>
+    <a class="release" href="<!-- RELEASE_URL -->">Release <!-- RELEASE_VERSION --></a>
+  </section>
+  <footer class="site-footer"><span>Code Gossip · Made for macOS</span><span>Voice samples generated with <a href="https://huggingface.co/hexgrad/Kokoro-82M">Kokoro</a> · <a href="credits.html">Audio credits</a></span><a href="build.json" id="buildInfo">Build <!-- BUILD_COMMIT --></a></footer>
+  <noscript><p class="no-script">Enable JavaScript to explore Soundbar and play previews. The install command above works without it.</p></noscript>
+  <script src="demo.js"></script>
+  <script src="ui.js"></script>
 </body>
 </html>

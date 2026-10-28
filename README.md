@@ -6,7 +6,7 @@
 | :---: | :---: | :---: |
 | [![Default effects preview](docs/assets/demo-default.gif)](https://zorhay.github.io/code-gossip/#default) | [![Senior voice preview](docs/assets/demo.gif)](https://zorhay.github.io/code-gossip/#senior) | [![LLM narrator preview](docs/assets/demo-narrator.gif)](https://zorhay.github.io/code-gossip/#narrator) |
 
-**[▶ Open the demos with sound](https://zorhay.github.io/code-gossip/)** — press Play to hear each demo; sound is enabled. The previews above are silent.
+**[▶ Try Soundbar with sound](https://zorhay.github.io/code-gossip/)** — browse the real dashboard, audition sound packs and prerecorded Kokoro voices, or play an example session. The GIF previews above are silent.
 
 **Shared agent hooks · Soundbar · Effects, clips, phrases & AI commentary · Editable phrases · Optional AI narrator · macOS**
 
@@ -189,4 +189,4 @@ Only mapped events play. A completion cue means the current turn ended; it does 
 
 [Architecture](ARCHITECTURE.md) · [Sound-design skill](dev-skills/sound-design/SKILL.md) · [Docs skill](dev-skills/maintain-docs/SKILL.md) · [Changelog](CHANGELOG.md)
 
-Scripts: MIT. Bundled sampled audio: CC0. Default effects use macOS system sounds. Generals clips: generated with macOS speech. Demos use the shipped Default effects, AI-written narrator commentary, and Senior phrases; regenerate them with `python3 docs/render_demo.py` (Pillow, FFmpeg, and Kokoro installed in `code-gossip/state/.venv`; set `DEMO_KOKORO_PYTHON` for another location). The [Code Gossip marketing page](https://zorhay.github.io/code-gossip/) serves these files directly through GitHub Pages; regenerated assets go live when a GitHub release containing them is published.
+Scripts: MIT. Bundled sampled audio: CC0. Default effects use macOS system sounds. Generals clips: generated with macOS speech. Website phrase and commentary previews are prerecorded with [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), whose model and inference code use Apache-2.0. Commentary examples are AI-written illustrations, not live provider responses. The [interactive homepage](https://zorhay.github.io/code-gossip/) and installer share the same released UI and shipped sound settings. See [website builds and recordings](ARCHITECTURE.md#website-builds-and-recordings) for regeneration, validation, and deployment.

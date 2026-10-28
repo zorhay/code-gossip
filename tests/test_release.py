@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import subprocess
 import zipfile
 
@@ -35,6 +36,11 @@ def test_package_generates_version_and_excludes_local_files(tmp_path, tag):
         assert "release/code-gossip/configs/config.json" not in bundle.namelist()
         assert bundle.getinfo("release/install.sh").external_attr >> 16 & 0o111
     assert not (checkout / "code-gossip/VERSION").exists()
+    before = archive.read_bytes()
+    for path in checkout.rglob("*"):
+        if path.is_file() and ".git" not in path.parts:
+            os.utime(path, (1800000000, 1800000000))
+    assert build_package(checkout, tag, archive).read_bytes() == before
 
 
 def test_normal_checkout_and_package_install_the_same_release(sandbox, repo_root, release_package, tmp_path):

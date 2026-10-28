@@ -19,7 +19,7 @@ def bootstrap(sandbox, repo_root, release_package, tmp_path):
     curl = binaries / "curl"
     curl.write_text('''#!/bin/bash
 test "${TEST_DOWNLOAD_FAIL:-0}" = 0 || exit 22
-test "$8" = https://github.com/zorhay/code-gossip/releases/latest/download/code-gossip.zip || exit 99
+test "$8" = "${TEST_EXPECTED_URL:-https://github.com/zorhay/code-gossip/releases/latest/download/code-gossip.zip}" || exit 99
 /bin/cp "$TEST_PACKAGE" "${!#}"
 ''')
     curl.chmod(0o755)
@@ -66,6 +66,34 @@ def test_bootstrap_forwards_selection_custom_home_and_dry_run(bootstrap):
     assert (home / "custom codex/hooks.json").exists()
     assert not (home / ".codex").exists()
     assert not document(home, "cursor") and not document(home, "claude")
+
+
+@pytest.mark.parametrize("tag", ["1.2.3", "v1.2.3"])
+def test_bootstrap_pins_version_and_forwards_installer_options(bootstrap, tag):
+    home, env, run = bootstrap
+    env["TEST_EXPECTED_URL"] = f"https://github.com/zorhay/code-gossip/releases/download/{tag}/code-gossip.zip"
+    run("--agents", "codex", "--release", tag)
+    assert (home / ".code-gossip/VERSION").read_text().strip() == "1.2.3"
+    assert document(home, "codex")["hooks"]
+    assert not document(home, "cursor")
+
+
+def test_bootstrap_rejects_wrong_version_before_installing(bootstrap):
+    home, env, run = bootstrap
+    env["TEST_EXPECTED_URL"] = "https://github.com/zorhay/code-gossip/releases/download/1.2.4/code-gossip.zip"
+    before = snapshot(home)
+    assert "does not match the requested release" in run("--release", "1.2.4", "--agents", "codex", success=False).stderr
+    assert snapshot(home) == before
+
+
+@pytest.mark.parametrize("args", [("--release",), ("--release", "../latest"),
+    ("--release", "1.2.3-rc1"), ("--release", "01.2.3"),
+    ("--release", "1.2.3", "--release", "1.2.4")])
+def test_bootstrap_rejects_invalid_release_options(bootstrap, args):
+    home, _, run = bootstrap
+    before = snapshot(home)
+    assert "--release" in run(*args, success=False).stderr
+    assert snapshot(home) == before
 
 
 @pytest.mark.parametrize("failure", ["download", "archive", "jq", "platform", "--dev", "--de", "dev-install", "selection"])

@@ -26,6 +26,10 @@ jobs:
         env:
           PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
         run: python3 -B scripts/package_release.py "$PACKAGE_TAG"
+      - name: Build matching website
+        env:
+          PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
+        run: python3 -B scripts/build_pages.py --tag "$PACKAGE_TAG" --package dist/code-gossip.zip
       - name: Test installers, updates, and development mode
         run: |
           python3 -m pip install pytest pytest-subtests PyYAML
@@ -34,12 +38,20 @@ jobs:
           "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
           export NODE_PATH="$RUNNER_TEMP/browser/node_modules"
           node tests/test_soundbar_ui.cjs
+          node tests/test_pages.cjs
           E2E_RELEASE_PACKAGE="$PWD/dist/code-gossip.zip" node tests/test_soundbar_e2e.cjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name == 'release'
         with:
           name: installation-package
           path: dist/code-gossip.zip
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.event_name == 'release'
+        with:
+          name: tested-website
+          path: dist/pages
+          include-hidden-files: true
           if-no-files-found: error
 
   publish:
@@ -61,7 +73,10 @@ jobs:
         run: |
           assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[] | select(.state == "uploaded") | .name')
           if grep -Fxq 'code-gossip.zip' <<< "$assets"; then
-            echo "Installation package already uploaded."
+            mkdir -p "$RUNNER_TEMP/published-package"
+            gh release download "$RELEASE_TAG" --pattern code-gossip.zip --dir "$RUNNER_TEMP/published-package" --clobber
+            cmp dist/code-gossip.zip "$RUNNER_TEMP/published-package/code-gossip.zip"
+            echo "The identical tested installation package is already uploaded."
           else
             gh release upload "$RELEASE_TAG" dist/code-gossip.zip
           fi

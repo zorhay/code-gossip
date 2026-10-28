@@ -1,0 +1,19 @@
+{
+  "provenance": "AI-written examples for a login-timeout fix, prepared by Codex. Illustrations of the shipped styles, not recordings of live provider responses. Spoken with Kokoro preset voices.",
+  "events": ["session_start", "read", "edit", "test", "stop"],
+  "labels": ["Start a session", "Read src/app.ts", "Edit src/app.ts", "Run the tests", "Ready for review"],
+  "styles": {
+    "pair_programmer": ["Let's track down that login timeout.", "Checking how the session expires.", "Adding the missing expiry check.", "The timeout test is passing now.", "The fix is ready for your review."],
+    "sports": ["We're underway, with a login bug on the field!", "A close look at the session handler!", "What a move! The expiry check goes in!", "Green across the board, a clean test run!", "And that's the final whistle! Ready for review!"],
+    "documentary": ["Our programmer approaches a curious login failure.", "Here, an expired session has escaped detection.", "With a small adjustment, order begins to return.", "The tests reveal a promising adaptation.", "The patch now awaits another pair of eyes."],
+    "noir": ["The login timed out. Something didn't add up.", "I followed the session trail into the source.", "One missing check. I put it back where it belonged.", "The tests came back clean. For once.", "Case ready for review. I'll leave the light on."],
+    "haiku_poet": ["A fresh task arrives. We follow the fading trail. Code awaits our hands.", "Old lines hold a clue. We trace the session's short life. Dawn breaks through the code.", "One small check takes root. Old sessions now fade away. New paths stay open.", "Green lights softly glow. Tests trace every winding path. Still we read once more.", "The last keystroke fades. A small patch awaits your eyes. Work rests in your hands."],
+    "comedian": ["Today's mystery: a login with commitment issues.", "Reading the code. It has a very creative relationship with time.", "Adding an expiry check, because apparently forever was the default.", "The tests pass. I'm trying not to look surprised.", "Ready for review, the part where we discover my spelling mistakes."],
+    "engineer": ["Investigating the login timeout.", "Tracing expiry handling in the session path.", "Rejecting expired sessions before reuse.", "The regression test passes.", "Patch is ready. Review the boundary condition."],
+    "casual_guy": ["Alright, let's see what's up with this login.", "Just checking the session code.", "Yeah, this needed an expiry check.", "Nice, tests look good.", "All yours. Have a look when you're ready."],
+    "pirate": ["Arrr, we've a login bug to hunt!", "Checking the charts for an expired session, matey.", "Patching the leak before this session sinks us!", "The tests be clear sailing!", "The patch be ready for yer inspection, captain."],
+    "gamer": ["New run, login bug, let's go!", "Checking the session route for the hidden trap.", "Clutch expiry check, that's the play!", "All green, clean run on the tests!", "Patch ready, handing off the controller!"],
+    "drill_sergeant": ["Listen up! Find that login failure!", "Inspect the session handler! Every line!", "Put that expiry check in position!", "Tests passed! Maintain your standards!", "Patch ready for inspection! Stand by!"],
+    "zen_master": ["Begin with the bug that is before you.", "Read slowly. The missing check leaves a space.", "Let the expired session go.", "The tests are green. Take one more breath.", "The work is ready. Make room for another view."]
+  }
+}

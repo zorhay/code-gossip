@@ -1,4 +1,5 @@
 'use strict';
+const demo = window.soundbarDemo || null;
 const $ = id => document.getElementById(id);
 const TABS = {effects:{name:'Effects',icon:'wave'}, clips:{name:'Clips',icon:'film'}, phrases:{name:'Phrases',icon:'chat'}, ai:{name:'AI commentary',icon:'spark'}};
 const modeNames = Object.fromEntries(Object.entries(TABS).map(([id,tab]) => [id, tab.name]));
@@ -58,6 +59,7 @@ function applyTheme(theme) {
 }
 
 async function api(path, body) {
+ if (demo) return demo.request(path, body);
  const response = await fetch(path, body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-Soundbar-Request':'ui'}, body:JSON.stringify(body)});
  const data = await response.json();
  if (!response.ok || data.ok === false) throw new Error(data.error || data.message || 'Request failed');
@@ -96,7 +98,7 @@ function voiceLabel(engine, id) { return (voiceChoices[engine] || []).find(([val
 function speechEngine(mode=state.viewMode) { return mode === 'ai' ? state.engine : state.phraseEngine; }
 function needsKey() { return !!saved.narrator_providers[state.provider]?.needs_key; }
 function providerKey() { return state.apiKey || (state.provider === saved.narrator_provider ? saved.narrator_api_key : '') || ''; }
-function hasProviderKey() { return !needsKey() || !!providerKey().trim(); }
+function hasProviderKey() { return !!demo || !needsKey() || !!providerKey().trim(); }
 function connectionIdentity() { return JSON.stringify([state.provider, state.model, providerKey()]); }
 function aiIdentity() { return connectionIdentity(); }
 function speechIdentity(mode) {
@@ -133,8 +135,9 @@ function savedDraft(mode) {
  }
  return {mode, style:saved.narrator_style, engine, voice:engine === 'kokoro' ? saved.kokoro_voice : saved.voice_main, provider:saved.narrator_provider, model:saved.narrator_model || '', context:!!saved.narrator_deep_context, apiKey:''};
 }
-function isDirty(mode) { return !same(selectionDraft(mode), savedDraft(mode)); }
+function isDirty(mode) { return !demo && !same(selectionDraft(mode), savedDraft(mode)); }
 function modeInUse(mode) {
+ if (demo) return false;
  if (activeSelection.mode === 'combined') return mode === 'effects' || mode === (profileModes[saved.voice_profile] || 'phrases');
  return activeSelection.mode === mode;
 }
@@ -259,30 +262,29 @@ function modeCheckKeys() {
  return [state.viewMode === 'phrases' ? 'phrases' : state.viewMode];
 }
 function scheduleSetupChecks(delay=150) {
- if (!setupChecksReady) return;
+ if (demo || !setupChecksReady) return;
  clearTimeout(setupCheckTimer);
  const run = () => {
   for (const key of modeCheckKeys()) {
    const check = setupChecks[key];
    if (check?.status === 'checking' || check?.identity === checkIdentity(key) || checkPresentation(key).prerequisite) continue;
-   checkSetup(key);
+   checkSetup(key, {automatic:true});
   }
  };
  if (delay) setupCheckTimer = setTimeout(run, delay); else run();
 }
 async function refreshSetup() { setup = {...setup, ...await api('/api/setup')}; }
-async function checkSetup(key) {
+async function checkSetup(key, {automatic=false}={}) {
  if (setupChecks[key]?.status === 'checking' || (checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips')) return;
  const mode = checkModes[key], config = draftConfig(mode), identity = checkIdentity(key), button = checkButton(key);
  const check = setupChecks[key] = {identity, status:'checking'};
  if (key === 'ai') checkedAI = null;
- clearError();
+ if (!automatic) clearError();
  renderChecks();
  try {
   await refreshSetup();
   await api('/api/draft-check', {mode, config, scope:key === 'ai' ? 'provider' : 'speech'});
   check.status = 'checked';
-  if (identity === checkIdentity(key)) clearError();
   if (identity === checkIdentity(key) && key === 'ai') { checkedAI = identity; refreshModels(); }
  } catch (error) {
   check.status = 'failed';
@@ -338,20 +340,22 @@ function renderTabs() {
   let badges = '';
   if (modeInUse(id)) badges += '<span class="tab-inuse"><i class="live-dot"></i>In use</span>';
   if (isDirty(id)) badges += '<span class="dirty-dot" title="Unsaved changes"></span>';
-  if (id === 'ai' && checkedAI !== aiIdentity()) badges += `<span title="Provider not checked">${icon('warn','tab-warn')}</span>`;
+  if (!demo && id === 'ai' && checkedAI !== aiIdentity()) badges += `<span title="Provider not checked">${icon('warn','tab-warn')}</span>`;
   $('badges-' + id).innerHTML = badges;
  }
 }
 function renderNow() {
  $('now').classList.toggle('muted', !state.enabled);
  $('now').classList.toggle('is-playing', mediaBusy);
- $('statusText').textContent = `${state.enabled ? 'In use' : 'Muted'} · ${selectionLabel()}`;
+ $('statusText').textContent = `${state.enabled ? demo ? 'Preview' : 'In use' : 'Muted'} · ${selectionLabel(demo ? selectionDraft() : activeSelection)}`;
  $('powerLabel').textContent = state.enabled ? 'Sound on' : 'Sound off';
  $('soundOn').checked = state.enabled;
- $('soundOn').disabled = busy || mediaBusy || savingSound;
- $('volume').disabled = busy || mediaBusy || savingVolume;
+ $('soundOn').disabled = busy || !demo && mediaBusy || savingSound;
+ $('volume').disabled = busy || !demo && mediaBusy || savingVolume;
+ if (demo) { $('demoSession').disabled = mediaBusy; $('demoStop').disabled = !mediaBusy; }
 }
 function renderPanelState(mode) {
+ if (demo) return;
  const inUse = modeInUse(mode), exclusive = activeSelection.mode === mode, dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
  const readiness = setupReadiness(mode), blocked = !readiness.ready, drawer = blockerDrawer(mode);
  const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume;
@@ -451,6 +455,7 @@ function renderPhraseRows() {
   const texts = [item].flat(), playable = texts.every(text => String(text).trim());
   return `<div class="row"><span class="row-num">${index + 1}</span><div class="inputs ${roles ? 'pair' : ''}">${texts.map((text, part) => `<input type="text" value="${esc(text)}" data-index="${index}" data-part="${part}" class="${String(text).trim() ? '' : 'invalid'}" placeholder="${part ? 'Reply…' : 'Write a phrase…'}" aria-label="${esc(roles ? roleName(roles[part]) : 'Phrase')} ${index + 1}">`).join('')}</div><button class="play-btn" type="button" data-preview="phrases" data-event="${esc(event)}" data-variant="${index}" aria-label="Preview alternative ${index + 1}" ${playable ? '' : 'disabled'}>${icon('play')}</button><button class="icon-sm" type="button" data-remove="${index}" aria-label="Remove ${index + 1}">${icon('x')}</button></div>`;
  }).join('') : '<p class="empty">No phrases yet, so this event stays silent. Add one below.</p>';
+ if (demo) $('phraseRows').querySelectorAll('input').forEach(input => { input.readOnly = true; });
 }
 function roleName(role) { return (role === 'main' ? 'Main agent · ' : 'Subagent · ') + voiceLabel(state.phraseEngine, state.phraseVoices[state.phraseEngine][role]); }
 function fillSelect(id, entries, selected) {
@@ -482,7 +487,8 @@ function renderSample() {
  $('commentarySample').textContent = current ? current.text : 'Play a sample to hear ' + (styleNames[state.style] || state.style) + '.';
  $('commentarySample').classList.toggle('placeholder', !current);
  const name = saved.narrator_providers[state.provider]?.name || state.provider;
- $('sampleNote').textContent = current ? 'Replay uses this line and does not ask the provider again.' : `The first play writes one line with ${name}${needsKey() ? ', which may be billed' : ''}. A successful sample also verifies the provider.`;
+ $('sampleNote').textContent = demo ? 'Prerecorded sample · Kokoro. Example commentary written for this demo. Install to generate fresh lines and edit phrases.' : current ? 'Replay uses this line and does not ask the provider again.' : `The first play writes one line with ${name}${needsKey() ? ', which may be billed' : ''}. A successful sample also verifies the provider.`;
+ if (demo) document.querySelector('.sample-context').textContent = 'Example event · ' + (current?.event ? eventLabel(current.event) : 'Edit src/app.ts');
  if (!mediaBusy) $('sampleLabel').textContent = current ? 'Replay' : 'Play sample';
  $('sampleBtn').disabled = mediaBusy;
 }
@@ -540,6 +546,7 @@ function showProvider() {
  renderModelList();
 }
 function openDrawer(kind) {
+ if (demo) return;
  if (kind === 'provider' && state.viewMode !== 'ai') selectTab('ai');
  $('drawerTitle').textContent = {provider:'AI provider', speech:'Speech engine', effects:'Effects setup', clips:'Clips setup'}[kind];
  document.querySelectorAll('[data-drawer-section]').forEach(section => { section.hidden = section.dataset.drawerSection !== kind; });
@@ -550,6 +557,7 @@ function openDrawer(kind) {
 }
 function selectTab(mode) {
  if (!TABS[mode] || state.viewMode === mode) { if (TABS[mode]) renderTabs(); return; }
+ if (demo) demo.stop();
  state.viewMode = mode;
  render();
  scheduleSetupChecks();
@@ -673,7 +681,7 @@ async function mediaAction(button, work) {
  controls.forEach(([control]) => { control.disabled = true; });
  renderChrome();
  try { await work(); }
- catch (error) { showError(error.message); }
+ catch (error) { if (error.name !== 'AbortError') showError(error.message); }
  finally {
   mediaBusy = false;
   button?.setAttribute('aria-busy', 'false');
@@ -783,6 +791,7 @@ function renderVersions() {
  $('updateExplanation').textContent = versions.development ? 'Development installation: update your checkout, then rerun install.sh --dev with your existing agents.' : 'Updates install only when you choose Update. Soundbar restarts; saved preferences are kept.';
 }
 async function refreshVersions() {
+ if (demo) return;
  clearTimeout(versionPoll);
  try {
   versions = await api('/api/updates');
@@ -886,7 +895,7 @@ function wire() {
   selectTab(ids[index]);
   $('tab-' + ids[index]).focus();
  });
- $('now').onclick = () => selectTab(activeSelection.mode === 'combined' ? 'effects' : activeSelection.mode);
+ $('now').onclick = () => { if (!demo) selectTab(activeSelection.mode === 'combined' ? 'effects' : activeSelection.mode); };
  $('soundOn').onchange = toggleSound;
  $('volume').oninput = () => { $('volumeValue').textContent = $('volume').value + '%'; };
  $('volume').onchange = async () => {
@@ -913,6 +922,7 @@ function wire() {
   renderChrome();
  });
  $('phraseRows').addEventListener('keydown', event => {
+  if (demo) return;
   if (event.key !== 'Enter' || event.target.tagName !== 'INPUT') return;
   event.preventDefault();
   const next = event.target.closest('.row').nextElementSibling;
@@ -976,6 +986,8 @@ async function load() {
   phraseEvent:saved.events.includes('subagent_start') ? 'subagent_start' : saved.events[0],
   phrases:normalizePhrases(saved.phrases),
  };
+ // The demo preserves shipped defaults in its catalog; only its audition engine is fixed.
+ if (demo) { state.engine = state.phraseEngine = 'kokoro'; state.phraseEvent = 'edit'; }
  activeSelection = active === 'combined' ? {mode:'combined'} : selectionDraft(viewMode);
  fillSelect('provider', Object.entries(saved.narrator_providers).map(([id, provider]) => [id, provider.name]), state.provider);
  $('model').value = state.model;
@@ -1000,6 +1012,13 @@ window.addEventListener('DOMContentLoaded', async () => {
  try {
   await load();
   wire();
+  if (demo) demo.ready(() => mediaAction($('demoSession'), async () => {
+   const mode = state.viewMode, config = clone(draftConfig(mode));
+   await demo.session(mode, config, (event, text) => {
+    if (mode === 'phrases') { state.phraseEvent = event; renderPhraseRows(); renderEventList(); }
+    if (mode === 'ai') { generatedSample = {identity:sampleIdentity(), text, event}; renderSample(); }
+   });
+  }), selectTab);
   setupChecksReady = true;
   scheduleSetupChecks(0);
   refreshVersions();
