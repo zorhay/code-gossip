@@ -24,22 +24,41 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Display the released version
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: tested-website
+          path: dist/pages
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: installation-package
+          path: dist
+      - name: Verify the tested website and installer
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_COMMIT: ${{ github.sha }}
+        run: python3 -B scripts/verify_pages.py --site dist/pages --package dist/code-gossip.zip --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
+      - name: Only deploy the latest release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          python3 - <<'PY'
-          import html, os
-          from pathlib import Path
-          page = Path('docs/index.html')
-          page.write_text(page.read_text().replace('<!-- RELEASE_VERSION -->', ' · ' + html.escape(os.environ['RELEASE_TAG'])))
-          PY
+          latest=$(gh release view --json tagName --jq .tagName)
+          if [ "$latest" = "$RELEASE_TAG" ]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping older release $RELEASE_TAG; latest is $latest."
+          fi
       - name: Configure Pages
+        if: steps.latest.outputs.deploy == 'true'
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
       - name: Upload marketing page
+        if: steps.latest.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
-          path: docs
+          path: dist/pages
       - name: Deploy marketing page
+        if: steps.latest.outputs.deploy == 'true'
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

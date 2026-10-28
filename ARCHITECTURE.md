@@ -83,11 +83,34 @@ code-gossip/                         source runtime; see installed layout below
 
 The repository also contains `install.sh`, an `uninstall.sh` symlink, `test-install.sh`, `tests/`, `docs/` demo assets, and `dev-skills/` for development skills. Normal installation copies only the runtime package into a release generation; development installation symlinks the checkout. Public hook and CLI paths remain under `~/.code-gossip/`.
 
-The Code Gossip marketing page is hosted on GitHub Pages. Its reusable [deployment workflow](.github/workflows/pages.yml) publishes `docs/` from the released commit through the `github-pages` environment. The release workflow calls it only after the installation package is available. It has no separate release-event trigger, so the website cannot deploy ahead of package validation. Repository **Settings → Pages → Source** must be **GitHub Actions**, and the `github-pages` environment's selected deployment tags must allow version tags matching `*.*.*` (for example, `0.8.0`). These repository settings are separate from the workflow file. Existing releases are not redeployed when the workflow is merged.
-
-The site's `index.html`, `player.css`, and `player.js` present the demo media in `docs/assets/` and the installation command. Pages stamps the published release tag into the version link during deployment; there is no manually maintained website version or browser API request. Playback is local to the visitor's browser and independent of the installed Soundbar.
+The Code Gossip homepage is hosted on GitHub Pages. Its reusable [deployment workflow](.github/workflows/pages.yml) deploys the tested `dist/pages/` artifact through the `github-pages` environment after the matching installer is published. It has no separate release-event trigger. Repository **Settings → Pages → Source** must be **GitHub Actions**, and the `github-pages` environment's selected deployment tags must allow stable version tags matching `*.*.*`. These repository settings are separate from the workflow file. Merging changes does not update the public site; publishing a release does.
 
 Python modules resolve package locations through [`paths.py`](code-gossip/paths.py). Shell entrypoints derive the physical release and stable installation roots from their own location. `RUNTIME`, `ENGINE`, `DATA`, and `SOUNDBAR` point into the selected generation; `ROOT`, `CONFIGS`, `STATE`, and `VERSION_STATE` remain outside it. User preferences belong in `configs/`, writable runtime files in `state/`, and relative sound paths resolve against `data/`.
+
+### Website builds and recordings
+
+[`build_pages.py`](scripts/build_pages.py) inserts the current `soundbar/ui.html` markup/styles into the homepage template and copies `ui.js` unchanged. The local server and website build share [`soundbar/catalog.py`](code-gossip/soundbar/catalog.py). The website catalog comes only from `data/sounds.json` and `configs/*.defaults.json`; personal settings, credentials, runtime state, and the local server are never part of the build.
+
+[`docs/demo.js`](docs/demo.js) supplies a static playback adapter to the shared UI. All packs, event variants, phrase alternatives, main/subagent voice choices, and narrator styles can be auditioned. Phrase text is read-only, spoken modes use Kokoro, and provider/setup/save/update controls are omitted from the public demo. Volume and mute affect browser playback. Stop, tab/selection changes, and leaving the page cancel playback. The example session follows five labeled events with the selected pack or voice. `#default`, `#senior`, and `#narrator` still open the corresponding tabs from README links. No API calls, model downloads, speech synthesis, or LLM requests occur in the visitor's browser.
+
+[`render_previews.py`](scripts/render_previews.py) records the exact shipped effects/clip variants and every shipped phrase with each Kokoro voice. It uses a pinned Kokoro model revision at the runtime's default speed, isolated macOS Generals generation, and the runtime's melody composer without changing user settings or melody history. [`demo-commentary.json`](docs/demo-commentary.json) holds explicitly illustrative commentary and provenance for every style. Wood Thrush has fixed recorded examples of its evolving melody. MP3s are content-addressed and reused on regeneration; the manifest records source and audio hashes. Missing, corrupt, uncovered, or stale recordings block the website build.
+
+```bash
+# Regenerate only when recording inputs change; requires macOS, FFmpeg, SoX, and Kokoro.
+code-gossip/state/.venv/bin/python scripts/render_previews.py
+# Build the local demo with a development version label.
+python3 -B scripts/build_pages.py
+python3 -m http.server 8080 --directory dist/pages
+# Test the static site under the actual /code-gossip/ repository subpath.
+node tests/test_pages.cjs
+# Verify a release website against its installer.
+python3 -B scripts/package_release.py 1.2.3
+python3 -B scripts/build_pages.py --tag 1.2.3 --package dist/code-gossip.zip
+```
+
+The release workflow builds both artifacts from the same checkout and verifies matching UI, catalog, defaults, manifest, bundled source audio, and version. It runs browser tests that decode every recording and exercise actual playback before uploading either artifact. Pages verifies the complete file hashes, source commit/tag, and exact installer digest before deploying the already-tested site. Existing installation assets must be byte-identical on a workflow rerun; deterministic ZIP metadata makes this possible. An older release cannot overwrite the latest release's homepage. Public `build.json` provides the version, commit, runtime source hashes, recording input hashes, and installer digest for auditing. A local **development** build represents its checkout; the public site represents its published release, not personal overrides or unpublished edits.
+
+`docs/assets/` and `docs/render_demo.py` retain the silent README GIF sources and older video renders. They are not included in the Pages artifact.
 
 ## Agent events
 
@@ -337,9 +360,9 @@ Custom Codex homes require the same `CODEX_HOME` for installation and removal. A
 
 ### Release updates
 
-Normal installs and updates consume the same `code-gossip.zip` release asset. The [release workflow](.github/workflows/release.yml) starts when a GitHub release is published, checks out its tagged commit, and runs [`package_release.py`](scripts/package_release.py). The builder includes tracked runtime files and generates `VERSION` from the tag inside the ZIP. It never changes the checkout. The workflow tests that exact package, uploads it to the already-published release, and then deploys Pages. A rerun preserves an already-uploaded installation package. Creating or pushing a tag alone does not publish anything; PRs run the same checks without publication. Pushes to `main`, including merged PRs, do not trigger another run. The release asset becomes available after the workflow succeeds. `VERSION` is generated metadata, not a source-controlled version number.
+Normal installs and updates consume the same `code-gossip.zip` release asset. The [release workflow](.github/workflows/release.yml) starts when a GitHub release is published, checks out its tagged commit, and runs [`package_release.py`](scripts/package_release.py). The builder includes tracked runtime files, preserves executable modes, uses deterministic ZIP timestamps, and generates `VERSION` from the tag inside the ZIP. It never changes the checkout. The workflow tests that exact package and matching website, uploads the package to the already-published release, and then deploys the tested Pages artifact. A rerun requires an existing installation package to be identical before proceeding. Creating or pushing a tag alone does not publish anything; PRs run the same checks without publication. Pushes to `main`, including merged PRs, do not trigger another run. The release asset becomes available after the workflow succeeds. `VERSION` is generated metadata, not a source-controlled version number.
 
-The standalone [`docs/install.sh`](docs/install.sh) bootstrap is served by Pages. It checks macOS and prerequisites, downloads the latest installation ZIP to a temporary directory, rejects unsafe archive paths/types and excessive sizes, forwards arguments to its installer, and cleans up on success or failure. It rejects development mode, which must use a permanent checkout. Installation behavior and saved settings remain owned by the existing installer.
+The standalone [`docs/install.sh`](docs/install.sh) bootstrap is served by Pages. It checks macOS and prerequisites, downloads the requested installation ZIP to a temporary directory, rejects unsafe archive paths/types and excessive sizes, forwards arguments to its installer, and cleans up on success or failure. It rejects development mode, which must use a permanent checkout. Release homepages pass `--release <tag>` so a cached page installs the version it demonstrates. The bootstrap validates the downloaded VERSION before running the installer; invocations without `--release` still use the latest release. Installation behavior and saved settings remain owned by the existing installer.
 
 Soundbar and [`update.sh`](code-gossip/update.sh) share the [`updates`](code-gossip/updates/) public operations. A normal install from a checkout uses [`install_latest()`](code-gossip/installer.py) to download and validate the package before invoking its installer; an extracted package installs directly. Both downloads use [`fetch_source()`](code-gossip/updates/source.py). Development installs bypass release downloads, keep their symlinks, report `development`, and receive checkout-based update instructions. Older flat installations require the explicit reinstall described above.
 

@@ -25,8 +25,14 @@ def build_package(root: Path, tag: str, output: Path) -> Path:
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as bundle:
         for name in filter(None, files):
             if name != "code-gossip/VERSION":
-                bundle.write(root / name, "release/" + name)
-        bundle.writestr("release/code-gossip/VERSION", str(release.version) + "\n")
+                info = zipfile.ZipInfo.from_file(root / name, "release/" + name)
+                info.date_time = (1980, 1, 1, 0, 0, 0)
+                info.compress_type = zipfile.ZIP_DEFLATED
+                bundle.writestr(info, (root / name).read_bytes())
+        info = zipfile.ZipInfo("release/code-gossip/VERSION", (1980, 1, 1, 0, 0, 0))
+        info.external_attr = 0o100644 << 16
+        info.compress_type = zipfile.ZIP_DEFLATED
+        bundle.writestr(info, str(release.version) + "\n")
     with tempfile.TemporaryDirectory(prefix="code-gossip-package-") as temporary:
         source = extract_archive(output, Path(temporary) / "source")
         validate_source(source, release)

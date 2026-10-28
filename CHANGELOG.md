@@ -4,6 +4,15 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-28
+
+### Added
+
+- The homepage embeds the current Soundbar UI with all shipped sound packs, prerecorded Kokoro phrase/voice/style previews, and a playable example session. The website and installer are built and tested together; deployment verifies their version, UI, sound settings, and audio assets match. The homepage installation command pins the same release, including when an older page is cached.
+## Earlier changes included through 0.12.0
+
+These entries were already shipped in 0.12.0 but remained under Unreleased in its changelog.
+
 ### Added
 
 - One-command macOS installation through the website bootstrap, using the same release package and installer as normal installation. The website includes a copyable command and displays the release version supplied by the deployment workflow.
