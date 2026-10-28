@@ -30,6 +30,11 @@ def test_shipped_catalog_and_ui_match_installer(website, repo_root):
     defaults = read("code-gossip/configs/config.defaults.json")
     assert {k: data["status"][k] for k in defaults} == defaults
     assert data["status"]["effects_profiles"] == read("code-gossip/data/sounds.json")["effects"]
+    from engine.melody import IDLE_SECONDS
+    from scripts.preview_content import melody_catalog
+    assert data["melodies"] == melody_catalog()
+    assert data["melodyIdleSeconds"] == IDLE_SECONDS
+    assert (site / "melody.js").read_bytes() == (repo_root / "docs/melody.js").read_bytes()
     assert (site / "ui.js").read_bytes() == (repo_root / "code-gossip/soundbar/ui.js").read_bytes()
     local = (repo_root / "code-gossip/soundbar/ui.html").read_text()
     body = re.search(r"<body>(.*?)</body>", local, re.S)[1].replace('<script src="/ui.js"></script>', '')
@@ -47,7 +52,7 @@ def test_shipped_catalog_and_ui_match_installer(website, repo_root):
 @pytest.mark.parametrize("relative", [
     "code-gossip/data/sounds.json", "code-gossip/configs/phrases.defaults.json",
     "code-gossip/configs/config.defaults.json", "code-gossip/configs/narrator_styles.defaults.json",
-    "code-gossip/soundbar/catalog.py", "docs/demo-commentary.json",
+    "code-gossip/soundbar/catalog.py", "docs/demo-commentary.json", "docs/melody.js",
 ])
 def test_changed_content_requires_new_recordings(repo_root, tmp_path, relative):
     # A sparse copy exercises the actual filesystem hash gate without touching settings.
