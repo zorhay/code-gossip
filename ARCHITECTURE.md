@@ -4,7 +4,7 @@ A map of the current runtime: **three agent integrations, two audio channels, on
 
 [Runtime](#runtime-at-a-glance) · [Package](#package-map) · [Events](#agent-events) · [Playback](#playback-and-spacing) · [Narrator](#narration-and-speech) · [Soundbar](#soundbar-and-its-api) · [Installation](#installation-and-removal) · [Data](#data-contracts)
 
-For setup and everyday use, see the [usage guide](README.md#using-code-gossip). For release history, see [CHANGELOG.md](CHANGELOG.md). This document describes implemented behavior.
+For setup and everyday use, see the [installation options](docs/installation.md) and [usage guide](docs/usage.md). For release history, see [CHANGELOG.md](CHANGELOG.md). This document describes implemented behavior.
 
 ## Runtime at a glance
 
@@ -358,7 +358,7 @@ A normal install uses complete release generations and a single atomic `current`
 | Removal | Commit hook removal first. Keep the shared runtime/processes while integrations remain; otherwise stop owned processes and remove files without traversing directory symlinks. Keep user settings unless `--purge`. A cleanup failure can leave unused files to remove on retry. |
 | Dev removal | Remove only the installation symlink, never checkout content, even with `--purge` |
 
-Custom Codex homes require the same `CODEX_HOME` for installation and removal. A normal installation and a dev symlink cannot overwrite each other. Flat normal installations are rejected before mutation and require the [explicit uninstall/reinstall procedure](README.md#existing-flat-installations); no automatic migration is attempted. External tools that edit agent JSON do not share this lock, so simultaneous edits should be avoided.
+Custom Codex homes require the same `CODEX_HOME` for installation and removal. A normal installation and a dev symlink cannot overwrite each other. Flat normal installations are rejected before mutation and require the [explicit uninstall/reinstall procedure](docs/updates.md#existing-flat-installations); no automatic migration is attempted. External tools that edit agent JSON do not share this lock, so simultaneous edits should be avoided.
 
 ### Release updates
 
@@ -489,7 +489,7 @@ old release/data/sounds/custom/local.wav ──copy──> staged release/data/s
 | Absolute path through `~/.code-gossip/data/` | Preserve as above; references to individual release generations are rejected |
 | File absent from the override manifest | Do not carry it forward; only the new package supplies it |
 
-Use distinct custom filenames under `data/sounds/`. A missing old shipped sample may remain absent (for example, Generals clips on a system without `say`). Preservation repeats on every install/update, without version checks, path migration, or rewriting the override. A fresh install with retained settings has no previous runtime to copy; restore backed-up custom samples after installing. Full uninstall removes audio even without `--purge`; see the [manual reinstall steps](README.md#existing-flat-installations).
+Use distinct custom filenames under `data/sounds/`. A missing old shipped sample may remain absent (for example, Generals clips on a system without `say`). Preservation repeats on every install/update, without version checks, path migration, or rewriting the override. A fresh install with retained settings has no previous runtime to copy; restore backed-up custom samples after installing. Full uninstall removes audio even without `--purge`; see the [manual reinstall steps](docs/updates.md#existing-flat-installations).
 
 
 Wood Thrush (`wood-thrush`) uses a C minor pentatonic palette from C3 to C5. Its profile-level `melody` defines a MIDI `root`, semitone `scale` offsets, and an inclusive MIDI `range`. Each event's `melody` supplies a `phrase` (`note`, `rise`, `fall`, `question`, or `resolve`) and the sine envelope: total `duration`, `gain`, `attack`, `release`, and `reverb`. The weighted walk favors nearby scale notes, avoids immediate repeats, reduces recent-note reuse, and favors reversing direction after a leap. Attention cues repeat a pitch; completion alone uses a fifth-to-tonic resolution. The new profile uses Submarine-inspired volumes, cue lengths, fades, and reverb. Submarine retains its original fixed tones and glides.
@@ -516,4 +516,4 @@ Missing senior events can use shipped phrases; an explicitly empty event array s
 | Neural speech | Optional Kokoro environment managed separately in `state/.venv` |
 | Tests | `pytest`; Codex adapter unit tests also run with `unittest` |
 
-The project currently targets macOS. See [README installation instructions](README.md#installation) for test commands. Installer tests use isolated homes and cover selection, preservation of unrelated hooks, partial removal, dev mode, and cached hooks after uninstall.
+The project currently targets macOS. See [contributor guide](AGENTS.md#validation) for test commands. Installer tests use isolated homes and cover selection, preservation of unrelated hooks, partial removal, dev mode, and cached hooks after uninstall.
