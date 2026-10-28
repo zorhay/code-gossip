@@ -1,7 +1,7 @@
 /* Static transport for the shared Soundbar UI. Never contacts a local API. */
 'use strict';
 window.soundbarDemo = (() => {
- let data, active = null, cancelAudio = null, generation = 0, volume = 1, enabled = true;
+ let data, melodyHistory, active = null, cancelAudio = null, generation = 0, volume = 1, enabled = true;
  const $ = id => document.getElementById(id);
  const aborted = () => new DOMException('Playback stopped', 'AbortError');
  function clearHighlight() { document.querySelectorAll('.demo-event').forEach(node => node.classList.remove('demo-event')); }
@@ -40,9 +40,13 @@ window.soundbarDemo = (() => {
   if (role) return speak(data.voiceSample, role === 'sub' ? config.kokoro_voice_sub : config.kokoro_voice, token);
   if (mode === 'effects' || mode === 'clips') {
    const layer = mode === 'effects' ? 'effects' : 'voice', pack = mode === 'effects' ? config.effects_profile : 'generals';
-   const file = data.sounds[`${layer}/${pack}/${event}/${variant}`];
    // Unmapped events and Silent are intentionally silent, just like the app.
    if (!data.status.preview_catalog[layer]?.[pack]?.[event]) return;
+   const profile = mode === 'effects' ? data.status.effects_profiles[pack] : null;
+   const spec = profile?.events[event]?.melody;
+   const file = spec ? data.melodies[`${layer}/${pack}/${event}`]?.[
+    melodyHistory.next(profile.melody, spec, [layer, pack]).join(',')
+   ] : data.sounds[`${layer}/${pack}/${event}/${variant}`];
    return playFile(file, token);
   }
   if (mode === 'ai') {
@@ -63,6 +67,7 @@ window.soundbarDemo = (() => {
    const response = await fetch(new URL('demo-data.json', document.baseURI));
    if (!response.ok) throw new Error('Could not load the preview catalog. Please reload.');
    data = await response.json();
+   melodyHistory = SoundbarMelody.createHistory({idleSeconds:data.melodyIdleSeconds});
    volume = (data.status.effects_on ? data.status.effects_volume : data.status.voice_volume) / 100;
    enabled = !!(data.status.effects_on || data.status.voice_on);
    return structuredClone(data.status);

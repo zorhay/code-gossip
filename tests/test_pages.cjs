@@ -7,6 +7,7 @@ const http = require('node:http');
 const site = path.resolve(process.env.PAGES_DIRECTORY || 'dist/pages');
 const data = JSON.parse(fs.readFileSync(path.join(site, 'demo-data.json')));
 const metadata = JSON.parse(fs.readFileSync(path.join(site, 'build.json')));
+const melody = require(path.join(site, 'melody.js'));
 const mime = {'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.mp3':'audio/mpeg'};
 const server = http.createServer((req,res) => {
  const url = new URL(req.url, 'http://localhost');
@@ -30,6 +31,7 @@ const server = http.createServer((req,res) => {
   page.on('response', response => {if(response.status() >= 400) failures.push(response.url());});
   // Observe native Audio instances without changing playback or event behavior.
   await page.addInitScript(() => {
+   Math.random = () => .37; // Repeatable choices, while preserving real audio playback.
    window.audioLog = [];
    const NativeAudio = window.Audio;
    window.Audio = function(src) {
@@ -63,13 +65,40 @@ const server = http.createServer((req,res) => {
   await page.locator('[data-preview=effects][data-pack=default]').first().click();
   await page.waitForFunction(() => audioLog.some(x=>x.event==='ended'));
   await idle();
+  const wood = data.status.effects_profiles['wood-thrush'];
+  let melodyNotes = [];
+  const melodyFile = event => {
+   const notes = melody.compose(wood.melody, wood.events[event].melody, melodyNotes, () => .37);
+   melodyNotes = [...melodyNotes, ...notes].slice(-4);
+   return data.melodies[`effects/wood-thrush/${event}`][notes.join(',')];
+  };
   for (const pack of Object.keys(data.status.effects_profiles)) {
    await page.locator(`input[name=pack][value="${pack}"]`).locator('..').click();
    const button = page.locator('#effectsEvents [data-preview]').first();
    if (pack === 'silent') {assert.equal(await button.count(),0);continue;}
    const event = await button.getAttribute('data-event');
-   await playAndStop(button, data.sounds[`effects/${pack}/${event}/0`]);
+   await playAndStop(button, pack === 'wood-thrush' ? melodyFile(event) : data.sounds[`effects/${pack}/${event}/0`]);
   }
+  // Consecutive cues, Stop, and pack changes retain the composer's recent-note history.
+  await page.locator('input[name=pack][value="wood-thrush"]').locator('..').click();
+  const woodFiles = [];
+  for (const event of ['edit','edit','read','permission','error','stop']) {
+   const file = melodyFile(event);
+   await playAndStop(page.locator(`#effectsEvents [data-event=${event}]`), file);
+   woodFiles.push(file);
+  }
+  assert.notEqual(woodFiles[0], woodFiles[1], 'Repeated work cues compose different pitches');
+  await page.locator('input[name=pack][value=paper]').locator('..').click();
+  await playAndStop(page.locator('#effectsEvents [data-event=edit]'));
+  await page.locator('input[name=pack][value="wood-thrush"]').locator('..').click();
+  await playAndStop(page.locator('#effectsEvents [data-event=edit]'), melodyFile('edit'));
+  const woodStart = await page.evaluate(() => audioLog.length);
+  const woodSession = data.commentary.events.map(melodyFile);
+  await page.locator('#demoSession').click();
+  await page.waitForFunction(() => document.getElementById('demoProgress').textContent.startsWith('Session complete'));
+  await idle();
+  assert.deepEqual(await page.evaluate(n => audioLog.slice(n).filter(x=>x.event==='playing').map(x=>x.src.split('/').at(-1)), woodStart),
+   woodSession, 'The example session composes all five Wood Thrush events with shared history');
   await page.locator('#tab-clips').click();
   await playAndStop(page.locator('#clipsEvents [data-event=edit]'),data.sounds['voice/generals/edit/0']);
   await page.locator('#tab-phrases').click();
@@ -146,6 +175,7 @@ const server = http.createServer((req,res) => {
   await page.locator('#tab-effects').click();
 
   // Missing audio is an actionable error and does not leave the controls stuck.
+  await page.locator('input[name=pack][value="wood-thrush"]').locator('..').click();
   await page.route('**/preview-audio/*.mp3',route=>route.fulfill({status:404,body:''}));
   await page.locator('#effectsEvents [data-event=edit]').click();
   await page.waitForFunction(() => document.getElementById('errorBanner').textContent.includes('Could not load'));
@@ -202,6 +232,6 @@ const server = http.createServer((req,res) => {
   assert(requests.every(r=>r.url.startsWith(base)),'All requests stay under the project Pages subpath');
   assert.equal(failures.length,1,'Only the intentionally missing recording failed');
   assert.deepEqual(errors,[]);
-  console.log(`Pages passed: ${decoded} real audio files decoded; all packs, Kokoro voices, styles, dialogue, session, errors, mute, volume, mobile, keyboard, and release data.`);
+  console.log(`Pages passed: ${decoded} real audio files decoded; evolving Wood Thrush phrases/history/session; all packs, Kokoro voices, styles, dialogue, errors, mute, volume, mobile, keyboard, and release data.`);
  } finally {await browser.close();server.close();}
 })().catch(error=>{console.error(error);server.close();process.exitCode=1;});

@@ -9,15 +9,14 @@ import argparse
 import json
 import os
 from pathlib import Path
-import random
 import shlex
 import shutil
 import subprocess
 import tempfile
 
 from preview_content import (ROOT, MODEL, REVISION, digest, identity, input_hashes,
-                             read, sound_id, sound_requests, speech_key, speech_requests)
-from engine.melody import compose, sox_args
+                             read, sound_id, sound_requests, speech_key, speech_requests, melody_requests)
+from engine.melody import sox_args
 
 OUT = ROOT / "docs/preview-audio"
 
@@ -60,13 +59,31 @@ def record_sounds(directory):
                 import soundfile as sf
                 sf.write(wav, np.concatenate(chunks), 44100)
             else:
-                args = shlex.split(spec["sox"]) if "sox" in spec else sox_args(compose(data["melody"], spec["melody"], rng=random.Random(0)), spec["melody"], 1)
+                args = shlex.split(spec["sox"])
                 run(["sox", "-n", "-r", "44100", wav, *args])
             encode(wav, target)
         result[sound_id(layer, profile, event, variant)] = target.name
     return result
 
+def record_melodies(directory):
+    result = {}
+    for event, notes, spec, filename in melody_requests():
+        target = OUT / filename
+        if not target.exists():
+            wav = directory / "melody.wav"
+            run(["sox", "-n", "-r", "44100", wav, *sox_args(notes, spec, 1)])
+            encode(wav, target)
+        result.setdefault(event, {})[",".join(map(str, notes))] = filename
+    print(f"Wood Thrush: {len({name for bank in result.values() for name in bank.values()})} SoX-rendered phrases", flush=True)
+    return result
+
+
 def record_speech(directory):
+    requests = speech_requests()
+    cached = {speech_key(voice, text): speech_key(voice, text) + ".mp3" for voice, text in requests}
+    if all((OUT / filename).exists() for filename in cached.values()):
+        print(f"Kokoro: reusing {len(cached)} recordings", flush=True)
+        return cached
     import numpy as np
     import soundfile as sf
     import torch
@@ -79,7 +96,6 @@ def record_speech(directory):
                    model=str(snapshot / "kokoro-v1_0.pth")).eval()
     pipelines = {}
     result = {}
-    requests = speech_requests()
     for i, (voice, text) in enumerate(requests):
         key = speech_key(voice, text)
         target = OUT / (key + ".mp3")
@@ -107,10 +123,11 @@ def main():
         directory = Path(temp)
         sounds = read("docs/preview-audio/sounds.json") if args.speech_only else record_sounds(directory)
         (OUT / "sounds.json").write_text(json.dumps(sounds, indent=2) + "\n")
+        melodies = record_melodies(directory)
         speech = record_speech(directory)
-    files = set(sounds.values()) | set(speech.values())
+    files = set(sounds.values()) | set(speech.values()) | {name for bank in melodies.values() for name in bank.values()}
     manifest = {"inputs": input_hashes(), "model": MODEL, "revision": REVISION,
-                "sounds": sounds, "speech": speech,
+                "sounds": sounds, "speech": speech, "melodies": melodies,
                 "files": {name: digest((OUT / name).read_bytes()) for name in sorted(files)}}
     (OUT / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     for path in OUT.glob("*.mp3"):

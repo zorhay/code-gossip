@@ -10,9 +10,9 @@ import subprocess
 import zipfile
 
 try:
-    from .preview_content import ROOT, digest, input_hashes, read, speech_requests, speech_key, sound_requests, sound_id, VOICE_SAMPLE
+    from .preview_content import ROOT, digest, input_hashes, read, speech_requests, speech_key, sound_requests, sound_id, VOICE_SAMPLE, melody_catalog, IDLE_SECONDS
 except ImportError:
-    from preview_content import ROOT, digest, input_hashes, read, speech_requests, speech_key, sound_requests, sound_id, VOICE_SAMPLE
+    from preview_content import ROOT, digest, input_hashes, read, speech_requests, speech_key, sound_requests, sound_id, VOICE_SAMPLE, melody_catalog, IDLE_SECONDS
 from soundbar.catalog import EVENTS, DIALOGUE_EVENTS, KOKORO_VOICES, NARRATOR_PROVIDERS, TTS_ENGINES, preview_catalog
 
 RUNTIME_INPUTS = ["soundbar/ui.html", "soundbar/ui.js", "soundbar/catalog.py", "engine/melody.py",
@@ -32,7 +32,10 @@ def verify_recordings(root=ROOT):
     expected_sounds = {sound_id(*request) for request in sound_requests(root)}
     if set(manifest["speech"]) != expected_speech or set(manifest["sounds"]) != expected_sounds:
         raise ValueError("Preview coverage does not match all shipped voices, phrases, styles, and sound variants")
-    files = set(manifest["speech"].values()) | set(manifest["sounds"].values())
+    if manifest.get("melodies") != melody_catalog(root):
+        raise ValueError("Melody recording coverage differs from the runtime composer")
+    files = set(manifest["speech"].values()) | set(manifest["sounds"].values()) | {
+        name for bank in manifest["melodies"].values() for name in bank.values()}
     if files != set(manifest["files"]):
         raise ValueError("Unverified preview files")
     for name, expected in manifest["files"].items():
@@ -80,7 +83,8 @@ def build(output, *, tag="development", package=None, root=ROOT):
             "events":EVENTS,"dialogue_events":sorted(DIALOGUE_EVENTS),"voices":[],
             "kokoro_voices":KOKORO_VOICES,"tts_engines":TTS_ENGINES,"narrator_providers":NARRATOR_PROVIDERS,
             "narrator_styles":styles,"narrator_styles_defaults":styles},
-            "sounds":recordings["sounds"], "speech":{}, "voiceSample":VOICE_SAMPLE,
+            "sounds":recordings["sounds"], "melodies":recordings["melodies"], "melodyIdleSeconds":IDLE_SECONDS,
+            "speech":{}, "voiceSample":VOICE_SAMPLE,
             "commentary":read("docs/demo-commentary.json", root)}
     for voice, text in speech_requests(root):
         data["speech"].setdefault(voice, {})[text] = recordings["speech"][speech_key(voice, text)]
@@ -93,7 +97,7 @@ def build(output, *, tag="development", package=None, root=ROOT):
     (output / "demo-data.json").write_text(json.dumps(data, ensure_ascii=False) + "\n")
     (output / ".nojekyll").touch()
     shutil.copy2(root / "code-gossip/soundbar/ui.js", output / "ui.js")
-    for name in ("player.css", "demo.js", "install.sh", "credits.html"):
+    for name in ("player.css", "melody.js", "demo.js", "install.sh", "credits.html"):
         shutil.copy2(root / "docs" / name, output / name)
     audio = output / "preview-audio"
     audio.mkdir()

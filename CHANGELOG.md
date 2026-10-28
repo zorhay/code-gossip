@@ -4,6 +4,12 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-28
+
+### Changed
+
+- Wood Thrush on the homepage now composes fresh phrases with the local algorithm's weighted note choices, recent-note history, and two-minute idle reset. A complete bank of SoX-rendered phrases preserves the shipped tone, envelope, and reverb. Individual previews and example sessions share the melody history; release checks verify the browser composer against Python and require every possible recording.
+
 ## [0.13.0] - 2026-10-28
 
 ### Added
