@@ -11,7 +11,11 @@ Keep documentation aligned with the implemented product and the reader's task. W
 
 | Document | Keep here |
 |---|---|
-| [README](../../README.md) | Product introduction, demo, installation, and a compact usage reference |
+| [README](../../README.md) | Product introduction, demo link, quick installation, and links to documentation |
+| [Installation options](../../docs/installation.md) | Prerequisites, manual installation, first session, and development setup |
+| [Using Code Gossip](../../docs/usage.md) | Soundbar, audio modes, CLI commands, and troubleshooting |
+| [Updates and removal](../../docs/updates.md) | Release updates, explicit reinstall steps, development updates, and uninstalling |
+| [Licenses and credits](../../docs/credits.md) | Script/audio licenses and demo provenance |
 | [ARCHITECTURE](../../ARCHITECTURE.md) | How the current implementation works: flows, boundaries, ownership, and data contracts |
 | [CHANGELOG](../../CHANGELOG.md) | Notable changes users need to know, grouped by release |
 | [AGENTS](../../AGENTS.md) | Concise contributor instructions and implementation conventions; link to deeper explanations |
@@ -23,11 +27,11 @@ For a new document, choose its audience and purpose before adding it. Link it fr
 
 ## Preserve the presentation
 
-**README:** Start with two sharp sentences, then the demo, a single feature line, and installation. Lead installation with a short, copyable “Install with your agent” prompt for Codex, Claude Code, or Cursor; keep manual and development setup in foldable sections. Keep the usage section short: components, how to use them, and useful commands. Name it for the activity (currently “Using Code Gossip”), not “Product guide”. Move detailed internals to architecture or a focused supporting document.
+**README:** Keep only a brief product introduction, a prominent live demo link, quick installation, and a list of links to the relevant documentation. Include a short, copyable “Install with your agent” prompt and the one-command installer. Keep detailed installation and development setup, usage, updates, troubleshooting, and credits in their supporting documents. Keep implementation details in architecture.
 
 **Architecture:** Prefer readable Mermaid flows, sequences, state diagrams, package maps, and compact tables over long prose. Describe shipped behavior; future proposals belong in local TASKS. Keep agent differences and important limitations visible. Link source for volatile lists and defaults instead of duplicating every value.
 
-**Demo:** Follow one scenario with labeled event → sound/phrase transitions. Keep Default, Senior, and LLM narrator previews in one compact README row, linking to `#default`, `#senior`, and `#narrator` on `https://zorhay.github.io/code-gossip/`. Make the interactive Soundbar link prominent and label GIF previews as silent. The homepage template lives in `docs/index.html`; `scripts/build_pages.py` embeds the real Soundbar UI and copies its script. `docs/demo.js` handles static prerecorded playback. Do not fork the dashboard markup or duplicate shipped sound settings. Playback requires a Play click and only one recording should play at a time.
+**Demo:** Follow one scenario with labeled event → sound/phrase transitions. Link to the interactive Soundbar demo at `https://zorhay.github.io/code-gossip/` from README. Keep profile previews on the demo site; label any GIF previews as silent. The homepage template lives in `docs/index.html`; `scripts/build_pages.py` embeds the real Soundbar UI and copies its script. `docs/demo.js` handles static prerecorded playback. Do not fork the dashboard markup or duplicate shipped sound settings. Playback requires a Play click and only one recording should play at a time.
 
 Use `scripts/render_previews.py` with the Kokoro Python to regenerate website recordings after sound/default/style/catalog inputs change. The build rejects stale or missing recordings; do not bypass that gate. Wood Thrush uses a complete SoX-rendered phrase bank selected by the browser composer in `docs/melody.js`; run `tests/test_pages_melody.py` to verify parity with the Python composer and history expiry. Use [render_demo.py](../../docs/render_demo.py) only for README GIFs and older video assets. Preserve the requested scenario/profile unless the task changes it. Store AI-written narrator lines with provenance and distinguish them from live provider recordings. Both spoken demo modes use Kokoro. Run `node tests/test_pages.cjs` against `dist/pages` to verify actual audio, all-file decoding, controls, desktop/mobile layout, and project-subpath URLs. Keep Pages links relative. The release workflow builds and tests the website alongside the installer; the [deployment workflow](../../.github/workflows/pages.yml) verifies and deploys that exact artifact without rebuilding. Only publishing a release containing the changes updates the site. See [Architecture](../../ARCHITECTURE.md#website-builds-and-recordings) for build commands and required Pages settings. After an authorized release, verify the deployed version, source hashes, installer digest, and site playback. Demo generation must not change saved user preferences.
 

@@ -40,7 +40,7 @@ These entries were already shipped in 0.12.0 but remained under Unreleased in it
 
 ### Breaking
 
-- Existing flat normal installations (without `~/.code-gossip/current`), including `0.9.1` and earlier, require an explicit uninstall/reinstall. Use the new package’s uninstaller with `--all` **without `--purge`**, then install for your existing integrations and custom `CODEX_HOME`. Saved settings and unrelated hooks are retained. Back up custom audio outside the installation before uninstalling, restore it after reinstalling, and set up Kokoro again if used; uninstall removes audio and runtime state. See the [README steps](README.md#existing-flat-installations). There is no automatic layout migration; GitHub source archives are not installation packages.
+- Existing flat normal installations (without `~/.code-gossip/current`), including `0.9.1` and earlier, require an explicit uninstall/reinstall. Use the new package’s uninstaller with `--all` **without `--purge`**, then install for your existing integrations and custom `CODEX_HOME`. Saved settings and unrelated hooks are retained. Back up custom audio outside the installation before uninstalling, restore it after reinstalling, and set up Kokoro again if used; uninstall removes audio and runtime state. See the [reinstall steps](docs/updates.md#existing-flat-installations). There is no automatic layout migration; GitHub source archives are not installation packages.
 
 ## [0.9.1] - 2026-10-25
 
