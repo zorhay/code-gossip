@@ -25,6 +25,13 @@ SOFTWARE.
 Sound Assets
 ============
 
+Empires voice lines and synthetic reference voices (data/sounds/empires/):
+  Newly synthesized with Apache-2.0 Qwen3-TTS models and the MIT-licensed
+  MLX-Audio authoring tool. No game recordings are bundled. Our audio,
+  writing, and authoring contributions use this MIT license to the extent
+  rights exist in them; this grants no rights to third-party game assets.
+  Phrase sources, pinned models, and notices: code-gossip/data/sounds/empires/.
+
 Construction sounds (sounds/construction/): CC0 — Public domain.
   Source: bigsoundbank.com
 

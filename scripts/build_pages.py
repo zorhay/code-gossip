@@ -77,7 +77,7 @@ def build(output, *, tag="development", package=None, root=ROOT):
     phrases = read("code-gossip/configs/phrases.defaults.json", root)
     styles = read("code-gossip/configs/narrator_styles.defaults.json", root)
     setup = {"effects":{p:{"ready":True,"missing":[],"message":"Prerecorded"} for p in sounds["effects"]},
-             "clips":{"generals":{"ready":True,"message":"Prerecorded"}}, "kokoro":True,"say":False}
+             "clips":{p:{"ready":True,"message":"Prerecorded"} for p in sounds["voice"]}, "kokoro":True,"say":False}
     data = {"status":{**defaults,"setup":setup,"effects_profiles":sounds["effects"],
             "preview_catalog":preview_catalog(sounds), "phrases":phrases,"phrases_defaults":phrases,
             "events":EVENTS,"dialogue_events":sorted(DIALOGUE_EVENTS),"voices":[],

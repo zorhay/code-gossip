@@ -101,6 +101,10 @@ const server = http.createServer((req,res) => {
    woodSession, 'The example session composes all five Wood Thrush events with shared history');
   await page.locator('#tab-clips').click();
   await playAndStop(page.locator('#clipsEvents [data-event=edit]'),data.sounds['voice/generals/edit/0']);
+  await page.locator('#clipList label', {hasText:'Empires'}).click();
+  await playAndStop(page.locator('#clipsEvents [data-event=edit]'),data.sounds['voice/empires/edit/0']);
+  await playAndStop(page.locator('#clipsEvents [data-event=subagent_start]'),data.sounds['voice/empires/subagent_start/0']);
+  await page.locator('#clipList label', {hasText:'Generals'}).click();
   await page.locator('#tab-phrases').click();
   assert(await page.locator('#phraseRows input').first().getAttribute('readonly') !== null);
   assert.equal(await page.locator('#mainAgentVoice option').count(),data.status.kokoro_voices.length);

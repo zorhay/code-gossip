@@ -355,6 +355,49 @@ def test_preview_event_and_alternative_are_explicit(isolated_preferences):
             server.draft_request({'mode':'clips','event':'subagent_start','variant':999,'config':{}})
 
 
+def test_clip_collection_preview_and_check_leave_saved_mode_unchanged(isolated_preferences):
+    server = isolated_preferences
+    before = server.CONFIG_FILE.read_bytes()
+    with patch.object(server, 'setup_status', return_value={'clips': {'empires': {'ready': True}}}), patch.object(server, 'play_profile_event') as play:
+        request = {'mode': 'clips', 'event': 'subagent_start', 'variant': 1,
+                   'config': {'clips_profile': 'empires'}}
+        assert server.draft_request(request, check=True)['ok']
+        play.assert_not_called()
+        assert server.draft_request(request)['ok']
+        assert play.call_args.args[:3] == ('voice', 'empires', 'subagent_start')
+        assert play.call_args.kwargs == {'variant': 1, 'wait': True}
+    assert server.CONFIG_FILE.read_bytes() == before
+
+
+def test_saving_clips_preserves_other_modes_then_activation_selects_collection(isolated_preferences):
+    server = isolated_preferences
+    before = server.read_config()
+    request = {'mode': 'clips', 'config': {'clips_profile': 'empires'}}
+    server.apply_selection(request, activate=False)
+    saved = server.read_config()
+    assert saved['clips_profile'] == 'empires'
+    for key in ('voice_profile', 'soundbar_mode', 'voice_on', 'effects_on'):
+        assert saved[key] == before[key]
+    server.apply_selection({**request, 'enabled': True})
+    active = server.read_config()
+    assert active['voice_profile'] == 'empires'
+    assert active['voice_on'] and not active['effects_on']
+    server.apply_selection({'mode': 'clips', 'config': {'clips_profile': 'generals'}}, activate=False)
+    saved = server.read_config()
+    assert saved['voice_profile'] == saved['clips_profile'] == 'generals'
+    for key in ('soundbar_mode', 'voice_on', 'effects_on'):
+        assert saved[key] == active[key]
+
+
+@pytest.mark.parametrize('profile', ['senior', 'missing', '../empires', 123])
+def test_invalid_clip_collection_never_saves(isolated_preferences, profile):
+    server = isolated_preferences
+    before = server.CONFIG_FILE.read_bytes()
+    with pytest.raises(ValueError):
+        server.apply_selection({'mode': 'clips', 'enabled': True, 'config': {'clips_profile': profile}})
+    assert server.CONFIG_FILE.read_bytes() == before
+
+
 def test_install_progress_is_read_without_python_installation(isolated_preferences):
     server = isolated_preferences
     with patch.object(server.kokoro, '_progress', {'status':'running','message':'Installing packages'}), patch.object(server.kokoro, 'is_present', return_value=False), patch.object(server.kokoro, 'find_python') as find:

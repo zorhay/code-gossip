@@ -39,7 +39,7 @@ window.soundbarDemo = (() => {
   const {mode, config = {}, role, event = 'edit', variant = 0} = body;
   if (role) return speak(data.voiceSample, role === 'sub' ? config.kokoro_voice_sub : config.kokoro_voice, token);
   if (mode === 'effects' || mode === 'clips') {
-   const layer = mode === 'effects' ? 'effects' : 'voice', pack = mode === 'effects' ? config.effects_profile : 'generals';
+   const layer = mode === 'effects' ? 'effects' : 'voice', pack = mode === 'effects' ? config.effects_profile : config.clips_profile;
    // Unmapped events and Silent are intentionally silent, just like the app.
    if (!data.status.preview_catalog[layer]?.[pack]?.[event]) return;
    const profile = mode === 'effects' ? data.status.effects_profiles[pack] : null;

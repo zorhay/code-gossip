@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Added
+
+- Empires, an RTS-inspired Clips collection with 52 short generated recordings across all 24 events. It combines familiar Age of Empires and Rise of Nations phrases with new writing, using a rough, theatrical cast created with permissively licensed Qwen3-TTS models. Audio, generation prompts, phrase sources, and license notes are bundled. Soundbar now lets you browse, preview, save, and use individual Clips collections; the CLI accepts `voice-profile empires`.
+
 ## [0.13.1] - 2026-10-28
 
 ### Changed

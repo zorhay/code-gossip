@@ -57,7 +57,7 @@ STYLES_FILE = CONFIGS / "narrator_styles.json"
 STYLES_DEFAULTS = CONFIGS / "narrator_styles.defaults.json"
 SOUNDS_FILE = CONFIGS / "sounds.json" if (CONFIGS / "sounds.json").exists() else DATA / "sounds.json"
 
-CONFIG_KEYS = {"soundbar_mode", "kokoro_voice_sub", "python3_path", "effects_on", "effects_profile", "effects_volume", "voice_on", "voice_profile", "voice_volume", "voice_main", "voice_sub", "tts_engine", "kokoro_voice", "narrator_provider", "narrator_model", "narrator_api_key", "narrator_style", "narrator_deep_context", "sound_spacing_on", "effects_cooldown_ms", "voice_cooldown_ms", "codex_permission_sound_on"}
+CONFIG_KEYS = {"soundbar_mode", "clips_profile", "kokoro_voice_sub", "python3_path", "effects_on", "effects_profile", "effects_volume", "voice_on", "voice_profile", "voice_volume", "voice_main", "voice_sub", "tts_engine", "kokoro_voice", "narrator_provider", "narrator_model", "narrator_api_key", "narrator_style", "narrator_deep_context", "sound_spacing_on", "effects_cooldown_ms", "voice_cooldown_ms", "codex_permission_sound_on"}
 
 
 # ── Config ──
@@ -69,6 +69,7 @@ DEFAULTS = {
     "sound_spacing_on": True, "effects_cooldown_ms": 750, "voice_cooldown_ms": 3000,
     "effects_on": True, "effects_profile": "default", "effects_volume": 100,
     "voice_on": False, "voice_profile": "senior", "voice_volume": 100,
+    "clips_profile": "generals",
     "voice_main": "Tara", "voice_sub": "Aman",
     "tts_engine": "say", "kokoro_voice": "af_heart",
     "narrator_provider": "claude_cli", "narrator_model": "", "narrator_api_key": "",
@@ -457,7 +458,7 @@ def preview_catalog():
 
 # Drafts are never written by setup checks or previews.
 MODES = {"effects", "clips", "phrases", "ai"}
-DRAFT_KEYS = {"effects_profile", "tts_engine", "voice_main", "voice_sub", "kokoro_voice",
+DRAFT_KEYS = {"effects_profile", "clips_profile", "tts_engine", "voice_main", "voice_sub", "kokoro_voice",
               "kokoro_voice_sub", "narrator_provider", "narrator_model", "narrator_api_key",
               "narrator_style", "narrator_deep_context"}
 
@@ -507,7 +508,7 @@ def draft_config(body, scope=None):
     if scope:
         fields = {"provider": {"narrator_provider", "narrator_model", "narrator_api_key"},
                   "speech": {"tts_engine", "voice_main", "voice_sub", "kokoro_voice", "kokoro_voice_sub"},
-                  "audio": {"effects_profile"}}
+                  "audio": {"effects_profile", "clips_profile"}}
         if scope not in fields:
             raise ValueError("Unknown setup check")
         changes = {key: value for key, value in changes.items() if key in fields[scope]}
@@ -524,6 +525,8 @@ def draft_config(body, scope=None):
         raise ValueError("Invalid session context setting")
     if scope in (None, "audio") and config["effects_profile"] not in read_sounds().get("effects", {}):
         raise ValueError("Unknown effects profile")
+    if "clips_profile" in changes and config["clips_profile"] not in read_sounds().get("voice", {}):
+        raise ValueError("Unknown clips profile")
     if "narrator_style" in changes and config["narrator_style"] not in read_styles():
         raise ValueError("Unknown commentary style")
     if scope not in (None, "speech"):
@@ -566,7 +569,10 @@ def apply_selection(body, activate=True):
         config.update(soundbar_mode=mode, effects_on=body["enabled"] and mode == "effects",
                       voice_on=body["enabled"] and mode != "effects")
         if mode != "effects":
-            config["voice_profile"] = {"clips": "generals", "phrases": "senior", "ai": "narrator"}[mode]
+            config["voice_profile"] = {"clips": config["clips_profile"], "phrases": "senior", "ai": "narrator"}[mode]
+    elif mode == "clips" and config["voice_profile"] in read_sounds().get("voice", {}):
+        # Saving a collection already in use updates it without changing channels.
+        config["voice_profile"] = config["clips_profile"]
     previous_phrases = PHRASES_FILE.read_bytes() if PHRASES_FILE.exists() else None
     try:
         if phrases is not None:
@@ -588,7 +594,7 @@ def draft_request(body, check=False):
     scope = ("audio" if mode in ("effects", "clips") else body.get("scope", "speech")) if check else None
     config = draft_config(body, scope=scope)
     if mode in ("effects", "clips"):
-        layer, profile = ("effects", config["effects_profile"]) if mode == "effects" else ("voice", "generals")
+        layer, profile = ("effects", config["effects_profile"]) if mode == "effects" else ("voice", config["clips_profile"])
         status = setup_status()["effects" if mode == "effects" else "clips"].get(profile, {})
         if not status.get("ready"):
             return {"ok": False, "message": status.get("message", "Profile unavailable")}
