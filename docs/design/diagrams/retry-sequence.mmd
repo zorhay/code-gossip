@@ -1,0 +1,15 @@
+sequenceDiagram
+    participant H as Native hooks
+    participant E as Event and state model
+    participant P as Audio policy
+    participant FX as Effects
+    participant V as Voice
+    H->>E: Operation A finished, exit status 1
+    E->>P: Failure situation for A<br/>Test activity is inferred
+    P->>FX: Optional error cue
+    Note over P,V: Optional bounded wait for related context
+    H->>E: Operation B requested<br/>Explicit retry link to A
+    H->>E: Operation B finished, exit status 0
+    E->>P: Linked retry succeeded<br/>Recovery evidence retained
+    P->>V: Optional grounded summary
+    Note over E,V: No task-completion or unobserved assertion claim

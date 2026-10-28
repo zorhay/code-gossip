@@ -1,0 +1,9 @@
+flowchart LR
+    E["One event observation"] --> S["Subject<br/>Which entity changed?"]
+    E --> A["Activity and tool<br/>What work, through which mechanism?"]
+    E --> L["Transition and outcome<br/>What boundary, with what result?"]
+    E --> X["Actor, context and evidence<br/>Who, where, and how do we know?"]
+    S --> ST["Session · Turn · Agent<br/>Operation · Interaction"]
+    A --> AT["Example: repository.commit<br/>Tool: Bash running Git"]
+    L --> LT["Example: finished<br/>Outcome: failed"]
+    X --> XT["Example: child agent in turn A<br/>Exit status observed; purpose inferred"]

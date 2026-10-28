@@ -1,0 +1,10 @@
+flowchart TB
+    S["Session"] -->|contains| T["Turns"]
+    S -->|participating actors| A["Agents"]
+    A -->|may spawn| CH["Child agents"]
+    T -->|provides context for| O["Operations"]
+    A -->|performs| O
+    CH -->|performs| O
+    O -->|may contain| CO["Child operations<br/>Only when causally identified"]
+    O -->|may await| I["Interactions<br/>Approval or clarification"]
+    T -->|may also await| I

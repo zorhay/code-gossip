@@ -6,6 +6,8 @@ A map of the current runtime: **three agent integrations, two audio channels, on
 
 For setup and everyday use, see the [usage guide](README.md#using-code-gossip). For release history, see [CHANGELOG.md](CHANGELOG.md). This document describes implemented behavior.
 
+For the proposed separation of hook observations, activity state, and audio policy, see the [experimental event model design](docs/design/experimental-event-model.md). That design is not implemented.
+
 ## Runtime at a glance
 
 ```mermaid
