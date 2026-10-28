@@ -15,7 +15,7 @@ At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phr
 | Category | Controls | Setup |
 |---|---|---|
 | **Effects** | Sound pack, event, and sample preview | Checks bundled files; generated packs require SoX |
-| **Clips** | Generals recorded responses | Checks the bundled collection |
+| **Clips** | Generals radio calls or [Empires](../code-gossip/data/sounds/empires/README.md) workers, scouts, scholars, and commanders | Checks the selected collection |
 | **Phrases** | Editable Senior phrases, main-agent and subagent voices | Built-in macOS speech or optional Kokoro |
 | **AI commentary** | Style, voice, and session context | Provider, model, optional API key, connection check, and speech engine |
 

@@ -308,6 +308,35 @@
         "session_end": {"file": "command_center_offline.aiff"},
         "interrupt": {"file": "hold_position.aiff"}
       }
+    },
+    "empires": {
+      "dir": "sounds/empires",
+      "events": {
+        "session_start": {"files": ["ready.mp3", "a_new_age_begins.mp3"]},
+        "user_prompt": {"files": ["yea.mp3", "your_orders.mp3", "greetin.mp3"]},
+        "edit": {"files": ["builden.mp3", "chopper.mp3", "stone_by_stone.mp3"]},
+        "read": {"files": ["i_need_knowledge.mp3", "open_the_scrolls.mp3"]},
+        "search": {"files": ["hunter.mp3", "scouting_ahead.mp3", "on_my_way.mp3"]},
+        "bash": {"files": ["it_shall_be_done.mp3", "yes.mp3"]},
+        "tool": {"files": ["ready.mp3", "gatherer.mp3"]},
+        "plan": {"files": ["sounds_like_a_plan.mp3", "correctus.mp3"]},
+        "test": {"files": ["check.mp3", "test_the_defenses.mp3", "trial_formation.mp3"]},
+        "build": {"files": ["builden.mp3", "raise_the_walls.mp3"]},
+        "git": {"file": "records_updated.mp3"},
+        "git_status": {"files": ["count_the_stores.mp3", "check.mp3"]},
+        "git_history": {"files": ["read_the_chronicle.mp3", "tracing_our_steps.mp3"]},
+        "git_commit": {"file": "the_seal_is_set.mp3"},
+        "git_push": {"files": ["dispatches_sent.mp3", "the_courier_is_away.mp3"]},
+        "pre_compact": {"file": "gathering_the_records.mp3"},
+        "compact": {"files": ["wololo.mp3", "the_archives_are_ready.mp3"]},
+        "permission": {"files": ["mandatum.mp3", "awaiting_your_word.mp3", "maybe.mp3"]},
+        "error": {"files": ["no.mp3", "little_help_here.mp3", "estorer.mp3"]},
+        "interrupt": {"files": ["hold_the_line.mp3", "stand_down.mp3"]},
+        "stop": {"files": ["victory_is_mine.mp3", "campaign_complete.mp3"]},
+        "session_end": {"file": "until_the_next_campaign.mp3"},
+        "subagent_start": {"sequence": [["scout_the_frontier.mp3", "on_my_way.mp3"], ["send_a_work_party.mp3", "builden.mp3"], ["consult_the_scholars.mp3", "i_need_knowledge.mp3"]], "gap": 0.18},
+        "subagent_stop": {"sequence": [["scouts_reporting.mp3", "bring_the_maps.mp3"], ["work_party_reporting.mp3", "report_to_the_council.mp3"], ["the_scholars_have_findings.mp3", "let_us_hear_them.mp3"]], "gap": 0.18}
+      }
     }
   }
 }

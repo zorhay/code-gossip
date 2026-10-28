@@ -16,7 +16,7 @@ const state = {
  voices: [{name:'Tara',locale:'en_US'},{name:'Aman',locale:'en_US'},{name:'Samantha',locale:'en_US'}],
  kokoro_voices: [{id:'af_heart',name:'Heart'},{id:'af_bella',name:'Bella'},{id:'am_adam',name:'Adam'}],
  preview_catalog:Object.fromEntries(Object.entries(manifest).map(([layer,profiles])=>[layer,Object.fromEntries(Object.entries(profiles).map(([name,profile])=>[name,Object.fromEntries(Object.entries(profile.events).map(([event,spec])=>[event,(spec.sequence||spec.files?.map(file=>[file])||[[spec.file||'Synthesized cue']]).map(files=>files.join(' → '))]))]))])),
- setup:{effects:Object.fromEntries(Object.keys(manifest.effects).map(name=>[name,{ready:name!=='sci-fi',sox:name==='sci-fi',message:name==='sci-fi'?'Install SoX':'Ready',missing:[]}])),clips:{generals:{ready:true,message:'Ready'}},say:true,kokoro:false},
+ setup:{effects:Object.fromEntries(Object.keys(manifest.effects).map(name=>[name,{ready:name!=='sci-fi',sox:name==='sci-fi',message:name==='sci-fi'?'Install SoX':'Ready',missing:[]}])),clips:Object.fromEntries(Object.keys(manifest.voice).map(name=>[name,{ready:true,message:'Ready'}])),say:true,kokoro:false},
 };
 state.phrases_defaults = structuredClone(state.phrases);
 const server = http.createServer((req,res)=>{
@@ -45,7 +45,8 @@ const server = http.createServer((req,res)=>{
     if(failSave)reply={ok:false,error:'Save failed'};
     else {
      Object.assign(state,body.config);
-     if(endpoint==='/api/activate'){Object.assign(state,{effects_on:body.enabled&&body.mode==='effects',voice_on:body.enabled&&body.mode!=='effects',soundbar_mode:body.mode});if(body.mode!=='effects')state.voice_profile={clips:'generals',phrases:'senior',ai:'narrator'}[body.mode];}
+     if(endpoint==='/api/activate'){Object.assign(state,{effects_on:body.enabled&&body.mode==='effects',voice_on:body.enabled&&body.mode!=='effects',soundbar_mode:body.mode});if(body.mode!=='effects')state.voice_profile={clips:state.clips_profile,phrases:'senior',ai:'narrator'}[body.mode];}
+     else if(body.mode==='clips' && manifest.voice[state.voice_profile])state.voice_profile=state.clips_profile;
      if(body.phrases)state.phrases=body.phrases;
     }
    }else if(endpoint==='/api/config') {const body=req.postDataJSON();writes.push(body);if(failSave)reply={ok:false,error:'Save failed'};else Object.assign(state,body);}
@@ -371,6 +372,41 @@ const server = http.createServer((req,res)=>{
   await preferenceSaved;
   assert.equal(state.codex_permission_sound_on, false);
   await page.keyboard.press('Escape');
+
+  // A Clips collection is a draft until saved; saving it while AI is active keeps AI.
+  await page.locator('#tab-clips').click();
+  await page.locator('#clipList label', {hasText:'Empires'}).click();
+  assert.equal(await page.locator('#clipTitle').innerText(), 'Empires');
+  assert.equal(state.voice_profile, 'narrator');
+  await page.locator('#clipsEvents [data-event=edit]').click();
+  await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
+  assert.equal(previews.at(-1).config.clips_profile, 'empires');
+  assert.equal(previews.at(-1).variant, 0);
+  await page.locator('#clipsEvents [data-event=edit]').click();
+  await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
+  assert.equal(previews.at(-1).variant, 1);
+  await page.locator('#panel-clips [data-act=discard]').click();
+  assert.equal(await page.locator('#clipTitle').innerText(), 'Generals');
+  await page.locator('#clipList label', {hasText:'Empires'}).click();
+  await page.locator('#panel-clips [data-act=save]').click();
+  await page.waitForFunction(() => !document.querySelector('#panel-clips [data-act=save]'));
+  assert.equal(state.clips_profile, 'empires');
+  assert.equal(state.voice_profile, 'narrator');
+  await page.reload();
+  await page.locator('#tab-clips').click();
+  assert.equal(await page.locator('#clipTitle').innerText(), 'Empires');
+  await page.getByRole('button', {name:'Use Clips', exact:true}).click();
+  await ready('In use · Clips · Empires');
+  assert.equal(state.voice_profile, 'empires');
+  await page.reload();
+  await ready('In use · Clips · Empires');
+  assert.equal(await page.locator('#tab-clips').getAttribute('aria-selected'), 'true');
+  await page.locator('#clipList label', {hasText:'Generals'}).click();
+  assert((await page.locator('#statusText').innerText()).endsWith('Empires'));
+  await page.locator('#panel-clips [data-act=save]').click();
+  await ready('In use · Clips · Generals');
+  assert.equal(state.voice_profile, 'generals');
+  Object.assign(state, {effects_on:false, voice_on:true, voice_profile:'narrator', soundbar_mode:'ai'});
 
   state.setup.installing = true; state.setup.kokoro = false; state.setup.installStatus = 'running'; state.setup.installMessage = 'Installing packages';
   await page.reload();

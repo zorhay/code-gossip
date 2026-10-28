@@ -17,6 +17,8 @@ INPUTS = [
     "code-gossip/configs/phrases.defaults.json", "code-gossip/configs/narrator_styles.defaults.json",
     "code-gossip/soundbar/catalog.py", "code-gossip/engine/melody.py",
     "code-gossip/data/sounds/generals/generate.sh", "docs/demo-commentary.json",
+    "code-gossip/data/sounds/empires/generate.sh",
+    "code-gossip/data/sounds/empires/generate.py", "code-gossip/data/sounds/empires/palette.json",
     "scripts/preview_content.py", "scripts/render_previews.py", "docs/melody.js",
 ]
 

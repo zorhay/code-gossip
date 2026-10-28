@@ -14,7 +14,7 @@ EVENTS = [
 ]
 
 DIALOGUE_EVENTS = {"subagent_start", "subagent_stop"}
-VOICE_PROFILES = ["senior", "narrator", "generals"]
+VOICE_PROFILES = ["senior", "narrator", "generals", "empires"]
 
 NARRATOR_PROVIDERS = {
     "claude_cli": {

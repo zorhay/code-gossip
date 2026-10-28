@@ -366,8 +366,8 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
 <section class="panel" id="panel-clips" role="tabpanel" aria-labelledby="tab-clips" hidden>
  <div class="panel-head"><div><h1>Recorded clips</h1><p>Short spoken responses, one for each event.</p></div><div class="panel-state" data-state="clips"></div></div>
  <div class="workspace">
-  <div class="pane"><div class="pane-head"><div class="pane-title"><span class="pane-kicker">Collections</span><span class="pane-kicker">1</span></div></div><div class="pane-body"><div class="list-row selected static"><label><span class="row-main"><span class="row-title">Generals<span id="clipsInUse"></span></span><span class="row-meta" id="clipsMeta">Recorded clips</span></span></label></div></div></div>
-  <div class="pane"><div class="pane-head"><div class="pane-title"><div><h2>Generals</h2><p>Commander-style radio calls, generated with macOS speech.</p></div></div><div class="filters" id="filters-clips"></div></div><div class="pane-body" id="clipsEvents"></div></div>
+  <div class="pane"><div class="pane-head"><div class="pane-title"><span class="pane-kicker">Collections</span><span class="pane-kicker" id="clipCount"></span></div></div><div class="pane-body" id="clipList"></div></div>
+  <div class="pane"><div class="pane-head"><div class="pane-title"><div><h2 id="clipTitle"></h2><p id="clipDesc"></p></div></div><div class="filters" id="filters-clips"></div></div><div class="pane-body" id="clipsEvents"></div></div>
  </div>
  <div class="strip"><span class="strip-item"><span class="strip-label">Setup</span><span class="status" id="checkStatus-clips" data-status-for="clips"></span><span class="strip-detail">Bundled clips</span></span><span class="spacer"></span><button class="btn ghost sm" type="button" data-drawer="clips">Details</button></div>
 </section>
@@ -467,7 +467,7 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
   </div>
   <div data-drawer-section="clips">
    <div class="dlg-section">
-    <div class="kv"><span>Collection</span><span>Generals</span><span>Source</span><span>Bundled audio files</span><span>Files</span><span class="status" data-status-for="clips"></span></div>
+    <div class="kv"><span>Collection</span><span id="drawerClip"></span><span>Source</span><span>Recorded voice lines</span><span>Files</span><span class="status" data-status-for="clips"></span></div>
     <div class="check-row"><button class="btn sm" type="button" id="checkClips" data-check-setup="clips">Check</button></div>
    </div>
   </div>

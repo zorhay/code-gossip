@@ -1,0 +1,456 @@
+{
+  "version": 2,
+  "created": "2026-10-28",
+  "engine": {
+    "package": "mlx-audio",
+    "version": "0.6.2",
+    "license": "MIT",
+    "url": "https://github.com/Blaizzy/mlx-audio"
+  },
+  "models": {
+    "design": {
+      "repo": "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
+      "revision": "5c390979e4b93af5f2932f90742ca99c7dd04687"
+    },
+    "base": {
+      "repo": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-4bit",
+      "revision": "37e955a1deb861c088ae5f3a67043185f3d1a60c"
+    }
+  },
+  "sampling": {
+    "temperature": 0.75,
+    "top_p": 0.9,
+    "max_tokens": 120
+  },
+  "sources": {
+    "aoe2_britons": {
+      "label": "Age of Empires II: Britons unit acknowledgements",
+      "url": "https://ageofempires.fandom.com/wiki/Britons"
+    },
+    "aoe2_latin": {
+      "label": "Age of Empires II: Latin unit acknowledgements",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=1639464279"
+    },
+    "aoe_priest": {
+      "label": "Age of Empires: Priest chant (new spoken interpretation)",
+      "url": "https://ageofempires.fandom.com/wiki/Priest_(Age_of_Empires)"
+    },
+    "ron_taunts": {
+      "label": "Rise of Nations: multiplayer taunts",
+      "url": "https://steamcommunity.com/sharedfiles/filedetails/?id=270326450"
+    },
+    "original": {
+      "label": "New Code Gossip writing"
+    }
+  },
+  "cast": {
+    "worker": {
+      "seed": 272,
+      "text": "Ready for work! Bring the timber! Raise the walls. Stone by stone! There is work to do!",
+      "instruct": "A fictional medieval peasant worker in a 1990s real time strategy game. Male coarse nasal tenor, strongly exaggerated rural southern English accent, rough throaty grain, pinched forward vowels and hard consonants. Boisterous, cheeky, slightly grumpy. Bark every short line loudly with huge changes of pitch: jump up at the start, snap down at the end. Energetic compact staccato pace, eager and overacted, like shouting across a noisy building site. Dry isolated studio voice. No music, no background effects, no narrator smoothness.",
+      "reference": "references/worker.flac"
+    },
+    "scout": {
+      "seed": 422,
+      "text": "At the ready! Beyond the hills! I see the road. Ride with me! Our scouts bring word!",
+      "instruct": "A fictional female frontier scout in a 1990s strategy game. Rough husky mid-low alto, very raspy chest voice with a pronounced northern British accent. Wildly animated, bold and mischievous, almost a battle cry. Bark each short call with exaggerated rising and falling pitch, hard clipped consonants, and fierce emphasis on the action. Loud confident projected delivery, urgent quick pace. Dry isolated studio voice. No background sounds, no narrator smoothness.",
+      "reference": "references/scout.flac"
+    },
+    "commander": {
+      "seed": 834,
+      "text": "Raise the banner! The road is ours! Let the campaign begin. Forward, together! Make every move count!",
+      "instruct": "A fictional male strategy game taunt commander. Deep coarse gritty baritone, raspy chest resonance and a broad American accent. Swaggering, overconfident, bombastic and humorously theatrical. Bark each line with fierce emphasis and big rises and falls in pitch, sharp hard attacks and decisive falling ends. Almost shouting, with a growling edge and a laugh in the voice. Short explosive delivery, brisk and energized. Dry isolated studio voice, no music or environmental noise, no smooth narration.",
+      "reference": "references/commander.flac"
+    },
+    "scholar": {
+      "seed": 948,
+      "text": "Open the scrolls. A wise choice! The old paths guide us. Read the signs! Wisdom will prevail.",
+      "instruct": "A fictional eccentric medieval monk from a 1990s strategy game. Older male dark bass with grainy hoarse resonance, quavering rough edges, strongly rolled resonant vowels and a broad British accent. Comically solemn, wildly theatrical and very expressive. Pronounce each short call with a large musical rise and fall, a strong chesty attack and a chant-like rounded ending. Project loudly and briskly, never whisper or drag out the phrase. Dry isolated studio voice, no music or background effects, no calm narration.",
+      "reference": "references/scholar.flac"
+    }
+  },
+  "cues": [
+    {
+      "id": "ready",
+      "voice": "worker",
+      "text": "Ready!",
+      "source": "aoe2_britons",
+      "seed": 1200
+    },
+    {
+      "id": "greetin",
+      "voice": "worker",
+      "text": "Greetin!",
+      "source": "aoe2_britons",
+      "seed": 2201,
+      "spoken": "Greetin!"
+    },
+    {
+      "id": "yea",
+      "voice": "worker",
+      "text": "Yea?",
+      "source": "aoe2_britons",
+      "seed": 1202,
+      "spoken": "Yeah?"
+    },
+    {
+      "id": "builden",
+      "voice": "worker",
+      "text": "Builden!",
+      "source": "aoe2_britons",
+      "seed": 1203,
+      "spoken": "Builden!"
+    },
+    {
+      "id": "chopper",
+      "voice": "worker",
+      "text": "Chopper!",
+      "source": "aoe2_britons",
+      "seed": 1204,
+      "spoken": "Choppa!"
+    },
+    {
+      "id": "gatherer",
+      "voice": "worker",
+      "text": "Gatherer!",
+      "source": "aoe2_britons",
+      "seed": 1205
+    },
+    {
+      "id": "hunter",
+      "voice": "scout",
+      "text": "Hunter!",
+      "source": "aoe2_britons",
+      "seed": 1206
+    },
+    {
+      "id": "estorer",
+      "voice": "worker",
+      "text": "Estorer!",
+      "source": "aoe2_britons",
+      "seed": 1207,
+      "spoken": "Eh-storer!"
+    },
+    {
+      "id": "mandatum",
+      "voice": "scholar",
+      "text": "Mandatum?",
+      "source": "aoe2_latin",
+      "seed": 1208,
+      "spoken": "Man-dah-toom?"
+    },
+    {
+      "id": "correctus",
+      "voice": "scholar",
+      "text": "Correctus!",
+      "source": "aoe2_latin",
+      "seed": 1209,
+      "spoken": "Cor-rekt-oos!"
+    },
+    {
+      "id": "wololo",
+      "voice": "scholar",
+      "text": "Wololo!",
+      "source": "aoe_priest",
+      "seed": 1210,
+      "spoken": "Woh-loh-loh!"
+    },
+    {
+      "id": "yes",
+      "voice": "commander",
+      "text": "Yes!",
+      "source": "ron_taunts",
+      "seed": 1211,
+      "taunt": 1
+    },
+    {
+      "id": "no",
+      "voice": "commander",
+      "text": "No!",
+      "source": "ron_taunts",
+      "seed": 1212,
+      "taunt": 2
+    },
+    {
+      "id": "maybe",
+      "voice": "commander",
+      "text": "Maybe.",
+      "source": "ron_taunts",
+      "seed": 1213,
+      "taunt": 3
+    },
+    {
+      "id": "i_need_knowledge",
+      "voice": "scholar",
+      "text": "I need Knowledge!",
+      "source": "ron_taunts",
+      "seed": 1214,
+      "taunt": 9
+    },
+    {
+      "id": "little_help_here",
+      "voice": "scout",
+      "text": "Little help here!",
+      "source": "ron_taunts",
+      "seed": 1215,
+      "taunt": 11
+    },
+    {
+      "id": "victory_is_mine",
+      "voice": "commander",
+      "text": "Victory is mine!",
+      "source": "ron_taunts",
+      "seed": 1216,
+      "taunt": 73
+    },
+    {
+      "id": "on_my_way",
+      "voice": "scout",
+      "text": "On my way!",
+      "source": "ron_taunts",
+      "seed": 1217,
+      "taunt": 78
+    },
+    {
+      "id": "check",
+      "voice": "commander",
+      "text": "Check!",
+      "source": "ron_taunts",
+      "seed": 1218,
+      "taunt": 81
+    },
+    {
+      "id": "it_shall_be_done",
+      "voice": "commander",
+      "text": "It shall be done!",
+      "source": "ron_taunts",
+      "seed": 1219,
+      "taunt": 82
+    },
+    {
+      "id": "sounds_like_a_plan",
+      "voice": "commander",
+      "text": "Sounds like a plan!",
+      "source": "ron_taunts",
+      "seed": 1220,
+      "taunt": 88
+    },
+    {
+      "id": "a_new_age_begins",
+      "voice": "commander",
+      "text": "A new age begins!",
+      "source": "original",
+      "seed": 1221
+    },
+    {
+      "id": "stone_by_stone",
+      "voice": "worker",
+      "text": "Stone by stone!",
+      "source": "original",
+      "seed": 1222
+    },
+    {
+      "id": "open_the_scrolls",
+      "voice": "scholar",
+      "text": "Open the scrolls!",
+      "source": "original",
+      "seed": 1223
+    },
+    {
+      "id": "scouting_ahead",
+      "voice": "scout",
+      "text": "Scouting ahead!",
+      "source": "original",
+      "seed": 1224
+    },
+    {
+      "id": "your_orders",
+      "voice": "commander",
+      "text": "Your orders?",
+      "source": "original",
+      "seed": 1225
+    },
+    {
+      "id": "awaiting_your_word",
+      "voice": "scholar",
+      "text": "Awaiting your word.",
+      "source": "original",
+      "seed": 1226
+    },
+    {
+      "id": "test_the_defenses",
+      "voice": "commander",
+      "text": "Test the defenses!",
+      "source": "original",
+      "seed": 1227
+    },
+    {
+      "id": "trial_formation",
+      "voice": "scout",
+      "text": "Trial formation!",
+      "source": "original",
+      "seed": 1228
+    },
+    {
+      "id": "raise_the_walls",
+      "voice": "worker",
+      "text": "Raise the walls!",
+      "source": "original",
+      "seed": 1229
+    },
+    {
+      "id": "records_updated",
+      "voice": "scholar",
+      "text": "Records updated.",
+      "source": "original",
+      "seed": 1230
+    },
+    {
+      "id": "count_the_stores",
+      "voice": "worker",
+      "text": "Count the stores!",
+      "source": "original",
+      "seed": 1231
+    },
+    {
+      "id": "read_the_chronicle",
+      "voice": "scholar",
+      "text": "Read the chronicle.",
+      "source": "original",
+      "seed": 1232
+    },
+    {
+      "id": "tracing_our_steps",
+      "voice": "scout",
+      "text": "Tracing our steps!",
+      "source": "original",
+      "seed": 1233
+    },
+    {
+      "id": "the_seal_is_set",
+      "voice": "scholar",
+      "text": "The seal is set.",
+      "source": "original",
+      "seed": 1234
+    },
+    {
+      "id": "dispatches_sent",
+      "voice": "scout",
+      "text": "Dispatches sent!",
+      "source": "original",
+      "seed": 1235
+    },
+    {
+      "id": "the_courier_is_away",
+      "voice": "scout",
+      "text": "The courier is away!",
+      "source": "original",
+      "seed": 1236
+    },
+    {
+      "id": "gathering_the_records",
+      "voice": "scholar",
+      "text": "Gathering the records.",
+      "source": "original",
+      "seed": 1237
+    },
+    {
+      "id": "the_archives_are_ready",
+      "voice": "scholar",
+      "text": "The archives are ready.",
+      "source": "original",
+      "seed": 1238
+    },
+    {
+      "id": "hold_the_line",
+      "voice": "commander",
+      "text": "Hold the line!",
+      "source": "original",
+      "seed": 1239
+    },
+    {
+      "id": "stand_down",
+      "voice": "commander",
+      "text": "Stand down!",
+      "source": "original",
+      "seed": 1240
+    },
+    {
+      "id": "campaign_complete",
+      "voice": "commander",
+      "text": "Campaign complete!",
+      "source": "original",
+      "seed": 1241
+    },
+    {
+      "id": "until_the_next_campaign",
+      "voice": "scholar",
+      "text": "Until the next campaign.",
+      "source": "original",
+      "seed": 1242
+    },
+    {
+      "id": "scout_the_frontier",
+      "voice": "commander",
+      "text": "Scout the frontier!",
+      "source": "original",
+      "seed": 1243
+    },
+    {
+      "id": "send_a_work_party",
+      "voice": "commander",
+      "text": "Send a work party!",
+      "source": "original",
+      "seed": 1244
+    },
+    {
+      "id": "consult_the_scholars",
+      "voice": "commander",
+      "text": "Consult the scholars!",
+      "source": "original",
+      "seed": 1245
+    },
+    {
+      "id": "scouts_reporting",
+      "voice": "scout",
+      "text": "Scouts reporting!",
+      "source": "original",
+      "seed": 1246
+    },
+    {
+      "id": "bring_the_maps",
+      "voice": "commander",
+      "text": "Bring the maps!",
+      "source": "original",
+      "seed": 1247
+    },
+    {
+      "id": "work_party_reporting",
+      "voice": "worker",
+      "text": "Work party reporting!",
+      "source": "original",
+      "seed": 1248
+    },
+    {
+      "id": "report_to_the_council",
+      "voice": "commander",
+      "text": "Report to the council!",
+      "source": "original",
+      "seed": 1249
+    },
+    {
+      "id": "the_scholars_have_findings",
+      "voice": "scholar",
+      "text": "The scholars have findings.",
+      "source": "original",
+      "seed": 1250
+    },
+    {
+      "id": "let_us_hear_them",
+      "voice": "commander",
+      "text": "Let us hear them!",
+      "source": "original",
+      "seed": 1251
+    }
+  ]
+}

@@ -3,7 +3,12 @@ const demo = window.soundbarDemo || null;
 const $ = id => document.getElementById(id);
 const TABS = {effects:{name:'Effects',icon:'wave'}, clips:{name:'Clips',icon:'film'}, phrases:{name:'Phrases',icon:'chat'}, ai:{name:'AI commentary',icon:'spark'}};
 const modeNames = Object.fromEntries(Object.entries(TABS).map(([id,tab]) => [id, tab.name]));
-const profileModes = {senior:'phrases', generals:'clips', narrator:'ai'};
+const profileModes = {senior:'phrases', narrator:'ai'};
+const CLIP_META = {
+ generals:'Commander-style radio calls, generated with macOS speech.',
+ empires:'Rough workers, scouts, scholars, and commanders. Familiar Age of Empires and Rise of Nations phrases plus new calls, performed by generated voices.',
+};
+const profileMode = profile => profileModes[profile] || (saved?.preview_catalog?.voice?.[profile] ? 'clips' : 'phrases');
 const GROUPS = [
  ['Session',['session_start','user_prompt','stop','session_end','interrupt']],
  ['Work',['edit','read','search','bash','tool','plan']],
@@ -109,7 +114,11 @@ function speechIdentity(mode) {
 function sampleIdentity() { return JSON.stringify([connectionIdentity(), state.style]); }
 function catalog(mode, pack=state.pack) {
  if (mode === 'effects') return saved.preview_catalog?.effects?.[pack] || {};
- return saved.preview_catalog?.voice?.generals || {};
+ return saved.preview_catalog?.voice?.[state.clip] || {};
+}
+function savedClipProfile() {
+ const clips = saved.preview_catalog?.voice || {};
+ return clips[saved.voice_profile] ? saved.voice_profile : clips[saved.clips_profile] ? saved.clips_profile : Object.keys(clips)[0] || 'generals';
 }
 function packSource(id) {
  const effect = setup.effects?.[id] || {};
@@ -121,13 +130,13 @@ function packSource(id) {
 
 function selectionDraft(mode=state.viewMode) {
  if (mode === 'effects') return {mode, pack:state.pack};
- if (mode === 'clips') return {mode, profile:'generals'};
+ if (mode === 'clips') return {mode, profile:state.clip};
  if (mode === 'phrases') return {mode, engine:state.phraseEngine, voices:clone(state.phraseVoices[state.phraseEngine]), phrases:clone(state.phrases)};
  return {mode, style:state.style, engine:state.engine, voice:state.voices[state.engine], provider:state.provider, model:state.model, context:state.context, apiKey:state.apiKey};
 }
 function savedDraft(mode) {
  if (mode === 'effects') return {mode, pack:saved.effects_profile};
- if (mode === 'clips') return {mode, profile:'generals'};
+ if (mode === 'clips') return {mode, profile:savedClipProfile()};
  const engine = saved.tts_engine;
  if (mode === 'phrases') {
   const voices = engine === 'kokoro' ? {main:saved.kokoro_voice, sub:saved.kokoro_voice_sub || 'am_adam'} : {main:saved.voice_main, sub:saved.voice_sub};
@@ -138,21 +147,21 @@ function savedDraft(mode) {
 function isDirty(mode) { return !demo && !same(selectionDraft(mode), savedDraft(mode)); }
 function modeInUse(mode) {
  if (demo) return false;
- if (activeSelection.mode === 'combined') return mode === 'effects' || mode === (profileModes[saved.voice_profile] || 'phrases');
+ if (activeSelection.mode === 'combined') return mode === 'effects' || mode === profileMode(saved.voice_profile);
  return activeSelection.mode === mode;
 }
 function selectionLabel(selection=activeSelection) {
  const mode = selection.mode;
- if (mode === 'combined') return `Effects · ${packName(saved.effects_profile)} + ${modeNames[profileModes[saved.voice_profile]] || 'Voice'}`;
+ if (mode === 'combined') return `Effects · ${packName(saved.effects_profile)} + ${modeNames[profileMode(saved.voice_profile)]}`;
  if (mode === 'effects') return `Effects · ${packName(selection.pack || saved.effects_profile)}`;
- if (mode === 'clips') return 'Clips · Generals';
+ if (mode === 'clips') return `Clips · ${packName(selection.profile || savedClipProfile())}`;
  if (mode === 'phrases') return 'Phrases · Senior';
  const style = selection.style || saved.narrator_style;
  return `AI commentary · ${styleNames[style] || style}`;
 }
 function draftConfig(mode=state.viewMode) {
  if (mode === 'effects') return {effects_profile:state.pack};
- if (mode === 'clips') return {};
+ if (mode === 'clips') return {clips_profile:state.clip};
  const engine = speechEngine(mode), config = {tts_engine:engine};
  if (mode === 'phrases') {
   const voices = state.phraseVoices[engine];
@@ -191,7 +200,7 @@ function speechReadiness(mode) {
 }
 function setupReadiness(mode, pack=state.pack) {
  if (mode === 'effects' || mode === 'clips') {
-  const available = mode === 'effects' ? setup.effects?.[pack] : setup.clips?.generals;
+  const available = mode === 'effects' ? setup.effects?.[pack] : setup.clips?.[state.clip];
   if (!available?.ready) return available || {ready:false, message:'Audio unavailable'};
   const check = setupChecks[mode], current = check?.identity === checkIdentity(mode, pack);
   if (current && check.status === 'failed') return {ready:false, message:'Check failed'};
@@ -205,6 +214,7 @@ function setupReadiness(mode, pack=state.pack) {
 }
 function saveReadiness(mode) {
  if (mode === 'effects' && modeInUse(mode)) return setupReadiness(mode);
+ if (mode === 'clips' && modeInUse(mode)) return setupReadiness(mode);
  // Both spoken modes write the runtime's shared speech settings.
  if (['phrases','ai'].includes(mode) && (modeInUse('phrases') || modeInUse('ai'))) return speechReadiness(mode);
  return {ready:true};
@@ -239,7 +249,7 @@ function checkPresentation(key) {
  let prerequisite = null;
  if (provider && !hasProviderKey()) prerequisite = {message:'API key required', tone:'warning'};
  if (key === 'effects' || key === 'clips') {
-  const resource = key === 'effects' ? setup.effects?.[state.pack] : setup.clips?.generals;
+  const resource = key === 'effects' ? setup.effects?.[state.pack] : setup.clips?.[state.clip];
   if (!resource?.ready) prerequisite = {message:resource?.message || 'Audio unavailable', tone:resource?.missing?.length ? 'error' : 'warning'};
  }
  if (key === 'phrases' || key === 'aiSpeech') {
@@ -385,7 +395,6 @@ function renderChrome() {
  const defaults = saved.phrases_defaults?.[state.phraseEvent];
  $('resetEvent').hidden = !defaults;
  $('resetEvent').disabled = !!defaults && same(state.phrases[state.phraseEvent], defaults);
- $('clipsInUse').innerHTML = modeInUse('clips') ? '<span class="pill success sm">In use</span>' : '';
  $('activationProgress').textContent = busy ? 'Saving selection…' : '';
 }
 
@@ -431,9 +440,17 @@ function renderEffectsDetail() {
  renderEvents($('effectsEvents'), 'effects', state.pack);
 }
 function renderClips() {
- $('clipsMeta').textContent = `Recorded clips · ${Object.keys(catalog('clips')).length} events`;
+ const clips = saved.preview_catalog?.voice || {};
+ $('clipCount').textContent = Object.keys(clips).length;
+ $('clipList').innerHTML = Object.entries(clips).map(([id, events]) => {
+  const inUse = modeInUse('clips') && saved.voice_profile === id;
+  return `<div class="list-row ${state.clip === id ? 'selected' : ''}"><label><input type="radio" name="clip" value="${esc(id)}" ${state.clip === id ? 'checked' : ''}><span class="row-main"><span class="row-title">${esc(packName(id))}${inUse ? '<span class="pill success sm">In use</span>' : ''}</span><span class="row-meta">Recorded clips · ${Object.keys(events).length} events</span></span></label></div>`;
+ }).join('');
+ $('clipTitle').textContent = packName(state.clip);
+ $('clipDesc').textContent = CLIP_META[state.clip] || 'A custom collection of recorded voice lines.';
+ $('drawerClip').textContent = packName(state.clip);
  renderFilters('clips');
- renderEvents($('clipsEvents'), 'clips', 'generals');
+ renderEvents($('clipsEvents'), 'clips', state.clip);
 }
 function renderEventList() {
  const list = $('evList'), scroll = list.scrollTop;
@@ -592,11 +609,12 @@ async function commit(mode, activate) {
    saved.soundbar_mode = mode;
    saved.effects_on = state.enabled && mode === 'effects';
    saved.voice_on = state.enabled && mode !== 'effects';
-   if (mode !== 'effects') saved.voice_profile = {clips:'generals', phrases:'senior', ai:'narrator'}[mode];
+   if (mode !== 'effects') saved.voice_profile = {clips:draft.profile, phrases:'senior', ai:'narrator'}[mode];
    activeSelection = draft;
    enabledLayers = {effects_on:mode === 'effects', voice_on:mode !== 'effects'};
    toast('Saved · now using ' + selectionLabel());
   } else {
+   if (mode === 'clips' && profileMode(saved.voice_profile) === 'clips') saved.voice_profile = draft.profile;
    if (activeSelection.mode === mode) activeSelection = draft;
    toast('Saved');
   }
@@ -618,6 +636,7 @@ function syncSpeechDrafts(config) {
  }
 }
 function discard(mode) {
+ if (mode === 'clips') state.clip = savedClipProfile();
  if (mode === 'effects') state.pack = saved.effects_profile;
  if (mode === 'phrases') {
   state.phraseEngine = saved.tts_engine;
@@ -666,7 +685,7 @@ function resetPhraseEvent() {
 
 function variantFor(button, mode) {
  if (button?.hasAttribute('data-variant')) return Number(button.dataset.variant);
- const event = button?.dataset.event || 'edit', pack = button?.dataset.pack || state.pack;
+ const event = button?.dataset.event || 'edit', pack = mode === 'clips' ? state.clip : button?.dataset.pack || state.pack;
  const samples = (mode === 'effects' ? catalog('effects', pack) : catalog('clips'))[event] || [];
  const key = mode + ':' + pack + ':' + event, variant = cursors[key] || 0;
  if (samples.length) cursors[key] = (variant + 1) % samples.length;
@@ -906,6 +925,7 @@ function wire() {
   finally { savingVolume = false; $('volume').value = state.volume; $('volumeValue').textContent = state.volume + '%'; renderChrome(); }
  };
  $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; state.pack = event.target.value; render(); scheduleSetupChecks(); });
+ $('clipList').addEventListener('change', event => { if (event.target.name !== 'clip') return; state.clip = event.target.value; render(); scheduleSetupChecks(); });
  $('styleList').addEventListener('change', event => { if (event.target.name !== 'style') return; state.style = event.target.value; generatedSample = null; renderStyles(); renderSample(); renderChrome(); });
  $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); scheduleSetupChecks(); };
  $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
@@ -971,7 +991,7 @@ async function load() {
  setup = saved.setup;
  styleNames = Object.fromEntries(Object.entries(saved.narrator_styles).map(([id, style]) => [id, style.label || id]));
  voiceChoices = {say:saved.voices.map(voice => [voice.name, voice.name]), kokoro:saved.kokoro_voices.map(voice => [voice.id, voice.name])};
- const voiceMode = profileModes[saved.voice_profile] || 'phrases';
+ const voiceMode = profileMode(saved.voice_profile);
  const active = saved.effects_on && saved.voice_on ? 'combined' : saved.voice_on ? voiceMode : saved.effects_on ? 'effects' : (TABS[saved.soundbar_mode] ? saved.soundbar_mode : 'effects');
  const viewMode = active === 'combined' ? voiceMode : active;
  enabledLayers = active === 'combined' ? {effects_on:true, voice_on:true} : {effects_on:viewMode === 'effects', voice_on:viewMode !== 'effects'};
@@ -979,7 +999,7 @@ async function load() {
  state = {
   viewMode, enabled:!!(saved.effects_on || saved.voice_on),
   volume:viewMode === 'effects' || active === 'combined' ? saved.effects_volume : saved.voice_volume,
-  pack:saved.effects_profile, style:saved.narrator_style, engine:saved.tts_engine, phraseEngine:saved.tts_engine,
+  pack:saved.effects_profile, clip:savedClipProfile(), style:saved.narrator_style, engine:saved.tts_engine, phraseEngine:saved.tts_engine,
   voices:{say:saved.voice_main, kokoro:saved.kokoro_voice},
   phraseVoices:{say:{main:saved.voice_main, sub:saved.voice_sub}, kokoro:{main:saved.kokoro_voice, sub:saved.kokoro_voice_sub || 'am_adam'}},
   provider:saved.narrator_provider, model:saved.narrator_model || '', apiKey:'', context:!!saved.narrator_deep_context,
