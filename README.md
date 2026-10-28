@@ -2,11 +2,7 @@
 
 **Hear your agents work.** Code Gossip turns Claude Code, Codex, and Cursor events into sound effects, spoken cues, and live AI commentary.
 
-| Sound effects · Default | Senior | LLM narrator |
-| :---: | :---: | :---: |
-| [![Default effects preview](docs/assets/demo-default.gif)](https://zorhay.github.io/code-gossip/#default) | [![Senior voice preview](docs/assets/demo.gif)](https://zorhay.github.io/code-gossip/#senior) | [![LLM narrator preview](docs/assets/demo-narrator.gif)](https://zorhay.github.io/code-gossip/#narrator) |
-
-**[▶ Try Soundbar with sound](https://zorhay.github.io/code-gossip/)** — browse the real dashboard, audition sound packs and prerecorded Kokoro voices, or play an example session. The GIF previews above are silent.
+**[▶ Try the live demo](https://zorhay.github.io/code-gossip/)** — explore Soundbar, hear evolving Wood Thrush melodies and prerecorded Kokoro voices, or play an example coding session.
 
 **Shared agent hooks · Soundbar · Effects, clips, phrases & AI commentary · Editable phrases · Optional AI narrator · macOS**
 
