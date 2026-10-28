@@ -115,12 +115,19 @@ const server = http.createServer((req,res)=>{
   await page.locator('#panel-ai [data-act=discard]').click();
   await page.locator('#tab-effects').click();
 
+  // Hold the automatic setup check until a save error is visible, then let it run.
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
   await page.locator('#packList label', {hasText:'Paper'}).click();
   assert.equal(writes.filter(item => item.endpoint).length, 0, 'Choosing a pack stays a draft');
   assert((await page.locator('#statusText').innerText()).includes('System sounds'));
   failSave = true;
   await page.locator('#activateSelection').click();
   await page.getByText('Save failed', {exact:true}).waitFor();
+  await page.clock.runFor(200);
+  await page.locator('#checkStatus-effects').getByText('Audio available', {exact:true}).waitFor();
+  assert.equal(await page.locator('#errorBanner').innerText(), 'Save failed', 'An automatic setup check must preserve a save error');
+  await page.clock.resume();
   assert((await page.locator('#statusText').innerText()).includes('System sounds'));
   failSave = false;
   saveGate = new Promise(resolve => { releaseSave = resolve; });

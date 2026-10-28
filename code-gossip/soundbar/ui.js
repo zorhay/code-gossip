@@ -268,24 +268,23 @@ function scheduleSetupChecks(delay=150) {
   for (const key of modeCheckKeys()) {
    const check = setupChecks[key];
    if (check?.status === 'checking' || check?.identity === checkIdentity(key) || checkPresentation(key).prerequisite) continue;
-   checkSetup(key);
+   checkSetup(key, {automatic:true});
   }
  };
  if (delay) setupCheckTimer = setTimeout(run, delay); else run();
 }
 async function refreshSetup() { setup = {...setup, ...await api('/api/setup')}; }
-async function checkSetup(key) {
+async function checkSetup(key, {automatic=false}={}) {
  if (setupChecks[key]?.status === 'checking' || (checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips')) return;
  const mode = checkModes[key], config = draftConfig(mode), identity = checkIdentity(key), button = checkButton(key);
  const check = setupChecks[key] = {identity, status:'checking'};
  if (key === 'ai') checkedAI = null;
- clearError();
+ if (!automatic) clearError();
  renderChecks();
  try {
   await refreshSetup();
   await api('/api/draft-check', {mode, config, scope:key === 'ai' ? 'provider' : 'speech'});
   check.status = 'checked';
-  if (identity === checkIdentity(key)) clearError();
   if (identity === checkIdentity(key) && key === 'ai') { checkedAI = identity; refreshModels(); }
  } catch (error) {
   check.status = 'failed';
