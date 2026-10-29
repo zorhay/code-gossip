@@ -1,0 +1,11 @@
+flowchart TB
+    F["Frozen native-hook fixture<br/>Provenance and evidence boundaries"] --> C["Shared virtual clock<br/>Pinned settings and audio variants"]
+    C --> B["Baseline lane<br/>Current adapters and playback gate"]
+    C --> N["Candidate lane<br/>Event model and deterministic director"]
+    B --> BT["Baseline decision trace"]
+    N --> NT["Candidate decision trace<br/>Facts, state and explanations"]
+    BT --> I["Read-only inspector<br/>Timeline, state and policy comparison"]
+    NT --> I
+    I --> R["Review checkpoints<br/>Accuracy, relevance and repetition"]
+    I --> L["Explicit listening control<br/>Exactly one lane plays"]
+    L --> A["Effects and Voice<br/>Same renderer and output settings"]

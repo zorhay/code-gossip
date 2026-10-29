@@ -1,0 +1,9 @@
+flowchart TB
+    U["No prior observation"] -->|Before-hook| Q["Requested<br/>Execution not established"]
+    U -->|Result without start| F["Finished<br/>Outcome recorded separately"]
+    Q -->|Execution established| R["Running"]
+    Q -->|Result or explicit denial| F
+    R -->|Terminal result| F
+    Q -.->|Observation expires| S["Stale observation<br/>No terminal outcome inferred"]
+    R -.->|Observation expires| S
+    S -->|Correlated late result| F
