@@ -11,6 +11,7 @@
 # Capture hook stdin and event before backgrounding (~1ms)
 STDIN_DATA=$(cat)
 EVENT="${1:-stop}"
+[ "$CODE_GOSSIP_INTERNAL" = "1" ] && exit 0
 
 # Background all work — script exits in ~2ms, Claude Code proceeds immediately
 {
@@ -65,6 +66,12 @@ PHRASES="$SND/configs/phrases.json"
 [ -n "$FORCE_VOICE_PROFILE" ] && VOICE_PROFILE="$FORCE_VOICE_PROFILE" && VOICE_ON="on"
 [ "$FORCE_LAYER" = "effects" ] && VOICE_ON="off"
 [ "$FORCE_LAYER" = "voice" ] && EFFECTS_ON="off"
+
+# Live commentary has its own trajectory/delivery worker. Do not reserve a
+# voice playback budget for an event that this dispatcher will not speak.
+if [ "$VOICE_PROFILE" = "narrator" ] && [ -z "$FORCE_LAYER$FORCE_VOICE_PROFILE" ]; then
+  VOICE_ON="off"
+fi
 
 # Coordinate independently launched hooks. Manual previews always play.
 if [ -z "$FORCE_LAYER$FORCE_EFFECTS_PROFILE$FORCE_VOICE_PROFILE" ] && \
@@ -159,8 +166,11 @@ play_sound() {
 
 if [ "$VOICE_ON" = "on" ]; then
   if [ "$VOICE_PROFILE" = "narrator" ]; then
-    # Narrator: LLM-powered commentary via narrate.py
-    echo "$STDIN_DATA" | "$PYTHON3" "$RUNTIME/engine/narrate.py" &
+    # Live narration consumes trajectories in its own worker. Only explicit
+    # manual previews use this single-event path; effects remain independent.
+    if [ -n "$FORCE_LAYER$FORCE_VOICE_PROFILE" ]; then
+      echo "$STDIN_DATA" | "$PYTHON3" "$RUNTIME/engine/narrate.py" &
+    fi
   elif [ "$VOICE_PROFILE" = "senior" ]; then
     # Narration reads phrases.json (TTS, not in manifest)
     if [ -f "$PHRASES" ] && command -v jq &>/dev/null; then

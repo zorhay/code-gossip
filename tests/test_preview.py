@@ -14,7 +14,7 @@ def test_dialogue_speaker_order(event, roles):
 
 
 def test_kokoro_preview_honors_subagent_voice():
-    with patch.object(preview.narrate, '_ensure_kokoro_daemon', return_value=True), patch.object(preview.narrate, '_kokoro_request', return_value={'ok': True}) as send:
+    with patch.object(preview.speech, '_ensure_kokoro_daemon', return_value=True), patch.object(preview.speech, '_kokoro_request', return_value={'ok': True}) as send:
         preview.speak('Hello', {'tts_engine':'kokoro','kokoro_voice':'af_heart','kokoro_voice_sub':'am_adam','voice_volume':42}, 'sub')
     assert send.call_args.kwargs['voice'] == 'am_adam'
     assert send.call_args.kwargs['volume'] == 42
@@ -28,7 +28,7 @@ def test_say_preview_passes_text_as_argument_not_shell():
 
 
 def test_failed_speech_is_reported():
-    with patch.object(preview.narrate, '_ensure_kokoro_daemon', return_value=False):
+    with patch.object(preview.speech, '_ensure_kokoro_daemon', return_value=False):
         with pytest.raises(RuntimeError):
             preview.speak('Hello', {'tts_engine':'kokoro'})
 

@@ -19,9 +19,10 @@ Keep documentation aligned with the implemented product and the reader's task. W
 | [ARCHITECTURE](../../ARCHITECTURE.md) | How the current implementation works: flows, boundaries, ownership, and data contracts |
 | [CHANGELOG](../../CHANGELOG.md) | Notable changes users need to know, grouped by release |
 | [AGENTS](../../AGENTS.md) | Concise contributor instructions and implementation conventions; link to deeper explanations |
-| `TASKS.md` at the repository root | Local future work and ideas; keep gitignored and out of commits, releases, and public links |
+| `TASKS.md` at the repository root | Brief descriptions of future tasks and ideas only; no current-work plans or decomposed solutions. Keep gitignored and out of commits, releases, and public links |
 | `dev-skills/<skill-name>/SKILL.md` | Reusable instructions for a specific development activity; the folder name matches the frontmatter name |
 | `docs/` | Supporting documents and reproducible demo sources/assets that need their own space |
+| `docs/design/` | Requested feature designs: domain model, relationships, module contracts, and implementation status; link from architecture |
 
 For a new document, choose its audience and purpose before adding it. Link it from the most relevant existing document. Keep an explanation in one primary location and cross-link instead of copying it into README, architecture, and skills. Add new enduring document roles to this table when needed.
 
@@ -29,7 +30,7 @@ For a new document, choose its audience and purpose before adding it. Link it fr
 
 **README:** Keep only a brief product introduction, a prominent live demo link, quick installation, and a list of links to the relevant documentation. Include a short, copyable “Install with your agent” prompt and the one-command installer. Keep detailed installation and development setup, usage, updates, troubleshooting, and credits in their supporting documents. Keep implementation details in architecture.
 
-**Architecture:** Prefer readable Mermaid flows, sequences, state diagrams, package maps, and compact tables over long prose. Describe shipped behavior; future proposals belong in local TASKS. Keep agent differences and important limitations visible. Link source for volatile lists and defaults instead of duplicating every value.
+**Architecture:** Prefer readable Mermaid flows, sequences, state diagrams, package maps, and compact tables over long prose. Describe implemented behavior; keep brief future-task descriptions in local TASKS and current designs/implementation plans in dedicated `docs/design/` documents. Keep agent differences and important limitations visible. Link source for volatile lists and defaults instead of duplicating every value.
 
 **Demo:** Follow one scenario with labeled event → sound/phrase transitions. Link to the interactive Soundbar demo at `https://zorhay.github.io/code-gossip/` from README. Keep profile previews on the demo site; label any GIF previews as silent. The homepage template lives in `docs/index.html`; `scripts/build_pages.py` embeds the real Soundbar UI and copies its script. `docs/demo.js` handles static prerecorded playback. Do not fork the dashboard markup or duplicate shipped sound settings. Playback requires a Play click and only one recording should play at a time.
 

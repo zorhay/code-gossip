@@ -7,6 +7,7 @@ managed by Codex; installation never modifies trust or config.toml.
 
 import copy
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -270,6 +271,15 @@ def normalize(data):
 
 
 def dispatch(data, soundbar):
+    if os.environ.get("CODE_GOSSIP_INTERNAL") == "1":
+        return
+    # Observation precedes quiet-tool filtering and sound normalization.
+    # Failure in this optional consumer must not disable the independent audio path.
+    try:
+        from engine.trajectory.runtime import observe
+        observe("codex", data.get("hook_event_name", ""), data, root=soundbar)
+    except Exception:
+        pass
     result = normalize(data)
     if result is None:
         return

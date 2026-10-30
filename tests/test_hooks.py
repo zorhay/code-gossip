@@ -8,6 +8,7 @@ import json
 import re
 
 import pytest
+import claude
 
 
 # All 11 events the soundbar handles
@@ -38,15 +39,15 @@ class TestHookFormat:
                         f"play.sh handles its own backgrounding"
                     )
 
-    def test_hook_commands_reference_engine_play_sh(self, claude_hooks_json):
-        """All hook commands should use code-gossip/engine/play.sh."""
+    def test_hook_commands_reference_adapter(self, claude_hooks_json):
+        """All hook commands should use the observation/audio adapter."""
         hooks = _extract_hooks_json(claude_hooks_json)
         for event_name, entries in hooks.items():
             for entry in entries:
                 for hook in entry.get("hooks", []):
                     cmd = hook.get("command", "")
-                    assert "code-gossip/engine/play.sh" in cmd, (
-                        f"Hook for {event_name} doesn't reference code-gossip/engine/play.sh: {cmd}"
+                    assert "code-gossip/hooks/claude.py" in cmd, (
+                        f"Hook for {event_name} doesn't reference code-gossip/hooks/claude.py: {cmd}"
                     )
 
 
@@ -57,16 +58,8 @@ class TestHookCoverage:
     def test_all_events_covered(self, claude_hooks_json):
         hooks = _extract_hooks_json(claude_hooks_json)
 
-        # Collect all events dispatched by hook commands
-        covered_events = set()
-        for event_name, entries in hooks.items():
-            for entry in entries:
-                for hook in entry.get("hooks", []):
-                    cmd = hook.get("command", "")
-                    # Extract the event argument: play.sh <event>
-                    m = re.search(r"play\.sh\s+(\w+)", cmd)
-                    if m:
-                        covered_events.add(m.group(1))
+        covered_events = {claude.sound_event({"hook_event_name": event_name, "tool_name": tool})
+                          for event_name in hooks for tool in ("Read", "Edit", "Write", "Grep", "Glob", "Bash")}
 
         missing = ALL_EVENTS - covered_events
         assert not missing, f"Events not covered by hooks: {missing}"

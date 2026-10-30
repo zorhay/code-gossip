@@ -6,24 +6,30 @@ A map of the current runtime: **three agent integrations, two audio channels, on
 
 For setup and everyday use, see the [installation options](docs/installation.md) and [usage guide](docs/usage.md). For release history, see [CHANGELOG.md](CHANGELOG.md). This document describes implemented behavior.
 
+The [persistent trajectories design](docs/design/trajectories.md) specifies session and interaction memory for AI commentary, including module boundaries and implementation status.
+
 ## Runtime at a glance
 
 ```mermaid
 flowchart TB
-    Claude[Claude Code] --> CH[Claude hook definitions]
+    Claude[Claude Code] --> CH[Claude adapter]
     Codex[Codex] --> CX[Codex adapter]
     Cursor[Cursor] --> CU[Cursor adapter]
     CH --> Play[play.sh]
     CX --> Play
     CU --> Play
+    CH --> Observe[Observation store]
+    CX --> Observe
+    CU --> Observe
+    Observe --> Trajectories[Interaction and session trajectories]
+    Trajectories --> Narrator[Narrator: LLM commentary]
     Config[(Shared settings)] -.-> Play
     Play --> Gate[Playback gate]
     Gate --> Effects[Effects]
-    Gate --> Voice[Voice]
+    Gate --> Voice[Fixed voice cues]
     Effects --> FX[Samples or SoX]
     Voice --> Senior[Senior: saved phrases]
     Voice --> Generals[Generals: recorded clips]
-    Voice --> Narrator[Narrator: LLM commentary]
     Senior --> Speech[macOS say or Kokoro]
     Narrator --> Speech
     FX --> Speakers[Speakers]
@@ -45,14 +51,17 @@ flowchart TB
 code-gossip/                         source runtime; see installed layout below
 │
 ├── hooks/                          agent-specific input
-│   ├── claude-hooks.json           Claude event → engine command
+│   ├── claude-hooks.json / claude.py  Claude observations and audio routing
 │   ├── codex.py                    normalize Codex events and tool results
 │   └── cursor.py                   normalize Cursor events
 │
 ├── engine/                         shared audio behavior
 │   ├── play.sh                     background dispatcher
 │   ├── playback_gate.py            cross-process spacing and cooldowns
-│   ├── narrate.py                  context → words → speech
+│   ├── narrate.py                  isolated previews and speech/check CLI
+│   ├── trajectory/                 observation storage and two trajectory builders
+│   ├── commentary.py               trajectories → sparse spoken commentary
+│   ├── llm.py / speech.py          independent provider and speech backends
 │   ├── preview.py                  speech/provider previews from in-memory drafts
 │   ├── melody.py                   stateful musical cues shared by hooks and previews
 │   ├── model_catalog.py            live provider model discovery
@@ -118,7 +127,7 @@ The release workflow builds both artifacts from the same checkout and verifies m
 
 | Agent | Registration file | Input path | Behavior |
 |---|---|---|---|
-| Claude Code | `~/.claude/settings.json` | [`hooks/claude-hooks.json`](code-gossip/hooks/claude-hooks.json) → `engine/play.sh` | Explicit lifecycle and tool matchers |
+| Claude Code | `~/.claude/settings.json` | [`hooks/claude.py`](code-gossip/hooks/claude.py) → observation store + engine | Lifecycle and generic tool observations; selected audio cues |
 | Codex | `$CODEX_HOME/hooks.json`, default `~/.codex/hooks.json` | [`hooks/codex.py`](code-gossip/hooks/codex.py) → engine | Lifecycle mapping, command classification, result normalization |
 | Cursor | `~/.cursor/hooks.json` | [`hooks/cursor.py`](code-gossip/hooks/cursor.py) → engine | Native version-1 user hooks; observational events only |
 
@@ -143,10 +152,10 @@ A `stop` cue means **the current turn ended**, not that the entire task is compl
 | Integration | Routes |
 |---|---|
 | Claude lifecycle | Session start, prompt submission, stop, post-compaction, subagent start/stop, permission requests |
-| Claude tools | Edit/Write and Grep/Glob before execution; Bash after execution; StopFailure and PostToolUseFailure → `error` |
+| Claude tools | All pre/post tool observations; Edit/Write and Grep/Glob audio before execution, Bash audio afterward; explicit failures → `error` |
 | Codex lifecycle | Startup/resume/clear, session end, prompt, permission, pre/post compaction, subagent start/stop, stop, interrupt |
 | Codex tools | Non-shell categories before execution; shell completion and explicit failures afterward |
-| Cursor | Session start/end, file edits, completed shell/MCP operations, failures, subagent completion, pre-compaction, stop |
+| Cursor | Prompt, generic tool, and assistant-response observations; session/file/shell/MCP/failure/subagent/compaction/stop audio |
 
 <details>
 <summary>Codex command classification and limitations</summary>
@@ -193,41 +202,41 @@ flowchart TD
 | Important cues | Permission, error, stop, interrupt, Git commit/push bypass the routine budget; duplicate suppression remains |
 | Preview | `FORCE_LAYER`, `FORCE_EFFECTS_PROFILE`, or `FORCE_VOICE_PROFILE` bypass the gate |
 
-The gate drops repeated cues; it does not schedule audio or wait for clips to finish. Narration also has a separate overlap lock at `state/narrator.lock`.
+The gate drops repeated cues; it does not schedule audio or wait for clips to finish. Live AI commentary uses a separate trajectory worker and speech-delivery lock. Its observations bypass this gate, and `play.sh` does not reserve a voice budget for them.
 
 ## Narration and speech
 
-```mermaid
-sequenceDiagram
-    participant Hook as Engine
-    participant N as narrate.py
-    participant C as Session context
-    participant L as Selected LLM
-    participant T as Speech engine
-    Hook->>N: Event JSON
-    N->>N: Acquire narrator lock and build event context
-    opt Deep context enabled
-        N->>C: Read summary and recent moments
-        C-->>N: Session memory
-    end
-    N->>L: Style + speech rules + event context
-    L-->>N: Short spoken commentary
-    N->>T: Speak with selected voice and volume
-    opt Deep context enabled
-        N->>C: Append moment and compress when needed
-    end
-    N->>N: Release lock
+AI commentary uses two persistent trajectories. Every batch becomes one record in its **interaction trajectory**. Each ended interaction trajectory is compressed into one record in the **session trajectory**. Narration reads both levels and delivered speech history, choosing silence or one/two sentences. The [design](docs/design/trajectories.md) defines the data relationships, module contracts, and failure handling.
+
+```text
+Agent adapters ──► observation store ──► batches
+                                       │
+                               interaction builder
+                                       │
+                            interaction trajectory
+                                       │
+                                 session builder
+                                       │
+                              session trajectory
+
+Both trajectories + speech history ──► commentary ──► speech delivery
 ```
 
 | Concern | Implementation |
 |---|---|
-| Providers | Claude CLI, Anthropic, Gemini, OpenAI, Ollama; provider/model defaults live in the source |
-| Style | `{label, prompt}` objects in `configs/narrator_styles.json`, falling back to shipped defaults |
-| Speech clarity | `build_system_prompt()` appends rules for plain, speakable prose |
-| Deep context | Optional per-session summary/recent moments in `state/session_context/` |
-| Compression | When recent moments exceed 10, fold older entries into the summary and retain the newest 4 |
-| Cleanup | Session files older than 7 days are pruned |
-| Privacy boundary | Narrator event context goes to the selected provider; basic effects and fixed phrases need no LLM |
+| Persistence | SQLite at `state/trajectories.sqlite3`; raw events, batches, both trajectories, and narration decisions |
+| Collection | Before sound filters; observations persist while speech is muted, suppressed, or busy |
+| Interaction identity | Native turn/prompt/generation IDs; call/process/subagent correlation; prompt/stop fallback |
+| Batching | 2-second quiet interval, 15-second maximum age, 20 events, 24 KiB selected evidence; approval/terminal events flush |
+| Summarization | Separate injected builders; original requests remain outside compressed context |
+| Providers | Shared `engine/llm.py`: Claude CLI, Anthropic, Gemini, OpenAI, Ollama |
+| Style | Applied by `engine/commentary.py` only to final narration |
+| Concurrency | Per-session worker locks; SQLite transactions stay short; speech runs separately |
+| Retention | 64 KiB received-payload cap; 32 MiB retained raw/evidence text per session; inactive sessions expire after 7 days |
+| Privacy boundary | Task context and bounded inputs/results go to the selected provider; effects and fixed phrases need no LLM |
+| Preview | Synthetic, in-memory context; no writes to live trajectories |
+
+`engine/narrate.py` retains the preview and check/speech CLI. `engine/speech.py` owns speech-engine integration. Stopping Soundbar leaves observation collection, both builders, and hook audio operational. Internal provider CLI calls are marked to prevent their hooks from feeding the collector.
 
 ### Kokoro lifecycle
 
@@ -243,7 +252,7 @@ stateDiagram-v2
 
 [`integrations.py`](code-gossip/engine/integrations.py) detects a compatible Python, creates `state/.venv`, installs Python dependencies and the spaCy language model, and verifies importability. The Kokoro speech model downloads on first use. Installation progress is held in memory; cached Python discovery and installation flags live in `state/integrations.json`.
 
-The daemon listens on `state/kokoro.sock` with mode `0600`. It caches pipelines per language and serializes inference. `narrate.py` starts it on demand. macOS `say` is the built-in alternative; `senior` and `narrator` both use the selected speech engine. Generals plays generated clips directly.
+The daemon listens on `state/kokoro.sock` with mode `0600`. It caches pipelines per language and serializes inference. `speech.py` starts it on demand. macOS `say` is the built-in alternative; `senior` and `narrator` both use the selected speech engine. Generals plays generated clips directly.
 
 ## Soundbar and its API
 
@@ -434,7 +443,8 @@ Packages are trusted code delivered over HTTPS from this repository’s GitHub r
 | `data/sounds/` | Audio assets and Generals generator | Shipped samples; generated/custom files |
 | `state/integrations.json` | Optional-engine installation metadata | Integration manager |
 | `state/.venv/` | Kokoro dependencies | Integration manager |
-| `state/` logs, sockets, locks, session files | Runtime coordination and diagnostics | Runtime processes |
+| `state/trajectories.sqlite3` | Observations, interaction/session trajectories, and speech history | Trajectory storage adapter |
+| `state/` logs, sockets, locks | Runtime coordination and diagnostics | Runtime processes |
 
 User settings and runtime state are gitignored. API keys saved through Soundbar are stored in `configs/config.json`. Read [`config.defaults.json`](code-gossip/configs/config.defaults.json) for current defaults instead of duplicating them here.
 

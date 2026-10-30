@@ -1,0 +1,33 @@
+{
+  "description": "Illustrative recorded responses, not a live-model quality evaluation. Two interactions, four batches, silence, failure, and recovery.",
+  "events": [
+    {"agent":"codex","event":"UserPromptSubmit","at":100,"data":{"session_id":"login","turn_id":"first","prompt":"Fix intermittent login failures."}},
+    {"agent":"codex","event":"PreToolUse","at":100.2,"flush_at":103,"data":{"session_id":"login","turn_id":"first","tool_name":"Read","tool_input":{"file_path":"auth.py"}}},
+    {"agent":"codex","event":"PostToolUse","at":104,"data":{"session_id":"login","turn_id":"first","tool_name":"Read","tool_response":{"text":"refresh() catches TimeoutError and retries with the expired token"}}},
+    {"agent":"codex","event":"PostToolUse","at":105,"data":{"session_id":"login","turn_id":"first","tool_name":"exec_command","tool_input":{"cmd":"pytest tests/test_refresh.py"},"tool_response":{"exit_code":1,"output":"test_expired_token_retry FAILED: retry used expired token"}}},
+    {"agent":"codex","event":"Stop","at":106,"flush_at":106.1,"data":{"session_id":"login","turn_id":"first","last_assistant_message":"The expired-token retry test reproduces the login failure. A fix is still needed."}},
+    {"agent":"codex","event":"UserPromptSubmit","at":110,"data":{"session_id":"login","turn_id":"second","prompt":"Fix the retry, keeping the public API unchanged."}},
+    {"agent":"codex","event":"PostToolUse","at":111,"data":{"session_id":"login","turn_id":"second","tool_name":"apply_patch","tool_response":{"success":true,"text":"Updated auth.py: refresh the token before retrying; public signature unchanged."}}},
+    {"agent":"codex","event":"PostToolUse","at":112,"flush_at":115,"data":{"session_id":"login","turn_id":"second","tool_name":"exec_command","tool_input":{"cmd":"pytest tests/test_refresh.py"},"tool_response":{"session_id":71,"output":"Process running with session ID 71"}}},
+    {"agent":"codex","event":"PostToolUse","at":116,"data":{"session_id":"login","turn_id":"second","tool_name":"write_stdin","tool_input":{"session_id":71},"tool_response":{"exit_code":0,"output":"1 passed: test_expired_token_retry"}}},
+    {"agent":"codex","event":"Stop","at":117,"flush_at":117.1,"data":{"session_id":"login","turn_id":"second","last_assistant_message":"The targeted retry test passes. The public API is unchanged; the full suite was not run."}}
+  ],
+  "responses": {
+    "interaction": [
+      "The user wants intermittent login failures fixed. The agent started inspecting auth.py; no result is available yet.",
+      "Inspection found that the retry reused an expired token. The targeted retry test failed and reproduced the login issue. The interaction ended with a fix still needed.",
+      "The user asked to preserve the public API. The patch refreshes the token before retrying without changing the signature. The targeted test is running; its result is not yet known.",
+      "The targeted expired-token retry test passed. The agent reports that the public API is unchanged and explicitly notes that the full test suite was not run."
+    ],
+    "session": [
+      "The initial login investigation reproduced an expired-token retry failure. The retry reused an expired token; implementation and verification remained outstanding.",
+      "The follow-up preserved the public API while changing retry behavior to refresh the token. The previously failing targeted test passed. Broader verification remains outstanding."
+    ],
+    "narration": [
+      "SILENT",
+      "The retry test reproduces the login failure: it reuses an expired token.",
+      "SILENT",
+      "The retry test now passes with the public API unchanged. The full suite still needs checking."
+    ]
+  }
+}

@@ -1,7 +1,7 @@
 {
   "inputs": {
     "code-gossip/data/sounds.json": "d531a69dab9240021d7acc8a20e29ab808d6cdbcdb94f8f8cf2ad99cf2d6084f",
-    "code-gossip/configs/config.defaults.json": "a90da5095ef73d458354a9ca125b806cb523c928d8ca4ef4a802aaa88c785c41",
+    "code-gossip/configs/config.defaults.json": "cb7c742e2968fd5067fc94247e970e6cb5d085f7a740e126ed06e37433dddf25",
     "code-gossip/configs/phrases.defaults.json": "9b3daf05d8081ec0beb5cadb387f34071b2f90419047fcb29184873dd050bf45",
     "code-gossip/configs/narrator_styles.defaults.json": "1956750f0c693c9f24304e1ed157e5110ba1359b4a4309d58f8260c5608df7fa",
     "code-gossip/soundbar/catalog.py": "fe8cb22dbdde903a918fa4830cd58dccd860fcb23a70cfa910b8ac7d2d43bddc",
