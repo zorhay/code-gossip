@@ -6,7 +6,7 @@ A map of the current runtime: **three agent integrations, two audio channels, on
 
 For setup and everyday use, see the [installation options](docs/installation.md) and [usage guide](docs/usage.md). For release history, see [CHANGELOG.md](CHANGELOG.md). This document describes implemented behavior.
 
-The [persistent trajectories design](docs/design/trajectories.md) specifies session and interaction memory for AI commentary, including module boundaries and implementation status.
+The [persistent trajectories design](docs/design/trajectories.md) explains the intent, data relationships, summarization flow, and module boundaries of AI commentary.
 
 ## Runtime at a glance
 
@@ -206,7 +206,7 @@ The gate drops repeated cues; it does not schedule audio or wait for clips to fi
 
 ## Narration and speech
 
-AI commentary uses two persistent trajectories. Every batch becomes one record in its **interaction trajectory**. Each ended interaction trajectory is compressed into one record in the **session trajectory**. Narration reads both levels and delivered speech history, choosing silence or one/two sentences. The [design](docs/design/trajectories.md) defines the data relationships, module contracts, and failure handling.
+AI commentary uses two persistent trajectories. Every batch becomes one record in its **interaction trajectory**. Each ended interaction trajectory is compressed into one record in the **session trajectory**. Narration reads both levels and delivered speech history, choosing silence or one/two sentences. See the [design](docs/design/trajectories.md) for relationships and module boundaries.
 
 ```text
 Agent adapters ──► observation store ──► batches
