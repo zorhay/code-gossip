@@ -1,5 +1,6 @@
 """Application coordination; repository and text generation are injected."""
 from . import builders
+from .contracts import GenerationCancelled
 from engine.commentary import compose
 
 
@@ -34,6 +35,8 @@ class Processor:
                 summary = builders.interaction(batch, self.store.batch_events(batch["id"]), previous,
                                                trajectory, session["original_task"], self.generate)
                 self.store.commit_batch(summary, now)
+            except GenerationCancelled:
+                raise
             except Exception:
                 self.store.batch_failed(batch["id"])
                 raise

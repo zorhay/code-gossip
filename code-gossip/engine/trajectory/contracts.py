@@ -32,7 +32,7 @@ def payload_json(data):
 def evidence_json(data):
     fields = ("prompt", "tool_name", "tool_input", "tool_response", "tool_output",
               "output", "error", "error_message", "exit_code", "last_assistant_message",
-              "text", "command", "file_path", "edits", "agent_message", "status", "reason")
+              "text", "command", "file_path", "edits", "agent_message", "status", "reason", "task", "summary")
     selected = {key: data[key] for key in fields if key in data}
     text = json.dumps(selected, ensure_ascii=False)
     if len(text.encode()) > 8000:
@@ -87,6 +87,10 @@ class Observation:
                    starts, ending, bool(ending or event == "PermissionRequest"),
                    str(data.get("event_id") or ""), time.time() if now is None else now,
                    payload_json(data), evidence_json(data))
+
+
+class GenerationCancelled(Exception):
+    """Generation was disabled; leave work pending without recording a failure."""
 
 
 @dataclass(frozen=True)

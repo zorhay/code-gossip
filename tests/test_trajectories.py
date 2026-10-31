@@ -95,6 +95,70 @@ def test_late_process_result_stays_with_original_interaction(store):
     assert len(store.export(sid)["session_records"]) == 1
 
 
+@pytest.mark.parametrize("poll_input", [None, {}, {"session_id": 123}])
+def test_process_owner_wins_over_polling_turn_and_call(store, poll_input):
+    sid = add(store, "UserPromptSubmit", turn_id="first", prompt="Run background tests")
+    add(store, "PostToolUse", turn_id="first", tool_use_id="launch",
+        tool_response={"session_id": 123, "output": "running"})
+    add(store, "Stop", turn_id="first")
+    drain(store, sid, Model())
+    first = store.export(sid)["interactions"][0]["id"]
+    previous = store.export(sid)["session_records"][0]["through_batch"]
+    add(store, "UserPromptSubmit", now=201, turn_id="second", prompt="Inspect another file")
+    if poll_input is not None:
+        add(store, "PreToolUse", now=202, turn_id="second", tool_use_id="poll",
+            tool_name="write_stdin", tool_input=poll_input)
+    add(store, "PostToolUse", now=203, turn_id="second", tool_use_id="poll",
+        tool_name="write_stdin", tool_input={"session_id": 123},
+        tool_response={"exit_code": 0, "output": "background tests passed"})
+    assert store.export(sid)["events"][-1]["interaction_id"] == first
+    model = Model()
+    drain(store, sid, model, now=206)
+    request = next(json.loads(r.user) for r in model.requests
+                   if r.purpose == "interaction" and "background tests passed" in r.user)
+    assert request["interaction_request"] == "Run background tests"
+    assert store.export(sid)["session_records"][0]["through_batch"] > previous
+    assert store.export(sid)["interactions"][1]["request"] == "Inspect another file"
+
+
+def test_call_owner_wins_over_current_turn_without_process_reference(store):
+    sid = add(store, "UserPromptSubmit", turn_id="first", prompt="First")
+    add(store, "PreToolUse", turn_id="first", tool_use_id="call1")
+    add(store, "UserPromptSubmit", turn_id="second", prompt="Second")
+    add(store, "PostToolUse", turn_id="second", tool_use_id="call1", tool_response={"output": "late"})
+    result = store.export(sid)
+    assert result["events"][-1]["interaction_id"] == result["interactions"][0]["id"]
+
+
+def test_new_prompt_ignores_previous_tool_ownership(store):
+    sid = add(store, "UserPromptSubmit", turn_id="first", prompt="First")
+    add(store, "PostToolUse", turn_id="first", tool_use_id="call1", tool_response={"session_id": 123})
+    add(store, "UserPromptSubmit", turn_id="second", prompt="Second", tool_use_id="call1",
+        tool_input={"session_id": 123})
+    result = store.export(sid)
+    assert len(result["interactions"]) == 2
+    assert result["events"][-1]["interaction_id"] == result["interactions"][1]["id"]
+
+
+@pytest.mark.parametrize("repeats", [1, 1000])
+def test_cursor_subagent_findings_reach_builder_with_size_bound(store, repeats):
+    sid = add(store, "beforeSubmitPrompt", agent="cursor", generation_id="turn", prompt="Fix login")
+    task = "Trace the expired-token retry"
+    summary = "The retry reuses an expired token after TimeoutError. " * repeats
+    add(store, "subagentStop", agent="cursor", generation_id="turn", subagent_type="explore",
+        status="completed", task=task, description="Inspecting authentication", summary=summary,
+        duration_ms=45000, message_count=12, tool_call_count=8, loop_count=0, modified_files=[])
+    model = Model()
+    drain(store, sid, model)
+    request = next(json.loads(r.user) for r in model.requests if r.purpose == "interaction")
+    evidence = next(e["evidence"] for e in request["batch_events"] if e["event"] == "subagentStop")
+    text = json.dumps(evidence, ensure_ascii=False)
+    assert task in text
+    assert "retry reuses an expired token after TimeoutError" in text
+    assert len(text.encode()) <= 8000
+    assert bool(evidence.get("truncated")) == (repeats > 1)
+
+
 def test_unknown_session_is_not_invented_and_unknown_interaction_is_retained(store):
     assert Observation.from_hook("codex", "PostToolUse", {"cwd": "/same/project"}) is None
     sid = add(store, "PostToolUse", tool_input={"cmd": "ls"})
@@ -280,6 +344,55 @@ def test_worker_flushes_last_batch_without_another_hook(tmp_path, monkeypatch):
     assert len(store.export(sid)["interaction_records"]) == 1
     assert len(store.export(sid)["session_records"]) == 0
     store.close()
+
+
+@pytest.mark.parametrize("summary_count", [8, 13])
+def test_worker_stops_new_requests_when_disabled_during_compaction(tmp_path, monkeypatch, summary_count):
+    from engine import llm
+    config_file = tmp_path / "configs/config.json"
+    config_file.parent.mkdir()
+    config_file.write_text('{"voice_on":true,"voice_profile":"narrator","soundbar_mode":"ai"}')
+    monkeypatch.setattr(runtime.time, "time", lambda: 1000)
+    sleep = Mock()
+    monkeypatch.setattr(runtime.time, "sleep", sleep)
+    monkeypatch.setattr(runtime, "start", Mock())
+    model = Model()
+
+    def generate(request):
+        result = model(request)
+        if len(model.requests) == 1:
+            assert request.purpose == "compress"
+            config_file.write_text('{"voice_on":false,"voice_profile":"narrator","soundbar_mode":"effects"}')
+        return result
+
+    monkeypatch.setattr(llm, "client", lambda config: generate)
+    store = Store(tmp_path / "state/trajectories.sqlite3")
+    try:
+        sid = add(store, "UserPromptSubmit", turn_id="turn", prompt="Fix", now=100)
+        for n in range(summary_count):
+            add(store, "PostToolUse", now=100 + n * 20, turn_id="turn")
+            batch = store.next_batch(sid)
+            store.seal_due(sid, 120 + n * 20)
+            store.commit_batch(BatchSummary(batch["id"], "Prior evidence. " * 120), 120 + n * 20)
+        add(store, "PostToolUse", now=500, turn_id="turn", tool_response={"output": "new evidence"})
+        pending = store.next_batch(sid)["id"]
+        events = store.export(sid)["events"]
+        runtime.work(tmp_path, sid)
+        assert [r.purpose for r in model.requests] == ["compress"]
+        assert store.next_batch(sid)["id"] == pending
+        assert store.next_batch(sid)["attempts"] == 0
+        assert store.next_batch(sid)["error"] == ""
+        assert len(store.export(sid)["interaction_records"]) == summary_count
+        sleep.assert_not_called()
+
+        # Re-enable AI while muted: the retained batch must still be processed.
+        config_file.write_text('{"voice_on":false,"voice_profile":"narrator","soundbar_mode":"ai"}')
+        runtime.work(tmp_path, sid)
+        assert store.next_batch(sid) is None
+        assert len(store.export(sid)["interaction_records"]) == summary_count + 1
+        assert store.export(sid)["events"] == events
+    finally:
+        store.close()
 
 
 def test_raw_storage_limit_preserves_trajectory(store):

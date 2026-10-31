@@ -145,18 +145,17 @@ class Store:
 
     def _interaction(self, sid, event):
         interaction = None
-        if event.actor and not event.starts:
-            interaction = self.row("SELECT i.* FROM interactions i JOIN tool_links t ON t.interaction_id=i.id "
-                                   "WHERE t.session_id=? AND t.kind='actor' AND t.source_id=?", (sid, event.actor))
-        if not interaction and event.turn:
-            interaction = self.row("SELECT * FROM interactions WHERE session_id=? AND source_id=?", (sid, event.turn))
-        if not interaction and not event.starts:
-            for kind, key in (("actor", event.actor), ("call", event.call), ("process", event.process_ref)):
+        if not event.starts:
+            # A poll belongs to the referenced process, even if its call or
+            # current turn originated in a later interaction.
+            for kind, key in (("process", event.process_ref), ("call", event.call), ("actor", event.actor)):
                 if key:
                     interaction = self.row("SELECT i.* FROM interactions i JOIN tool_links t ON t.interaction_id=i.id "
                                            "WHERE t.session_id=? AND t.kind=? AND t.source_id=?", (sid, kind, key))
                     if interaction:
                         break
+        if not interaction and event.turn:
+            interaction = self.row("SELECT * FROM interactions WHERE session_id=? AND source_id=?", (sid, event.turn))
         if not interaction and (event.starts or event.turn and (not event.actor or event.event in ("SubagentStart", "subagentStart"))):
             # A native turn can arrive before its prompt. Preserve its identity and fill the request later.
             if event.starts:

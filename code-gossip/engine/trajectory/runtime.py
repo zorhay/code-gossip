@@ -15,7 +15,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from paths import ROOT
-from engine.trajectory.contracts import Observation
+from engine.trajectory.contracts import GenerationCancelled, Observation
 from engine.trajectory.store import Store
 
 
@@ -86,6 +86,14 @@ def work(root, sid):
     from engine.narrate import style_prompt
     from engine.trajectory.processor import Processor
 
+    def generate(request):
+        # One processor step can compact several chunks before summarizing.
+        # Check at every provider boundary, including those within a step.
+        config = settings(root)
+        if not enabled(config):
+            raise GenerationCancelled
+        return client(config)(request)
+
     handle = lock(root, f"session-{sid}.lock")
     if handle is None:
         return
@@ -105,9 +113,11 @@ def work(root, sid):
             if time.time() >= maintenance_due:
                 store.limit_payloads(sid)
                 maintenance_due = time.time() + 60
-            processor = Processor(store, client(config), style_prompt(config.get("narrator_style", "pair_programmer")))
+            processor = Processor(store, generate, style_prompt(config.get("narrator_style", "pair_programmer")))
             try:
                 changed = processor.step(sid, time.time())
+            except GenerationCancelled:
+                break
             except Exception as error:
                 logging.warning("Trajectory generation failed (%s); evidence remains pending", type(error).__name__)
                 failures += 1
