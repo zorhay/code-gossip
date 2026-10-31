@@ -6,6 +6,7 @@ decisions or asks Cursor to continue a conversation.
 """
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -14,10 +15,11 @@ import shlex
 import subprocess
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from paths import ENGINE
+from paths import ENGINE, ROOT
 
 
 EVENTS = {
+    "beforeSubmitPrompt": "user_prompt",
     "sessionStart": "session_start",
     "sessionEnd": "session_end",
     "afterFileEdit": "edit",
@@ -29,12 +31,14 @@ EVENTS = {
     "stop": "stop",
 }
 
+OBSERVATION_EVENTS = ("preToolUse", "postToolUse", "afterAgentResponse", "subagentStart")
+
 
 def hook_definitions(adapter):
     path = shlex.quote(str(adapter))
     command = f"{shlex.quote(sys.executable)} {path}"
     return {event: [{"command": f"if [ -f {path} ]; then {command} {event} || true; fi", "timeout": 5}]
-            for event in EVENTS}
+            for event in (*EVENTS, *OBSERVATION_EVENTS)}
 
 
 def normalize(event, data):
@@ -61,7 +65,15 @@ def normalize(event, data):
 
 def main():
     try:
-        result = normalize(sys.argv[1], json.load(sys.stdin))
+        if os.environ.get("CODE_GOSSIP_INTERNAL") == "1":
+            return
+        native_event, data = sys.argv[1], json.load(sys.stdin)
+        try:
+            from engine.trajectory.runtime import observe
+            observe("cursor", native_event, data, root=ROOT)
+        except Exception:
+            pass
+        result = normalize(native_event, data)
         if result:
             event, payload = result
             subprocess.run(

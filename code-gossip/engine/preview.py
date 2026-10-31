@@ -8,6 +8,7 @@ import sys
 import tempfile
 
 import narrate
+from engine import speech
 from paths import executable
 
 
@@ -17,9 +18,9 @@ def speak(text, config, role="main"):
     if engine == "kokoro":
         key = "kokoro_voice_sub" if role == "sub" else "kokoro_voice"
         voice = config.get(key, "am_adam" if role == "sub" else "af_heart")
-        if not narrate._ensure_kokoro_daemon():
+        if not speech._ensure_kokoro_daemon():
             raise RuntimeError("Kokoro could not start")
-        result = narrate._kokoro_request("speak", text=text, voice=voice, volume=volume)
+        result = speech._kokoro_request("speak", text=text, voice=voice, volume=volume)
         if not result or not result.get("ok"):
             raise RuntimeError("Kokoro could not speak")
     else:

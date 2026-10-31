@@ -4,6 +4,16 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Added
+
+- AI commentary now follows persistent interaction and session trajectories: batches of observations become interaction summaries, and each ended interaction becomes a session summary. Quiet events and successful tool results contribute context; commentary can stay silent and refer back to earlier interactions.
+- An offline trace replay shows the evidence, both summary levels, and narration decisions without calling a provider or playing audio.
+
+### Changed
+
+- Session memory is automatic in AI commentary; the optional deep-context control is removed. Muting speech keeps context building, while switching to another mode stops new model work. Previous narrator memory files are not imported.
+- Observation collection, provider calls, summary builders, commentary, and speech delivery have separate module boundaries. Hook audio continues independently when collection or a provider fails.
+
 ## [0.13.1] - 2026-10-28
 
 ### Changed

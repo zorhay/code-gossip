@@ -18,7 +18,6 @@
   "narrator_model": "",
   "narrator_api_key": "",
   "narrator_style": "pair_programmer",
-  "narrator_deep_context": false,
   "soundbar_mode": "effects",
   "kokoro_voice_sub": "am_adam"
 }

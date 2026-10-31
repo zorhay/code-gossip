@@ -17,7 +17,7 @@ At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phr
 | **Effects** | Sound pack, event, and sample preview | Checks bundled files; generated packs require SoX |
 | **Clips** | Generals recorded responses | Checks the bundled collection |
 | **Phrases** | Editable Senior phrases, main-agent and subagent voices | Built-in macOS speech or optional Kokoro |
-| **AI commentary** | Style, voice, and session context | Provider, model, optional API key, connection check, and speech engine |
+| **AI commentary** | Style and voice; task context is retained automatically | Provider, model, optional API key, connection check, and speech engine |
 
 Previews play the selected event and alternative. Phrases also have per-row playback. AI commentary’s **Play sample** generates and plays a sample on the first click; replaying the displayed text does not make another AI request.
 
@@ -27,7 +27,7 @@ Each tab keeps setup in a details drawer. Effects, clips, and speech are checked
 
 **Settings → Appearance** switches between Amber and Mint; the choice stays in this browser. **Settings → Close Soundbar** stops the panel server; closing the browser tab alone leaves it running. Hook audio continues either way. **?** opens Getting started. Choosing a topic jumps to that part of the panel and does not save, play, or check anything.
 
-The narrator supports Claude CLI, Anthropic, Gemini, OpenAI, and Ollama. It sends event context to the selected provider, which may charge for usage. A cloud connection check also makes a small generation request, and it runs only when you ask. Fixed phrases and sound effects need no LLM.
+The narrator supports Claude CLI, Anthropic, Gemini, OpenAI, and Ollama. It summarizes batches of operations into an interaction trajectory, then summarizes interactions into a session trajectory. Commentary uses both to follow the task and may stay silent through routine activity. It sends the task context and bounded inputs/results to the selected provider, which may charge for usage. A cloud connection check also makes a small generation request, and it runs only when you ask. Fixed phrases and sound effects need no LLM. Muting AI commentary silences speech while context continues to build; switch to another mode to stop its model work. Local trajectory data expires after seven days of inactivity. A preview is separate from live session memory.
 
 ## Commands
 

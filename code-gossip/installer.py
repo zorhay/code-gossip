@@ -28,7 +28,7 @@ USER_FILES = ("config.json", "phrases.json", "narrator_styles.json")
 TAGS = {
     "codex": ("code-gossip/hooks/codex.py",),
     "cursor": ("code-gossip/hooks/cursor.py",),
-    "claude": ("code-gossip/engine/play.sh",),
+    "claude": ("code-gossip/hooks/claude.py", "code-gossip/engine/play.sh"),
 }
 
 
@@ -140,9 +140,8 @@ def definitions(agent, source, dest):
     for groups in hooks.values():
         for group in groups:
             for handler in group["hooks"]:
-                event = handler["command"].rsplit(" ", 1)[1]
-                path = shlex.quote(str(dest / "engine/play.sh"))
-                handler["command"] = f"if [ -f {path} ]; then /bin/bash {path} {event} || true; fi"
+                path = shlex.quote(str(dest / "hooks/claude.py"))
+                handler["command"] = f"if [ -f {path} ]; then {shlex.quote(sys.executable)} {path} || true; fi"
     return hooks
 
 
@@ -290,6 +289,7 @@ def stop_processes(dest):
     state = dest / "state"
     if state.is_symlink():
         return
+    stop_trajectory_workers(dest)
     server_script = dest / "soundbar/server.py"
     daemon_script = dest / "engine/kokoro_server.py"
     pid_file = state / ".server.pid"
@@ -307,6 +307,42 @@ def stop_processes(dest):
         for value in result.stdout.split():
             stop_process(int(value), daemon_script)
         sock.unlink(missing_ok=True)
+
+
+def stop_trajectory_workers(dest):
+    """Stop only locked, identity-checked workers belonging to this runtime."""
+    import fcntl
+    script = dest / "engine/trajectory/runtime.py"
+    scripts = (script, script.resolve(), *(dest / "version_state/releases").glob("*/engine/trajectory/runtime.py"))
+    for path in (dest / "state/trajectory-locks").glob("*.lock"):
+        if path.is_symlink():
+            continue
+        try:
+            with path.open() as stream:
+                try:
+                    fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    continue  # Stale PID; no worker owns this lock.
+                except BlockingIOError:
+                    pid = int(stream.read().strip())
+            if pid <= 1:
+                continue
+            if path.name == "speaker.lock":
+                action = "deliver"
+                suffix = ""
+            elif path.stem.startswith("session-") and path.stem[8:].isdigit():
+                action = "work"
+                suffix = " " + path.stem[8:]
+            else:
+                continue
+            result = subprocess.run(["/bin/ps", "-p", str(pid), "-o", "command="], capture_output=True, text=True)
+            if any(result.stdout.strip().endswith(f" {candidate} {action} {root}{suffix}")
+                   for candidate in scripts for root in (dest, dest.resolve())):
+                if os.getpgid(pid) == pid:
+                    os.killpg(pid, signal.SIGTERM)
+                else:
+                    os.kill(pid, signal.SIGTERM)
+        except (ValueError, ProcessLookupError, FileNotFoundError):
+            continue
 
 
 def remove_files(dest, purge):

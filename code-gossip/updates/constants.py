@@ -24,6 +24,10 @@ REQUIRED_SOURCE_FILES = (
     "install.sh", "code-gossip/installer.py", "code-gossip/VERSION",
     "code-gossip/updates/__init__.py", "code-gossip/soundbar/server.py",
     "code-gossip/hooks/codex.py", "code-gossip/hooks/cursor.py",
-    "code-gossip/hooks/claude-hooks.json", "code-gossip/engine/play.sh",
+    "code-gossip/hooks/claude-hooks.json", "code-gossip/hooks/claude.py", "code-gossip/engine/play.sh",
+    "code-gossip/engine/llm.py", "code-gossip/engine/speech.py", "code-gossip/engine/commentary.py",
+    "code-gossip/engine/trajectory/__init__.py", "code-gossip/engine/trajectory/contracts.py",
+    "code-gossip/engine/trajectory/store.py", "code-gossip/engine/trajectory/builders.py",
+    "code-gossip/engine/trajectory/processor.py", "code-gossip/engine/trajectory/runtime.py",
     "code-gossip/configs/config.defaults.json", "code-gossip/data/sounds.json",
 )

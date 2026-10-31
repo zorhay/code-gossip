@@ -123,7 +123,7 @@ function selectionDraft(mode=state.viewMode) {
  if (mode === 'effects') return {mode, pack:state.pack};
  if (mode === 'clips') return {mode, profile:'generals'};
  if (mode === 'phrases') return {mode, engine:state.phraseEngine, voices:clone(state.phraseVoices[state.phraseEngine]), phrases:clone(state.phrases)};
- return {mode, style:state.style, engine:state.engine, voice:state.voices[state.engine], provider:state.provider, model:state.model, context:state.context, apiKey:state.apiKey};
+ return {mode, style:state.style, engine:state.engine, voice:state.voices[state.engine], provider:state.provider, model:state.model, apiKey:state.apiKey};
 }
 function savedDraft(mode) {
  if (mode === 'effects') return {mode, pack:saved.effects_profile};
@@ -133,7 +133,7 @@ function savedDraft(mode) {
   const voices = engine === 'kokoro' ? {main:saved.kokoro_voice, sub:saved.kokoro_voice_sub || 'am_adam'} : {main:saved.voice_main, sub:saved.voice_sub};
   return {mode, engine, voices, phrases:normalizePhrases(saved.phrases)};
  }
- return {mode, style:saved.narrator_style, engine, voice:engine === 'kokoro' ? saved.kokoro_voice : saved.voice_main, provider:saved.narrator_provider, model:saved.narrator_model || '', context:!!saved.narrator_deep_context, apiKey:''};
+ return {mode, style:saved.narrator_style, engine, voice:engine === 'kokoro' ? saved.kokoro_voice : saved.voice_main, provider:saved.narrator_provider, model:saved.narrator_model || '', apiKey:''};
 }
 function isDirty(mode) { return !demo && !same(selectionDraft(mode), savedDraft(mode)); }
 function modeInUse(mode) {
@@ -159,7 +159,7 @@ function draftConfig(mode=state.viewMode) {
   Object.assign(config, engine === 'kokoro' ? {kokoro_voice:voices.main, kokoro_voice_sub:voices.sub} : {voice_main:voices.main, voice_sub:voices.sub});
  } else {
   config[engine === 'kokoro' ? 'kokoro_voice' : 'voice_main'] = state.voices[engine];
-  Object.assign(config, {narrator_provider:state.provider, narrator_model:state.model, narrator_style:state.style, narrator_deep_context:state.context});
+  Object.assign(config, {narrator_provider:state.provider, narrator_model:state.model, narrator_style:state.style});
   if (state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
  }
  return config;
@@ -631,10 +631,8 @@ function discard(mode) {
   state.provider = saved.narrator_provider;
   state.model = saved.narrator_model || '';
   state.apiKey = '';
-  state.context = !!saved.narrator_deep_context;
   $('model').value = state.model;
   $('sampleKey').value = '';
-  $('sessionContext').checked = state.context;
   generatedSample = null;
  }
  clearError();
@@ -942,7 +940,6 @@ function wire() {
  $('sampleKey').oninput = () => { state.apiKey = $('sampleKey').value; invalidateProvider({clearModels:true}); renderModelList(); renderChecks(); };
  $('sampleKey').onchange = () => refreshModels();
  $('refreshModels').onclick = () => refreshModels(true);
- $('sessionContext').onchange = () => { state.context = $('sessionContext').checked; renderChrome(); };
  document.querySelectorAll('[data-check-setup]').forEach(button => button.onclick = () => checkSetup(button.dataset.checkSetup));
  $('installKokoro').onclick = installKokoro;
  $('installSox').onclick = () => { $('soxCommand').hidden = false; };
@@ -982,7 +979,7 @@ async function load() {
   pack:saved.effects_profile, style:saved.narrator_style, engine:saved.tts_engine, phraseEngine:saved.tts_engine,
   voices:{say:saved.voice_main, kokoro:saved.kokoro_voice},
   phraseVoices:{say:{main:saved.voice_main, sub:saved.voice_sub}, kokoro:{main:saved.kokoro_voice, sub:saved.kokoro_voice_sub || 'am_adam'}},
-  provider:saved.narrator_provider, model:saved.narrator_model || '', apiKey:'', context:!!saved.narrator_deep_context,
+  provider:saved.narrator_provider, model:saved.narrator_model || '', apiKey:'',
   phraseEvent:saved.events.includes('subagent_start') ? 'subagent_start' : saved.events[0],
   phrases:normalizePhrases(saved.phrases),
  };
@@ -991,7 +988,6 @@ async function load() {
  activeSelection = active === 'combined' ? {mode:'combined'} : selectionDraft(viewMode);
  fillSelect('provider', Object.entries(saved.narrator_providers).map(([id, provider]) => [id, provider.name]), state.provider);
  $('model').value = state.model;
- $('sessionContext').checked = state.context;
  $('volume').value = state.volume;
  $('volumeValue').textContent = state.volume + '%';
  $('reduceRepeats').checked = !!saved.sound_spacing_on;

@@ -293,6 +293,39 @@ def test_cursor_hook_command_executes_without_output(tmp_path):
     assert (soundbar / "engine/event").read_text() == "error"
 
 
+@pytest.mark.parametrize("owned", [True, False])
+def test_trajectory_shutdown_checks_process_arguments(tmp_path, owned):
+    import installer
+    root = tmp_path / "runtime with spaces"
+    directory = root / "engine/trajectory"
+    directory.mkdir(parents=True)
+    locks = root / "state/trajectory-locks"
+    locks.mkdir(parents=True)
+    script = directory / "runtime.py"
+    script.write_text("import fcntl, os, pathlib, time\n"
+                      "p=pathlib.Path(__file__).parents[2]/'state/trajectory-locks/session-1.lock'\n"
+                      "f=p.open('w')\nfcntl.flock(f,fcntl.LOCK_EX)\nf.write(str(os.getpid()))\nf.flush()\ntime.sleep(30)\n")
+    process = subprocess.Popen([sys.executable, str(script), "work", str(root if owned else tmp_path / "unrelated"), "1"],
+                               start_new_session=True)
+    try:
+        deadline = time.monotonic() + 3
+        pid_file = locks / "session-1.lock"
+        while time.monotonic() < deadline:
+            if pid_file.exists() and pid_file.read_text().strip():
+                break
+            time.sleep(.01)
+        assert pid_file.read_text().strip() == str(process.pid)
+        installer.stop_trajectory_workers(root)
+        if owned:
+            assert process.wait(timeout=3) < 0
+        else:
+            assert process.poll() is None
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        process.wait(timeout=3)
+
+
 @pytest.mark.parametrize("event,data,expected", [
     ("sessionStart", {}, "Cursor session"),
     ("sessionEnd", {}, "Cursor session closed"),

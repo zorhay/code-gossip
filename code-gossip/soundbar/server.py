@@ -57,7 +57,7 @@ STYLES_FILE = CONFIGS / "narrator_styles.json"
 STYLES_DEFAULTS = CONFIGS / "narrator_styles.defaults.json"
 SOUNDS_FILE = CONFIGS / "sounds.json" if (CONFIGS / "sounds.json").exists() else DATA / "sounds.json"
 
-CONFIG_KEYS = {"soundbar_mode", "kokoro_voice_sub", "python3_path", "effects_on", "effects_profile", "effects_volume", "voice_on", "voice_profile", "voice_volume", "voice_main", "voice_sub", "tts_engine", "kokoro_voice", "narrator_provider", "narrator_model", "narrator_api_key", "narrator_style", "narrator_deep_context", "sound_spacing_on", "effects_cooldown_ms", "voice_cooldown_ms", "codex_permission_sound_on"}
+CONFIG_KEYS = {"soundbar_mode", "kokoro_voice_sub", "python3_path", "effects_on", "effects_profile", "effects_volume", "voice_on", "voice_profile", "voice_volume", "voice_main", "voice_sub", "tts_engine", "kokoro_voice", "narrator_provider", "narrator_model", "narrator_api_key", "narrator_style", "sound_spacing_on", "effects_cooldown_ms", "voice_cooldown_ms", "codex_permission_sound_on"}
 
 
 # ── Config ──
@@ -73,7 +73,6 @@ DEFAULTS = {
     "tts_engine": "say", "kokoro_voice": "af_heart",
     "narrator_provider": "claude_cli", "narrator_model": "", "narrator_api_key": "",
     "narrator_style": "pair_programmer",
-    "narrator_deep_context": False,
 }
 
 
@@ -459,7 +458,7 @@ def preview_catalog():
 MODES = {"effects", "clips", "phrases", "ai"}
 DRAFT_KEYS = {"effects_profile", "tts_engine", "voice_main", "voice_sub", "kokoro_voice",
               "kokoro_voice_sub", "narrator_provider", "narrator_model", "narrator_api_key",
-              "narrator_style", "narrator_deep_context"}
+              "narrator_style"}
 
 
 def setup_status():
@@ -517,11 +516,9 @@ def draft_config(body, scope=None):
     if (scope in (None, "speech") and config["tts_engine"] not in TTS_ENGINES
             or scope in (None, "provider") and config["narrator_provider"] not in NARRATOR_PROVIDERS):
         raise ValueError("Unknown speech engine or provider")
-    for key in (fields[scope] if scope else DRAFT_KEYS - {"narrator_deep_context"}):
+    for key in (fields[scope] if scope else DRAFT_KEYS):
         if not isinstance(config.get(key, ""), str):
             raise ValueError("Invalid setting: " + key)
-    if scope is None and not isinstance(config["narrator_deep_context"], bool):
-        raise ValueError("Invalid session context setting")
     if scope in (None, "audio") and config["effects_profile"] not in read_sounds().get("effects", {}):
         raise ValueError("Unknown effects profile")
     if "narrator_style" in changes and config["narrator_style"] not in read_styles():
@@ -731,7 +728,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if k in updates and updates[k] != config.get(k):
                     log.info("config %s: %s -> %s", k, config.get(k), updates[k])
             # Log narrator setting changes
-            for k in ("narrator_provider", "narrator_model", "narrator_style", "narrator_deep_context", "tts_engine"):
+            for k in ("narrator_provider", "narrator_model", "narrator_style", "tts_engine"):
                 if k in updates and updates[k] != config.get(k):
                     log.info("config %s: %s -> %s", k, config.get(k), updates[k])
             config.update(updates)
