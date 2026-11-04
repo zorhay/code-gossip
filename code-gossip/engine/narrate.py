@@ -56,19 +56,19 @@ PROVIDERS = {
         "name": "Anthropic API",
         "description": "Direct Claude API. Requires key from console.anthropic.com",
         "needs_key": True,
-        "default_model": "claude-haiku-4-5-20251001",
+        "default_model": "claude-haiku-5-5",
     },
     "gemini": {
         "name": "Google Gemini",
         "description": "Google AI. Requires key from aistudio.google.com",
         "needs_key": True,
-        "default_model": "gemini-2.5-flash",
+        "default_model": "gemini-3.1-flash-lite",
     },
     "openai": {
         "name": "OpenAI",
         "description": "OpenAI API. Requires key from platform.openai.com",
         "needs_key": True,
-        "default_model": "gpt-4o-mini",
+        "default_model": "gpt-6-luna",
     },
     "ollama": {
         "name": "Ollama (local)",
@@ -337,39 +337,55 @@ def _call_claude_cli(model, system, user, max_tokens=80, timeout=15):
 
 
 def _call_anthropic(model, api_key, system, user, max_tokens=80, timeout=5):
+    body = {"model": model, "max_tokens": max_tokens, "system": system,
+            "messages": [{"role": "user", "content": user}]}
+    if model == "claude-haiku-5-5":
+        # Reserve the short commentary budget for speech, not adaptive thinking.
+        body.update(thinking={"type": "disabled"}, output_config={"effort": "low"})
     result = _http_json(
         "https://api.anthropic.com/v1/messages",
         {"x-api-key": api_key, "anthropic-version": "2023-06-01",
          "Content-Type": "application/json"},
-        {"model": model, "max_tokens": max_tokens, "system": system,
-         "messages": [{"role": "user", "content": user}]},
+        body,
         timeout=timeout,
     )
-    return result["content"][0]["text"].strip()
+    return "".join(block["text"] for block in result.get("content", [])
+                   if block.get("type") == "text").strip() or None
 
 
 def _call_gemini(model, api_key, system, user, max_tokens=80, timeout=5):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    generation_config = {"maxOutputTokens": max_tokens}
+    if model == "gemini-3.1-flash-lite":
+        generation_config["thinkingConfig"] = {"thinkingLevel": "MINIMAL"}
     result = _http_json(
         url, {"Content-Type": "application/json"},
         {"system_instruction": {"parts": [{"text": system}]},
          "contents": [{"parts": [{"text": user}]}],
-         "generationConfig": {"maxOutputTokens": max_tokens}},
+         "generationConfig": generation_config},
         timeout=timeout,
     )
-    return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    candidates = result.get("candidates", [])
+    parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+    return "".join(part["text"] for part in parts
+                   if "text" in part and not part.get("thought")).strip() or None
 
 
 def _call_openai(model, api_key, system, user, max_tokens=80, timeout=5):
+    body = {"model": model,
+            "messages": [{"role": "system", "content": system},
+                         {"role": "user", "content": user}]}
+    if model == "gpt-6-luna":
+        body.update(max_completion_tokens=max_tokens, reasoning_effort="none")
+    else:
+        body["max_tokens"] = max_tokens
     result = _http_json(
         "https://api.openai.com/v1/chat/completions",
         {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        {"model": model, "max_tokens": max_tokens,
-         "messages": [{"role": "system", "content": system},
-                      {"role": "user", "content": user}]},
+        body,
         timeout=timeout,
     )
-    return result["choices"][0]["message"]["content"].strip()
+    return (result["choices"][0]["message"].get("content") or "").strip() or None
 
 
 def _call_ollama(model, system, user, max_tokens=80, timeout=10):

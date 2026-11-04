@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Changed
+
+- AI commentary defaults to Claude Haiku 5.5, Gemini 3.1 Flash-Lite, and GPT-6 Luna for lower cloud token costs. Requests to these models minimize reasoning, and only response text is spoken. Existing explicit model selections are retained; clear the Model field to use the new provider default.
+
 ## [0.13.1] - 2026-10-28
 
 ### Changed

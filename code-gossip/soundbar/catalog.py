@@ -27,19 +27,19 @@ NARRATOR_PROVIDERS = {
         "name": "Anthropic API",
         "description": "Direct Claude API. Requires key from console.anthropic.com",
         "needs_key": True,
-        "default_model": "claude-haiku-4-5-20251001",
+        "default_model": "claude-haiku-5-5",
     },
     "gemini": {
         "name": "Google Gemini",
         "description": "Google AI. Requires key from aistudio.google.com",
         "needs_key": True,
-        "default_model": "gemini-2.5-flash",
+        "default_model": "gemini-3.1-flash-lite",
     },
     "openai": {
         "name": "OpenAI",
         "description": "OpenAI API. Requires key from platform.openai.com",
         "needs_key": True,
-        "default_model": "gpt-4o-mini",
+        "default_model": "gpt-6-luna",
     },
     "ollama": {
         "name": "Ollama (local)",
