@@ -62,7 +62,7 @@ class TestCloudRequests:
             {"type": "text", "text": " Ready"},
             {"type": "text", "text": " to go. "},
         ]}),
-        ("gemini", "gemini-3.1-flash-lite", {"candidates": [{"content": {"parts": [
+        ("gemini", "gemini-3.5-flash-lite", {"candidates": [{"content": {"parts": [
             {"thought": True, "text": "Private reasoning"},
             {"text": " Ready"}, {"text": " to go. "},
         ]}}]}),

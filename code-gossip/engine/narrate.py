@@ -62,7 +62,7 @@ PROVIDERS = {
         "name": "Google Gemini",
         "description": "Google AI. Requires key from aistudio.google.com",
         "needs_key": True,
-        "default_model": "gemini-3.1-flash-lite",
+        "default_model": "gemini-3.5-flash-lite",
     },
     "openai": {
         "name": "OpenAI",
@@ -356,7 +356,7 @@ def _call_anthropic(model, api_key, system, user, max_tokens=80, timeout=5):
 def _call_gemini(model, api_key, system, user, max_tokens=80, timeout=5):
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     generation_config = {"maxOutputTokens": max_tokens}
-    if model == "gemini-3.1-flash-lite":
+    if model in {"gemini-3.1-flash-lite", "gemini-3.5-flash-lite"}:
         generation_config["thinkingConfig"] = {"thinkingLevel": "MINIMAL"}
     result = _http_json(
         url, {"Content-Type": "application/json"},

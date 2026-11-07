@@ -33,7 +33,7 @@ NARRATOR_PROVIDERS = {
         "name": "Google Gemini",
         "description": "Google AI. Requires key from aistudio.google.com",
         "needs_key": True,
-        "default_model": "gemini-3.1-flash-lite",
+        "default_model": "gemini-3.5-flash-lite",
     },
     "openai": {
         "name": "OpenAI",
