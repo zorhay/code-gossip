@@ -293,7 +293,7 @@ async function checkSetup(key, {automatic=false}={}) {
   check.message = error.message;
   if (identity === checkIdentity(key)) showError(error.message);
  } finally {
-  render();
+  render({preservePhraseEditor:true});
   if (identity !== checkIdentity(key)) scheduleSetupChecks();
  }
 }
@@ -478,6 +478,12 @@ function renderVoices() {
  fillSelect('mainAgentVoice', choices, state.phraseVoices[state.phraseEngine].main);
  fillSelect('subagentVoice', choices, state.phraseVoices[state.phraseEngine].sub);
  fillSelect('speaker', voiceChoices[state.engine] || [], state.voices[state.engine]);
+ // Shared voice settings can change while a phrase is being edited.
+ const roles = phraseRoles(state.phraseEvent);
+ if (roles) {
+  $('phraseRows').querySelectorAll('.row-head .inputs > span').forEach((label, part) => { label.textContent = roleName(roles[part]); });
+  $('phraseRows').querySelectorAll('input').forEach(input => { input.setAttribute('aria-label', `${roleName(roles[input.dataset.part])} ${Number(input.dataset.index) + 1}`); });
+ }
 }
 function renderStyles() {
  $('styleCount').textContent = Object.keys(styleNames).length;
@@ -536,11 +542,11 @@ function renderChecks() {
  }
  renderChrome();
 }
-function render() {
+function render({preservePhraseEditor=false}={}) {
  renderPacks();
  renderEffectsDetail();
  renderClips();
- renderPhraseRows();
+ if (!preservePhraseEditor) renderPhraseRows();
  renderStyles();
  renderVoices();
  showProvider();
@@ -616,15 +622,20 @@ async function commit(mode, activate) {
  } catch (error) { showError(error.message); }
  finally { busy = false; render(); }
 }
-function syncSpeechDrafts(config) {
+function syncSpeechDrafts(config, {syncAI=true}={}) {
  // Rebase untouched shared fields without overwriting edits in the other tab.
  const fields = {
-  tts_engine:[[state,'engine'], [state,'phraseEngine']],
-  voice_main:[[state.voices,'say'], [state.phraseVoices.say,'main']],
+  tts_engine:[[state,'phraseEngine']],
+  voice_main:[[state.phraseVoices.say,'main']],
   voice_sub:[[state.phraseVoices.say,'sub']],
-  kokoro_voice:[[state.voices,'kokoro'], [state.phraseVoices.kokoro,'main']],
+  kokoro_voice:[[state.phraseVoices.kokoro,'main']],
   kokoro_voice_sub:[[state.phraseVoices.kokoro,'sub']],
  };
+ if (syncAI) {
+  fields.tts_engine.push([state,'engine']);
+  fields.voice_main.push([state.voices,'say']);
+  fields.kokoro_voice.push([state.voices,'kokoro']);
+ }
  for (const [key, targets] of Object.entries(fields)) {
   if (!Object.hasOwn(config, key)) continue;
   for (const [target, field] of targets) if (target[field] === saved[key]) target[field] = config[key];
@@ -795,7 +806,8 @@ function persistAISettings(kind) {
  aiSettingsQueue = aiSettingsQueue.then(async () => {
   try {
    await api('/api/config', changes);
-   syncSpeechDrafts(changes);
+   // AI already holds the latest selection, which may be newer than this save.
+   syncSpeechDrafts(changes, {syncAI:false});
    Object.assign(saved, changes);
    if (kind === 'provider' && same(aiSettings(kind), changes)) {
     state.apiKey = ''; state.keyEdited = false; $('sampleKey').value = '';
@@ -815,7 +827,7 @@ function persistAISettings(kind) {
    showError(error.message);
   } finally {
    savingAISettings--;
-   render(); scheduleSetupChecks();
+   render({preservePhraseEditor:true}); scheduleSetupChecks();
   }
  });
  return aiSettingsQueue;

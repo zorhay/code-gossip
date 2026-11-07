@@ -135,6 +135,71 @@ const server = http.createServer((req,res)=>{
   assert.equal(state.narrator_provider, 'claude_cli', 'The last provider selection wins');
   assert.equal(await page.locator('#provider').inputValue(), 'claude_cli');
   await page.locator('#closeDrawer').click();
+
+  await page.locator('#panel-ai .strip [data-drawer=speech]').click();
+  for (const [id, field, intermediate, latest] of [
+   ['phraseEngine', 'tts_engine', 'kokoro', 'say'],
+   ['speaker', 'voice_main', 'Samantha', 'Tara'],
+  ]) {
+   configGate=new Promise(resolve=>{releaseConfig=resolve;});
+   const firstRequest=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/config');
+   await page.selectOption('#'+id, intermediate);
+   await firstRequest;
+   await page.selectOption('#'+id, latest);
+   const releaseFirst=releaseConfig;
+   configGate=new Promise(resolve=>{releaseConfig=resolve;});
+   const secondRequest=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/config');
+   releaseFirst();
+   await secondRequest;
+   assert.equal(state[field], intermediate, 'The older request completed while the newer save is pending');
+   assert.equal(await page.locator('#'+id).inputValue(), latest, 'An older save must not replace the latest speech selection');
+   if (id==='speaker') {
+    assert.equal(await page.locator('#phraseRows .row-head .inputs > span').first().textContent(), 'Main agent · Samantha', 'Shared voice labels still follow saved settings');
+    assert.equal(await page.locator('#phraseRows input').first().getAttribute('aria-label'), 'Main agent · Samantha 1');
+   }
+   releaseConfig(); configGate=null;
+   await settingsIdle();
+   assert.equal(state[field], latest, 'The latest speech selection is persisted');
+   assert.equal(await page.locator('#'+id).inputValue(), latest);
+  }
+  await page.locator('#closeDrawer').click();
+
+  for (const saveFails of [false, true]) {
+   await page.locator('#tab-ai').click();
+   await page.locator('#panel-ai .strip [data-drawer=provider]').click();
+   configGate=new Promise(resolve=>{releaseConfig=resolve;});
+   const pendingRequest=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/config');
+   await page.selectOption('#provider', state.narrator_provider==='claude_cli' ? 'openai' : 'claude_cli');
+   await pendingRequest;
+   await page.locator('#closeDrawer').click();
+   await page.locator('#tab-phrases').click();
+   await page.waitForFunction(()=>document.getElementById('checkStatus-phrases').textContent==='Engine available');
+   checkGate=new Promise(resolve=>{releaseCheck=resolve;});
+   const pendingCheck=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/draft-check' && req.postDataJSON().mode==='phrases');
+   await page.selectOption('#mainAgentVoice', saveFails ? 'Aman' : 'Samantha');
+   await pendingCheck;
+   const phraseInput=page.locator('#phraseRows input').first();
+   await phraseInput.fill('Draft phrase');
+   await phraseInput.evaluate(input=>input.setSelectionRange(0,5));
+   failSave=saveFails;
+   releaseConfig(); configGate=null;
+   await settingsIdle();
+   failSave=false;
+   assert.deepEqual(await phraseInput.evaluate(input=>({focused:document.activeElement===input,start:input.selectionStart,end:input.selectionEnd})),
+    {focused:true,start:0,end:5}, 'A completed or failed autosave preserves phrase focus and selection');
+   releaseCheck(); checkGate=null;
+   await page.waitForFunction(()=>document.getElementById('checkStatus-phrases').textContent==='Engine available');
+   assert.deepEqual(await phraseInput.evaluate(input=>({focused:document.activeElement===input,start:input.selectionStart,end:input.selectionEnd})),
+    {focused:true,start:0,end:5}, 'The follow-up setup check also preserves phrase focus and selection');
+   await page.keyboard.type('New');
+   assert.equal(await phraseInput.inputValue(), 'New phrase', 'Typing continues at the selected text after an autosave');
+   await page.locator('#panel-phrases [data-act=discard]').click();
+  }
+  await page.locator('#tab-ai').click();
+  await page.locator('#panel-ai .strip [data-drawer=provider]').click();
+  await page.selectOption('#provider', 'claude_cli');
+  await settingsIdle();
+  await page.locator('#closeDrawer').click();
   await page.locator('#tab-phrases').click();
   await page.locator('#phraseRows input').first().fill('Keep this phrase draft');
   await page.locator('#tab-ai').click();
