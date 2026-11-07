@@ -361,6 +361,10 @@ def test_install_progress_is_read_without_python_installation(isolated_preferenc
         status = server.setup_status()
         assert status['installing']
         assert status['installMessage'] == 'Installing packages'
+        assert status['installTimeout'] == 1200
+        assert isinstance(status['installElapsed'], int)
+        assert isinstance(status['installQuiet'], int)
+        assert isinstance(status['installOutput'], list)
         find.assert_not_called()
 
 

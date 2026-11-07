@@ -18,6 +18,9 @@ Usage:
 import json
 import logging
 import os
+import re
+import select
+import signal
 import shutil
 import subprocess
 import threading
@@ -30,6 +33,7 @@ from paths import STATE
 
 
 INTEGRATIONS_FILE = STATE / "integrations.json"
+INSTALL_TIMEOUT = 20 * 60
 
 # ── File loggers (same debug.log / error.log as server.py) ──
 
@@ -116,14 +120,28 @@ class VenvIntegration:
         self._progress = {"status": "idle", "message": ""}
         self._lock = threading.Lock()
         self._verified = None
+        self._started = None
+        self._finished = None
+        self._last_output = None
+        self._output = []
 
     # ── Progress tracking ──
 
     @property
     def progress(self):
-        return dict(self._progress)
+        now = self._finished or time.monotonic()
+        return {**self._progress, "output": list(self._output),
+                "elapsed": int(now - self._started) if self._started is not None else 0,
+                "quiet": int(now - self._last_output) if self._last_output is not None else 0,
+                "timeout": INSTALL_TIMEOUT}
 
     def _set_progress(self, status, message):
+        if status == "running" and self._progress["status"] != "running":
+            self._started = self._last_output = time.monotonic()
+            self._finished = None
+            self._output = []
+        elif status in ("done", "error"):
+            self._finished = time.monotonic()
         self._progress = {"status": status, "message": message}
         if status in ("running", "done", "error"):
             self._verified = None
@@ -482,15 +500,64 @@ class VenvIntegration:
 
         return True
 
+    def _run_install(self, command):
+        """Stream bounded output while enforcing one deadline for package setup."""
+        deadline = (self._started if self._started is not None else time.monotonic()) + INSTALL_TIMEOUT
+        pending = ""
+
+        def record(line):
+            # Package indexes can include credentials or signed download URLs.
+            line = re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", line).strip()
+            line = re.sub(r"https?://\S+", "[download source]", line)[:500]
+            if line:
+                self._output = (self._output + [line])[-8:]
+                self._last_output = time.monotonic()
+                _dlog.debug("%s install: %s", self.name, line)
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(command, INSTALL_TIMEOUT)
+        with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              env={**os.environ, "PYTHONUNBUFFERED": "1", "NO_COLOR": "1"},
+                              start_new_session=True) as process:
+            try:
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise subprocess.TimeoutExpired(command, INSTALL_TIMEOUT)
+                    if not select.select([process.stdout], [], [], min(remaining, .2))[0]:
+                        continue
+                    chunk = os.read(process.stdout.fileno(), 4096)
+                    if not chunk:
+                        break
+                    pending += chunk.decode("utf-8", errors="replace").replace("\r", "\n")
+                    while "\n" in pending:
+                        line, pending = pending.split("\n", 1)
+                        record(line)
+                    if len(pending) > 2000:
+                        record(pending)
+                        pending = ""
+                record(pending)
+                code = process.wait(timeout=max(.001, deadline - time.monotonic()))
+            except BaseException:
+                # Stop build subprocesses too; do not leave orphan installers.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+                raise
+        output = "\n".join(self._output)
+        return subprocess.CompletedProcess(command, code, stdout=output, stderr=output if code else "")
+
     def install_packages(self, is_uv_python, reinstall=False):
         """Install main packages + post-install packages. Returns True on success."""
         # Main packages
         self._set_progress("running", f"Installing {self.name} + dependencies (this may take a few minutes)...")
         if is_uv_python and shutil.which("uv"):
             log.info("%s install: uv pip install %s", self.name, self.packages)
-            result = subprocess.run(
+            result = self._run_install(
                 ["uv", "pip", "install", "--python", str(self.venv_py)] + (["--reinstall"] if reinstall else []) + self.packages,
-                capture_output=True, text=True, timeout=600,
             )
         else:
             venv_pip = self.venv_dir / "bin" / "pip"
@@ -501,9 +568,8 @@ class VenvIntegration:
                     capture_output=True, timeout=30,
                 )
             log.info("%s install: pip install %s", self.name, self.packages)
-            result = subprocess.run(
-                [str(self.venv_py), "-m", "pip", "install", "-q"] + (["--force-reinstall"] if reinstall else []) + self.packages,
-                capture_output=True, text=True, timeout=600,
+            result = self._run_install(
+                [str(self.venv_py), "-m", "pip", "install", "--progress-bar", "off", "--disable-pip-version-check"] + (["--force-reinstall"] if reinstall else []) + self.packages,
             )
         _dlog.debug("pip install: rc=%s stdout=%r stderr=%r", result.returncode, result.stdout.strip()[:500], result.stderr.strip()[:500])
         if result.returncode != 0:
@@ -518,14 +584,12 @@ class VenvIntegration:
             for pkg in self.post_install_packages:
                 log.info("%s install: downloading %s", self.name, pkg.split("@")[0] if "@" in pkg else pkg)
                 if is_uv_python and shutil.which("uv"):
-                    result = subprocess.run(
+                    result = self._run_install(
                         ["uv", "pip", "install", "--python", str(self.venv_py)] + (["--reinstall"] if reinstall else []) + [pkg],
-                        capture_output=True, text=True, timeout=120,
                     )
                 else:
-                    result = subprocess.run(
-                        [str(self.venv_py), "-m", "pip", "install", "-q"] + (["--force-reinstall"] if reinstall else []) + [pkg],
-                        capture_output=True, text=True, timeout=120,
+                    result = self._run_install(
+                        [str(self.venv_py), "-m", "pip", "install", "--progress-bar", "off", "--disable-pip-version-check"] + (["--force-reinstall"] if reinstall else []) + [pkg],
                     )
                 _dlog.debug("post-install %s: rc=%s stderr=%r", pkg, result.returncode, result.stderr.strip()[:300])
                 if result.returncode != 0:
@@ -533,9 +597,8 @@ class VenvIntegration:
                     if "spacy" in pkg or "en_core_web" in pkg:
                         model_name = pkg.split("@")[0] if "@" in pkg else pkg
                         log.warning("%s install: post-install download failed, trying spacy download command", self.name)
-                        subprocess.run(
+                        self._run_install(
                             [str(self.venv_py), "-m", "spacy", "download", model_name],
-                            capture_output=True, text=True, timeout=120,
                         )
 
         return True
@@ -602,7 +665,8 @@ class VenvIntegration:
             _dlog.debug("=== %s install success ===", self.name)
 
         except subprocess.TimeoutExpired as e:
-            self._set_progress("error", "Install timed out.")
+            message = "Installation reached the 20-minute limit. Check your connection and retry." if self.progress["elapsed"] >= INSTALL_TIMEOUT else "Installation step timed out. Check the details and retry."
+            self._set_progress("error", message)
             _elog.error("install timed out: %s", e)
             log.error("%s install timed out", self.name)
         except Exception as e:

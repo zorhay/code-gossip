@@ -478,11 +478,14 @@ def setup_status():
         return {"ready": ready, "sox": sox, "missing": sorted(set(missing)),
                 "message": "Missing audio files" if missing else "Install SoX" if sox and not executable("play") else "Ready" if ready else "macOS audio player unavailable"}
     manifest = read_sounds()
+    progress = kokoro.progress
     return {"effects": {name: inspect(profile) for name, profile in manifest.get("effects", {}).items()},
             "clips": {name: inspect(profile) for name, profile in manifest.get("voice", {}).items()},
             "say": bool(executable("say")), "kokoro": kokoro.is_present(),
-            "installing": kokoro.progress["status"] == "running",
-            "installStatus": kokoro.progress["status"], "installMessage": kokoro.progress.get("message", "")}
+            "installing": progress["status"] == "running",
+            "installStatus": progress["status"], "installMessage": progress.get("message", ""),
+            "installOutput": progress["output"], "installElapsed": progress["elapsed"],
+            "installQuiet": progress["quiet"], "installTimeout": progress["timeout"]}
 
 
 def validate_phrases(phrases):

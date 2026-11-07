@@ -317,6 +317,7 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
 .kokoro-info ul{margin:8px 0 0;padding-left:18px;}
 .kokoro-info li+li{margin-top:8px;}
 #engineDetail{display:block;width:100%;overflow-wrap:anywhere;}
+#installActivity{max-height:170px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;background:var(--bg);padding:12px;border:1px solid var(--line);border-radius:8px;}
 .theme-note{margin-top:10px;}
 @media (prefers-reduced-motion:reduce) {*,*::before,*::after {animation:none!important; transition:none!important;}}
 </style>
@@ -455,6 +456,8 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
     <label class="field"><span class="label">Speech engine</span><select id="phraseEngine" aria-label="Speech engine"><option value="say">macOS speech</option><option value="kokoro">Kokoro</option></select></label>
     <div class="check-row"><strong id="engineName">Availability</strong><span class="status" id="engineStatus" role="status"></span><button class="btn sm" type="button" id="installKokoro" hidden>Install Kokoro</button></div>
     <p class="note" id="engineDetail"></p>
+    <p class="note" id="installTiming" role="status" hidden></p>
+    <pre id="installActivity" aria-label="Recent installation activity" hidden></pre>
     <div class="check-row" id="verificationRow"><strong>Verification</strong><button class="btn sm" type="button" id="speechCheck" data-check-setup="phrases">Check</button></div>
    </div>
    <div class="dlg-section kokoro-info" id="kokoroInfo" hidden>

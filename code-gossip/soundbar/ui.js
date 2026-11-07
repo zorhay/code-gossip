@@ -508,6 +508,13 @@ function renderSpeech() {
  $('engineStatus').dataset.tone = installation.tone;
  $('engineStatus').className = 'status ' + ({success:'ok', warning:'warn', error:'err', neutral:''}[installation.tone] || '');
  $('engineDetail').textContent = setup.installing || setup.installStatus === 'error' ? (setup.installMessage || '') : kokoro ? 'Local speech · about 1.5 GB' : '';
+ const showInstall = kokoro && (setup.installing || setup.installStatus === 'error');
+ const duration = seconds => `${Math.floor((seconds || 0) / 60)}:${String((seconds || 0) % 60).padStart(2, '0')}`;
+ $('installTiming').hidden = !showInstall;
+ $('installTiming').textContent = `${duration(setup.installElapsed)} elapsed · ${Math.round((setup.installTimeout || 1200) / 60)} minute limit` + (setup.installing && setup.installQuiet >= 10 ? ` · Last output ${duration(setup.installQuiet)} ago; waiting for the installer` : '');
+ const activity = $('installActivity'), output = (setup.installOutput || []).join('\n');
+ activity.hidden = !showInstall || !output;
+ if (activity.textContent !== output) { activity.textContent = output; activity.scrollTop = activity.scrollHeight; }
  $('kokoroInfo').hidden = !kokoro;
  $('verificationRow').hidden = !installation.available;
  const repair = ['phrases','aiSpeech'].some(key => setupChecks[key]?.status === 'failed' && setupChecks[key]?.identity === checkIdentity(key));
@@ -752,6 +759,7 @@ async function installKokoro() {
  for (const key of ['phrases','aiSpeech']) delete setupChecks[key];
  clearError();
  setup.installing = true; setup.installStatus = 'running'; setup.installMessage = '';
+ setup.installElapsed = setup.installQuiet = 0; setup.installOutput = [];
  render();
  try {
   const result = await api('/api/kokoro-install', {repair});

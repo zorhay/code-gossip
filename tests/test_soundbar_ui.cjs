@@ -507,12 +507,18 @@ const server = http.createServer((req,res)=>{
   await page.keyboard.press('Escape');
 
   state.setup.installing = true; state.setup.kokoro = false; state.setup.installStatus = 'running'; state.setup.installMessage = 'Installing packages';
+  Object.assign(state.setup, {installElapsed:603, installQuiet:12, installTimeout:1200, installOutput:['Collecting torch', 'Downloading torch (138.6 MB)']});
   await page.reload();
   await page.locator('#tab-ai[aria-selected=true]').waitFor();
   await page.locator('#panel-ai .strip [data-drawer=speech]').click();
   await page.waitForFunction(() => document.getElementById('engineStatus').textContent === 'Installing…');
   assert.equal(await page.locator('#verificationRow').isHidden(), true);
   assert.equal(await page.locator('#installKokoro').isHidden(), true);
+  assert.equal(await page.locator('#installTiming').innerText(), '10:03 elapsed · 20 minute limit · Last output 0:12 ago; waiting for the installer');
+  assert((await page.locator('#installActivity').innerText()).includes('Downloading torch (138.6 MB)'));
+  Object.assign(state.setup, {installElapsed:605, installQuiet:0, installOutput:['Installing collected packages: torch']});
+  await page.waitForFunction(() => document.getElementById('installActivity').textContent === 'Installing collected packages: torch');
+  assert.equal(await page.locator('#installTiming').innerText(), '10:05 elapsed · 20 minute limit');
   await page.locator('#closeDrawer').click();
   await page.locator('#settingsButton').click();
   assert(await page.locator('#closeSoundbar').isDisabled());
@@ -531,6 +537,8 @@ const server = http.createServer((req,res)=>{
   const installsBeforeRetry = installations;
   await page.locator('#installKokoro').click();
   await page.waitForFunction(() => document.getElementById('engineStatus').textContent === 'Installed');
+  assert(await page.locator('#installTiming').isHidden());
+  assert(await page.locator('#installActivity').isHidden());
   assert.equal(installations, installsBeforeRetry + 1);
   await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Engine available');
   assert.equal(checks.at(-1).scope, 'speech');
