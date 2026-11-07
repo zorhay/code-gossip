@@ -450,7 +450,7 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
      <ul>
       <li><strong>Packages:</strong> Kokoro, SoundFile, PyTorch and their dependencies, plus the English spaCy language model. Allow roughly 1.5 GB for the Python environment, plus model downloads.</li>
       <li><strong>Location:</strong> an isolated Python environment at <code>~/.code-gossip/state/.venv</code>. In a development install, this points into your checkout.</li>
-      <li><strong>Python:</strong> requires Python 3.9–3.11. Setup looks for a compatible interpreter; if needed and <code>uv</code> is available, it may download a managed Python through <code>uv</code>.</li>
+      <li><strong>Python:</strong> requires Python 3.10–3.12. Setup looks for a compatible interpreter; if needed and <code>uv</code> is available, it may download a managed Python through <code>uv</code>.</li>
       <li><strong>Model:</strong> Kokoro-82M and voice files download from Hugging Face on first use and are cached locally (normally <code>~/.cache/huggingface</code>, unless configured otherwise).</li>
       <li><strong>While running:</strong> a background process starts on first speech use, keeps the model in memory, and receives requests through a local Unix socket. It stops after 10 minutes without activity.</li>
       <li><strong>Privacy:</strong> speech synthesis runs locally once the models are downloaded. AI commentary still uses your selected AI provider to generate its text.</li>
