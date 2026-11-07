@@ -59,6 +59,10 @@ p {margin:0;}
 .controls {display:flex; align-items:center; gap:14px; padding:6px; border:1px solid var(--line); border-radius:999px; background:var(--surface); font-size:13px;}
 .controls .divider {width:1px; align-self:stretch; background:var(--line);}
 .power {display:flex; align-items:center; gap:9px; white-space:nowrap;}
+.label-slot {display:inline-grid; vertical-align:bottom;}
+.label-slot > span,.label-slot::before,.label-slot::after {grid-area:1 / 1;}
+.label-slot::before {content:attr(data-alternate-label); visibility:hidden;}
+.label-slot::after {content:attr(data-width-label); visibility:hidden;}
 .volume {display:flex; align-items:center; gap:9px; color:var(--muted);}
 .volume > .i {width:22px; height:22px;}
 .volume input {width:110px; margin:0; accent-color:var(--accent);}
@@ -340,7 +344,7 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
  <div class="brand"><span class="brand-mark">CODE GOSSIP</span><span class="brand-sub">Soundbar</span></div>
  <button class="now" id="now" title="Show the mode in use"><span class="eq" aria-hidden="true"><i></i><i></i><i></i></span><span id="statusText">Loading…</span></button>
  <div class="controls">
-  <label class="power"><span class="switch"><input type="checkbox" id="soundOn" checked aria-label="Enable sound"><span class="track"></span></span><span id="powerLabel">Sound on</span></label>
+  <label class="power"><span class="switch"><input type="checkbox" id="soundOn" checked aria-label="Enable sound"><span class="track"></span></span><span class="label-slot" data-width-label="Sound off"><span id="powerLabel">Sound on</span></span></label>
   <span class="divider" aria-hidden="true"></span>
   <label class="volume"><svg class="i" aria-hidden="true"><use href="#i-speaker"/></svg><input type="range" id="volume" min="0" max="100" value="89" aria-label="Volume"><output id="volumeValue">89%</output></label>
  </div>

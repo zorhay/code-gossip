@@ -11,6 +11,7 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Fixed
 
+- Soundbar reserves space for both sound and status labels, keeping header controls and panels stationary when sound is toggled.
 - Kokoro setup now accepts Python 3.12, including existing pyenv installations. Setup guidance and interpreter selection use Python 3.10–3.12 to match the current published Kokoro package; Python 3.9 is no longer selected for new setups.
 - Preview buttons show playback and generation indicators and recover after errors. Kokoro failures show their error text in the header, with installation and repair available from the bottom Details button.
 

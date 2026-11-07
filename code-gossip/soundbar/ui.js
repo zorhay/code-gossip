@@ -350,7 +350,7 @@ function renderTabs() {
 function renderNow() {
  $('now').classList.toggle('muted', !state.enabled);
  $('now').classList.toggle('is-playing', mediaBusy);
- $('statusText').textContent = `${state.enabled ? demo ? 'Preview' : 'In use' : 'Muted'} · ${selectionLabel(demo ? selectionDraft() : activeSelection)}`;
+ $('statusText').innerHTML = `<span class="label-slot" data-width-label="${demo ? 'Preview' : 'In use'}" data-alternate-label="Muted"><span>${state.enabled ? demo ? 'Preview' : 'In use' : 'Muted'}</span></span> · ${esc(selectionLabel(demo ? selectionDraft() : activeSelection))}`;
  $('powerLabel').textContent = state.enabled ? 'Sound on' : 'Sound off';
  $('soundOn').checked = state.enabled;
  $('soundOn').disabled = busy || !demo && mediaBusy || savingSound;

@@ -202,7 +202,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#effectsEvents [data-preview]').count(), 0);
   await page.locator('#packList label', {hasText:'Paper'}).click();
   assert.equal(await page.locator('#activateSelection').count(), 0, 'Returning to the saved pack clears the draft');
-  assert.equal(await page.locator('#statusText').innerText(), 'In use · Effects · Paper');
+  assert.equal(await page.locator('#statusText').textContent(), 'In use · Effects · Paper');
 
   await page.getByRole('tab', {name:'Phrases', exact:true}).click();
   await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Engine available');
@@ -401,6 +401,22 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('[data-preview].is-playing').count(), 0);
   failPreview=false;
 
+
+  const controlLayout = () => page.locator('.now,.controls,.power,.volume,.controls .divider,#settingsButton,#helpButton,#tabs,.panel:not([hidden]) .workspace').evaluateAll(elements => elements.map(el => {
+   const {x,y,width,height}=el.getBoundingClientRect();
+   return {name:el.id || el.className,x,y,width,height};
+  }));
+  for (const width of [1280,900,390]) {
+   await page.setViewportSize({width,height:900});
+   const before=await controlLayout();
+   await page.locator('#soundOn').uncheck();
+   await page.waitForFunction(() => document.getElementById('powerLabel').textContent==='Sound off' && !document.getElementById('soundOn').disabled);
+   assert.deepEqual(await controlLayout(),before,`Muting does not move or resize panels at ${width}px`);
+   await page.locator('#soundOn').check();
+   await page.waitForFunction(() => document.getElementById('powerLabel').textContent==='Sound on' && !document.getElementById('soundOn').disabled);
+   assert.deepEqual(await controlLayout(),before,`Unmuting does not move or resize panels at ${width}px`);
+  }
+  await page.setViewportSize({width:1280,height:900});
 
   await page.locator('#soundOn').uncheck();
   await page.waitForFunction(() => document.getElementById('powerLabel').textContent === 'Sound off');
