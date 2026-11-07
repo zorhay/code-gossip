@@ -14,6 +14,7 @@ See [Using Code Gossip](docs/usage.md) for usage and [ARCHITECTURE](ARCHITECTURE
 ## Working rules
 
 - Use [maintain-docs](dev-skills/maintain-docs/SKILL.md) for documentation and [sound-design](dev-skills/sound-design/SKILL.md) for audio content.
+- Before changing UI/UX, read and follow [UI/UX preferences](docs/ui-ux-preferences.md). Apply these conventions to new controls and preserve them across sessions; update that file when the user agrees to a new design preference.
 - Keep `TASKS.md`, user settings, credentials, and runtime state local and gitignored. Edit shipped defaults for product changes.
 - Resolve runtime paths through `paths.py` or the package location. Honor the configured Python executable; hook environments may have a limited PATH.
 - Preserve unrelated hooks and user settings. Never change agent permissions or trust settings. Keep the shared runtime while any integration remains.

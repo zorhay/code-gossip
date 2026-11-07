@@ -249,6 +249,8 @@ The daemon listens on `state/kokoro.sock` with mode `0600`. It caches pipelines 
 
 ## Soundbar and its API
 
+For interface changes, follow [UI/UX preferences](docs/ui-ux-preferences.md), the shared design and interaction guidance for contributors and coding agents.
+
 ```mermaid
 flowchart LR
     Browser[Soundbar browser UI] <-->|localhost:8111| Server[server.py]
