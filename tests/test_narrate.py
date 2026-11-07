@@ -5,6 +5,7 @@ Tests narrate.py functions without making network calls or playing audio.
 
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -49,6 +50,82 @@ class TestProviders:
         assert PROVIDERS["anthropic"]["needs_key"] is True
         assert PROVIDERS["gemini"]["needs_key"] is True
         assert PROVIDERS["openai"]["needs_key"] is True
+
+
+class TestCloudRequests:
+    """Default models must produce speakable text within the caller's budget."""
+
+    @pytest.mark.parametrize("budget", [8, 80, 160])
+    @pytest.mark.parametrize("provider,model,response", [
+        ("anthropic", "claude-haiku-5-5", {"content": [
+            {"type": "thinking", "thinking": "Private reasoning"},
+            {"type": "text", "text": " Ready"},
+            {"type": "text", "text": " to go. "},
+        ]}),
+        ("gemini", "gemini-3.5-flash-lite", {"candidates": [{"content": {"parts": [
+            {"thought": True, "text": "Private reasoning"},
+            {"text": " Ready"}, {"text": " to go. "},
+        ]}}]}),
+        ("openai", "gpt-6-luna", {"choices": [{"message": {"content": " Ready to go. "}}]}),
+    ])
+    def test_default_requests(self, provider, model, response, budget):
+        import narrate
+        from server import NARRATOR_PROVIDERS
+
+        with patch.object(narrate, "_http_json", return_value=response) as request:
+            text = narrate._dispatch(provider, "", "test-key", "Speak briefly", "Edited app.py",
+                                     max_tokens=budget, timeout=4)
+        assert text == "Ready to go."
+        assert NARRATOR_PROVIDERS[provider]["default_model"] == model
+        url, headers, body = request.call_args.args
+        assert request.call_args.kwargs["timeout"] == 4
+        if provider == "anthropic":
+            assert body["model"] == model
+            assert body["max_tokens"] == budget
+            assert body["thinking"] == {"type": "disabled"}
+            assert body["output_config"] == {"effort": "low"}
+        elif provider == "gemini":
+            assert f"/models/{model}:generateContent" in url
+            assert body["generationConfig"] == {
+                "maxOutputTokens": budget, "thinkingConfig": {"thinkingLevel": "MINIMAL"}}
+        else:
+            assert body["model"] == model
+            assert body["max_completion_tokens"] == budget
+            assert body["reasoning_effort"] == "none"
+            assert "max_tokens" not in body
+
+    @pytest.mark.parametrize("provider,model,response", [
+        ("anthropic", "claude-haiku-4-5-20251001", {"content": [{"type": "text", "text": "OK"}]}),
+        ("gemini", "gemini-2.5-flash-lite", {"candidates": [{"content": {"parts": [{"text": "OK"}]}}]}),
+        ("openai", "gpt-4o-mini", {"choices": [{"message": {"content": "OK"}}]}),
+    ])
+    def test_explicit_models_keep_their_request_settings(self, provider, model, response):
+        import narrate
+
+        with patch.object(narrate, "_http_json", return_value=response) as request:
+            assert narrate._dispatch(provider, model, "test-key", "System", "User") == "OK"
+        url, headers, body = request.call_args.args
+        assert "thinking" not in body and "output_config" not in body
+        assert "reasoning_effort" not in body
+        if provider == "gemini":
+            assert f"/models/{model}:generateContent" in url
+            assert body["generationConfig"] == {"maxOutputTokens": 80}
+        else:
+            assert body["model"] == model
+            assert body["max_tokens"] == 80
+
+    @pytest.mark.parametrize("provider,response", [
+        ("anthropic", {"content": [{"type": "thinking", "thinking": "Private reasoning"}]}),
+        ("anthropic", {"content": [], "stop_reason": "refusal"}),
+        ("gemini", {"candidates": [{"content": {"parts": [{"thought": True, "text": "Private reasoning"}]}}]}),
+        ("gemini", {"candidates": []}),
+        ("openai", {"choices": [{"message": {"content": None, "refusal": "Declined"}}]}),
+    ])
+    def test_no_answer_returns_no_speech(self, provider, response):
+        import narrate
+
+        with patch.object(narrate, "_http_json", return_value=response):
+            assert narrate._dispatch(provider, "", "test-key", "System", "User") is None
 
 
 class TestNarratorStyles:

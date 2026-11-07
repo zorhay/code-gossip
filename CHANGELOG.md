@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Changed
+
+- AI commentary defaults to Claude Haiku 5.5, Gemini 3.5 Flash-Lite, and GPT-6 Luna. Anthropic and OpenAI token costs are lower; Gemini uses the newer Flash-Lite model at the same text token rates as the previous Gemini 2.5 Flash default. Requests to these models minimize reasoning, and only response text is spoken. Existing explicit model selections are retained; clear the Model field to use the new provider default.
+
 ### Fixed
 
 - Kokoro setup now accepts Python 3.12, including existing pyenv installations. Setup guidance and interpreter selection use Python 3.10–3.12 to match the current published Kokoro package; Python 3.9 is no longer selected for new setups.
