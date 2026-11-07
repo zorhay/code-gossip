@@ -656,7 +656,7 @@ def check_kokoro():
         return {
             "ok": False,
             "message": "Kokoro not installed. Use the control panel to install, "
-            "or set up manually with a compatible Python (3.9-3.11).",
+            "or set up manually with a compatible Python (3.10-3.12).",
         }
 
     if KOKORO_SOCK.exists():

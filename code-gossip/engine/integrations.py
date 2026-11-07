@@ -187,7 +187,7 @@ class VenvIntegration:
         """Find a compatible Python for venv creation.
 
         Detection order:
-        1. Direct binaries: python3.11, python3.10, python3.9 in PATH
+        1. Direct binaries in PATH, newest supported minor version first
         2. uv: can create venvs with specific Python versions
         3. pyenv: check installed versions
         4. conda: check for compatible environments
@@ -619,8 +619,9 @@ kokoro = VenvIntegration(
     post_install_packages=[
         "en_core_web_sm@https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
     ],
-    python_min=(3, 9),
-    python_max=(3, 12),
+    # Published Kokoro 0.9.4 requires Python >=3.10,<3.13.
+    python_min=(3, 10),
+    python_max=(3, 13),
     verify_import="import kokoro",
     venv_dir=None,  # defaults to STATE / ".venv"
 )
