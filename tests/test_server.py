@@ -558,6 +558,19 @@ def test_initial_status_never_imports_kokoro(isolated_preferences):
         assert server.setup_status()['kokoro'] is True
 
 
+def test_draft_check_forwards_model_progress_and_explicit_retry(isolated_preferences):
+    server = isolated_preferences
+    response = {'ok':False, 'pending':True, 'message':'Downloading Kokoro model',
+                'model': {'state':'downloading', 'ready':False, 'completed':0,
+                          'total':327212226, 'transferred':12000000}}
+    with patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout=json.dumps(response))) as run:
+        result = server.draft_request({'mode':'phrases', 'config':{'tts_engine':'kokoro'}, 'retry':True}, check=True)
+    assert result == response
+    request = json.loads(run.call_args.kwargs['input'])
+    assert request['retry'] is True
+    assert request['scope'] == 'speech'
+
+
 @pytest.mark.parametrize("method", ["GET", "POST"])
 def test_foreign_host_is_rejected(isolated_preferences, method):
     server = isolated_preferences

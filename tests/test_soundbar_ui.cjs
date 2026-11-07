@@ -30,7 +30,7 @@ const server = http.createServer((req,res)=>{
  try{
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[],writes=[],previews=[],checks=[],modelRequests=[];let saveGate=null,releaseSave;let modelGate=null,releaseModels,failModels=false;let failGeneration=false,failSave=false,failShutdown=true,installations=0,checkGate=null,releaseCheck,failCheck=false;
-  let configGate=null,releaseConfig,checkError='Check failed';
+  let configGate=null,releaseConfig,checkError='Check failed',modelState={ok:true,message:'Engine available',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
   let previewGate=null,releasePreview,generationGate=null,releaseGeneration,failPreview=false;
   let versionState={installed:'0.8.0',available:false,release:null,checked_at:1,development:false,running:false,phase:'idle',message:''},updateChecks=0,updateStarts=0,failUpdateCheck=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});
@@ -53,7 +53,7 @@ const server = http.createServer((req,res)=>{
    }else if(endpoint==='/api/config') {const body=req.postDataJSON();writes.push(body);if(configGate)await configGate;if(failSave)reply={ok:false,error:'Save failed'};else Object.assign(state,body);}
    else if(endpoint==='/api/draft-preview'){const body=req.postDataJSON();previews.push(body);if(body.action==='generate'&&generationGate)await generationGate;else if(previewGate)await previewGate;reply=failPreview?{ok:false,message:'Playback failed'}:failGeneration&&body.action==='generate'?{ok:false,message:'Generation failed'}:{ok:true,text:'Preview result'};}
    else if(endpoint==='/api/narrator-models'){const body=req.postDataJSON();modelRequests.push(body);if(modelGate)await modelGate;reply=failModels?{ok:false,message:'Could not load models'}:['claude_cli','codex_cli'].includes(body.config.narrator_provider)?{ok:true,models:[],supported:false,message:(body.config.narrator_provider==='codex_cli'?'Codex CLI':'Claude CLI')+' has no live model list.'}:{ok:true,models:['live-model-a','live-model-b'],supported:true};}
-   else if(endpoint==='/api/draft-check'){checks.push(req.postDataJSON());if(checkGate)await checkGate;reply=failCheck?{ok:false,error:checkError}:{ok:true,message:'Ready'};}
+   else if(endpoint==='/api/draft-check'){const body=req.postDataJSON();checks.push(body);if(checkGate)await checkGate;reply=failCheck?{ok:false,message:checkError}:body.scope==='speech' && body.config.tts_engine==='kokoro'?modelState:{ok:true,message:'Ready'};}
    else if(endpoint==='/api/kokoro-install'){installations++;state.setup.kokoro=true;state.setup.installing=false;state.setup.installStatus='done';reply={ok:true,status:'done'};}
    else if(endpoint==='/api/kokoro-status')reply={ok:true,status:'done',installed:state.setup.kokoro};
    else if(endpoint==='/api/shutdown'){assert.equal(req.headers()['x-soundbar-request'],'ui');reply={ok:!failShutdown};}
@@ -412,9 +412,49 @@ const server = http.createServer((req,res)=>{
   assert.equal(installations, 0);
   assert.equal(await page.locator('#engineStatus').innerText(), 'Not installed');
   assert.equal(await page.locator('#verificationRow').isHidden(), true);
+  modelState={ok:false,pending:true,message:'Downloading Kokoro model',model:{state:'downloading',ready:false,file:'kokoro-v1_0.pth',completed:0,total:327000000,transferred:12000000}};
   await page.locator('#installKokoro').click();
   await page.waitForFunction(() => document.getElementById('installKokoro').hidden);
   assert.equal(installations, 1);
+  await page.waitForFunction(() => document.getElementById('modelDownloadDetails').textContent.includes('12.0 MB received'));
+  assert(await page.locator('#sampleBtn').isDisabled(), 'AI previews wait for the model');
+  assert(await page.locator('#previewAIVoice').isDisabled());
+  assert.equal(await page.locator('#modelDownloadProgress').getAttribute('value'), '0', 'Received Xet bytes are not treated as reconstructed model bytes');
+  const beforeModelPreview=previews.length;
+  await page.reload();
+  await page.locator('#tab-phrases').click();
+  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent==='Downloading Kokoro model');
+  assert(await page.locator('#previewMainAgent').isDisabled());
+  assert(await page.locator('#previewSubagent').isDisabled());
+  assert(await page.locator('#phraseRows [data-preview]').first().isDisabled());
+  const loadingPhrase=page.locator('#phraseRows input').first();
+  const originalPhrase=await loadingPhrase.inputValue();
+  await loadingPhrase.fill('Keep typing while downloading');
+  await loadingPhrase.evaluate(input=>input.setSelectionRange(5,11));
+  modelState.model.completed=100000000;modelState.model.transferred=150000000;
+  await page.waitForFunction(() => document.getElementById('modelDownloadDetails').textContent.includes('150.0 MB received'));
+  assert.deepEqual(await loadingPhrase.evaluate(input=>[document.activeElement===input,input.selectionStart,input.selectionEnd]),[true,5,11]);
+  assert.equal(await loadingPhrase.inputValue(),'Keep typing while downloading');
+  assert.equal(previews.length,beforeModelPreview,'Polling never starts audio');
+  modelState={ok:false,pending:false,message:'Kokoro model download failed. Retry model loading.',model:{state:'error',ready:false}};
+  await page.waitForFunction(() => document.getElementById('speechCheck').textContent==='Retry model loading');
+  await page.locator('#panel-phrases .strip [data-drawer=speech]').click();
+  assert(await page.locator('#installKokoro').isHidden(), 'A failed model download does not request package reinstallation');
+  assert(await page.locator('#previewMainAgent').isDisabled());
+  modelState={ok:false,pending:true,message:'Downloading voice',model:{state:'downloading',ready:false,file:'voices/am_adam.pt',completed:250000,total:null}};
+  await page.locator('#speechCheck').click();
+  await page.waitForFunction(() => document.getElementById('modelDownloadDetails').textContent.includes('voices/am_adam.pt'));
+  assert.equal(checks.at(-1).retry,true,'Model retry is explicit');
+  assert.equal(await page.locator('#modelDownloadProgress').getAttribute('value'),null,'Unknown size uses indeterminate progress');
+  modelState={ok:true,message:'Engine available',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
+  await page.waitForFunction(() => !document.getElementById('previewMainAgent').disabled);
+  assert(await page.locator('#modelDownloadProgress').isHidden());
+  assert(await page.locator('#phraseRows [data-preview]').first().isEnabled());
+  await page.locator('#closeDrawer').click();
+  await loadingPhrase.fill(originalPhrase);
+  await page.locator('#tab-ai').click();
+  await page.locator('#panel-ai .strip [data-drawer=speech]').click();
+  await page.waitForFunction(() => !document.getElementById('previewAIVoice').disabled);
   await page.selectOption('#speaker', 'af_bella');
   await page.locator('#closeDrawer').click();
   await page.locator('#panel-ai .strip [data-drawer=provider]').click();

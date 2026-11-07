@@ -703,42 +703,27 @@ def _read_integrations():
         return {}
 
 
-def check_kokoro():
-    """Check if Kokoro TTS is available."""
+def check_kokoro(voices=None, prepare=False, retry=False):
+    """Report model readiness separately from package installation."""
+    voices = voices or ["af_heart"]
     if not KOKORO_VENV.exists():
-        # Check integrations for python detection info
-        data = _read_integrations()
-        py_info = data.get("kokoro_python")
+        py_info = _read_integrations().get("kokoro_python")
         if py_info and not py_info.get("ok"):
             return {"ok": False, "message": py_info.get("message", "No compatible Python found.")}
-        return {
-            "ok": False,
-            "message": "Kokoro not installed. Use the control panel to install, "
-            "or set up manually with a compatible Python (3.10-3.12).",
-        }
-
+        return {"ok": False, "message": "Kokoro packages are not installed. Install Kokoro in the speech settings."}
+    if prepare and not _ensure_kokoro_daemon():
+        return {"ok": False, "message": "Kokoro could not start. Check the speech settings and daemon log."}
     if KOKORO_SOCK.exists():
-        resp = _kokoro_request("health", timeout=3)
-        if resp and resp.get("ok"):
-            ready = resp.get("ready", False)
-            if ready:
-                return {"ok": True, "message": "Kokoro daemon running, model loaded."}
-            return {"ok": True, "message": "Kokoro daemon running, model loading..."}
-
-    # Daemon not running — check if kokoro package is installed
-    try:
-        result = subprocess.run(
-            [str(KOKORO_VENV), "-c", "import kokoro"],
-            capture_output=True, timeout=120,
-        )
-        if result.returncode == 0:
-            return {"ok": True, "message": "Kokoro installed. Daemon will auto-start on first use."}
-        return {
-            "ok": False,
-            "message": "Kokoro not installed in venv. Use the control panel to reinstall.",
-        }
-    except Exception as e:
-        return {"ok": False, "message": f"Error checking venv: {e}"}
+        response = _kokoro_request("prepare" if prepare else "health", timeout=3,
+                                   voices=voices, **({"retry": retry} if prepare else {}))
+        if response and response.get("ok"):
+            ready = bool(response.get("ready"))
+            state = response.get("state", "ready" if ready else "loading")
+            message = response.get("message") or ("Kokoro is ready." if ready else "Kokoro model is loading…")
+            return {"ok": ready, "pending": not ready and state != "error",
+                    "message": message, "model": response}
+        return {"ok": False, "message": "Kokoro did not report model readiness. Restart Soundbar and its speech engine."}
+    return {"ok": False, "message": "Kokoro model is not loaded. Check the speech engine to prepare it."}
 
 
 # --- Session context (deep mode) ---

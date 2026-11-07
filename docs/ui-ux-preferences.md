@@ -37,7 +37,7 @@ The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.
 
 The session exposed a reporting limitation: a quiet log can accompany an active download. Do not describe an installation as stalled solely because no new log line appeared. Check whether the process and download are advancing before diagnosing a hang.
 
-When improving the progress UI, distinguish elapsed time, time since the last log output, and actual transfer progress. Show measured bytes, total size, or transfer rate when available; do not invent a percentage or treat log silence as zero activity. Keep the current stage, timeout, failure details, and retry action understandable. The existing implementation exposes elapsed time and recent output; this document does not imply that byte-level progress is already implemented.
+When improving the progress UI, distinguish elapsed time, time since the last log output, and actual transfer progress. Show measured bytes, total size, or transfer rate when available; do not invent a percentage or treat log silence as zero activity. Keep the current stage, timeout, failure details, and retry action understandable. Package installation exposes elapsed time and recent output. Model preparation additionally exposes file bytes and totals when known, and network-transfer bytes when reported; buffered transfer bytes must remain distinct from prepared-file bytes. Keep previews disabled until the model and selected voices are ready, and offer model retry separately from package repair.
 
 ## Implementation and validation map
 

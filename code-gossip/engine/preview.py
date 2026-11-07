@@ -11,17 +11,22 @@ import narrate
 from paths import executable
 
 
+class SpeechUnavailable(RuntimeError):
+    """A safe, actionable speech error for the control panel."""
+
+
 def speak(text, config, role="main"):
     engine = config.get("tts_engine", "say")
     volume = int(config.get("voice_volume", 100))
     if engine == "kokoro":
         key = "kokoro_voice_sub" if role == "sub" else "kokoro_voice"
         voice = config.get(key, "am_adam" if role == "sub" else "af_heart")
-        if not narrate._ensure_kokoro_daemon():
-            raise RuntimeError("Kokoro could not start")
+        readiness = narrate.check_kokoro([voice], prepare=True)
+        if not readiness["ok"]:
+            raise SpeechUnavailable(readiness["message"])
         result = narrate._kokoro_request("speak", text=text, voice=voice, volume=volume)
         if not result or not result.get("ok"):
-            raise RuntimeError("Kokoro could not speak")
+            raise SpeechUnavailable("Kokoro could not finish playback. Check model readiness and try again.")
     else:
         voice = config.get("voice_sub" if role == "sub" else "voice_main", "Aman" if role == "sub" else "Tara")
         fd, path = tempfile.mkstemp(suffix=".aiff", prefix="soundbar-preview-")
@@ -42,8 +47,20 @@ def run(request):
             return {"ok": result["ok"], "message": "Connection ready" if result["ok"] else "Connection failed. Check provider, model, credentials, and network."}
         if scope != "speech":
             raise ValueError("Unknown setup check")
-        return narrate.check_kokoro() if config["tts_engine"] == "kokoro" else {"ok": bool(executable("say") and executable("afplay")), "message": "macOS speech unavailable"}
+        if config["tts_engine"] == "kokoro":
+            voices = [config.get("kokoro_voice", "af_heart")]
+            if request["mode"] == "phrases":
+                voices.append(config.get("kokoro_voice_sub", "am_adam"))
+            return narrate.check_kokoro(voices, prepare=True, retry=request.get("retry") is True)
+        return {"ok": bool(executable("say") and executable("afplay")), "message": "macOS speech unavailable"}
     role = request.get("role")
+    if config.get("tts_engine") == "kokoro":
+        voices = [config.get("kokoro_voice_sub", "am_adam")] if role == "sub" else [config.get("kokoro_voice", "af_heart")]
+        if request["mode"] == "phrases" and not role and request.get("event") in ("subagent_start", "subagent_stop"):
+            voices.append(config.get("kokoro_voice_sub", "am_adam"))
+        readiness = narrate.check_kokoro(voices, prepare=True)
+        if not readiness["ok"]:
+            raise SpeechUnavailable(readiness["message"])
     if role:
         if role not in ("main", "sub"):
             raise ValueError("Unknown speaker")
@@ -78,5 +95,7 @@ def run(request):
 if __name__ == "__main__":
     try:
         print(json.dumps(run(json.load(sys.stdin))))
+    except SpeechUnavailable as error:
+        print(json.dumps({"ok": False, "message": str(error)}))
     except Exception:
         print(json.dumps({"ok": False, "message": "Could not check or play this draft. Check the selected engine and provider."}))

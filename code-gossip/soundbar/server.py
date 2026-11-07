@@ -610,7 +610,8 @@ def draft_request(body, check=False):
         return {"ok": True, "message": "Ready"}
     request = {"config": config, "mode": mode, "check": check,
                "role": body.get("role"), "event": body.get("event", "edit"),
-               "scope": body.get("scope", "speech"), "action": body.get("action", "play"),
+               "scope": body.get("scope", "speech"), "retry": body.get("retry") is True,
+               "action": body.get("action", "play"),
                "variant": body.get("variant", 0), "text": body.get("text", "")}
     if mode == "phrases" and not check and not request["role"]:
         request["phrases"] = validate_phrases(body.get("phrases", {}))

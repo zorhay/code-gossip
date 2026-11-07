@@ -37,7 +37,7 @@ const GUIDE = [
 
 let saved, state, activeSelection, setup, voiceChoices, styleNames;
 let checkedAI = null, busy = false, savingSound = false, savingVolume = false, mediaBusy = false, installPoll = null;
-let activePreview = null;
+let activePreview = null, modelPoll = null;
 let savingAISettings = 0, aiSettingsQueue = Promise.resolve();
 const setupChecks = {}, filters = {effects:'All', clips:'All'}, cursors = {}, guideDone = new Set();
 let setupChecksReady = false, setupCheckTimer = null, enabledLayers, generatedSample = null, modelList = null;
@@ -60,11 +60,11 @@ function applyTheme(theme) {
  document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === next)));
 }
 
-async function api(path, body) {
+async function api(path, body, allowFailure=false) {
  if (demo) return demo.request(path, body);
  const response = await fetch(path, body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-Soundbar-Request':'ui'}, body:JSON.stringify(body)});
  const data = await response.json();
- if (!response.ok || data.ok === false) throw new Error(data.error || data.message || 'Request failed');
+ if (!response.ok || !allowFailure && data.ok === false) throw new Error(data.error || data.message || 'Request failed');
  return data;
 }
 function toast(message) {
@@ -187,6 +187,9 @@ function speechReadiness(mode) {
  if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) return {ready:false, message:'Choose installed voices'};
  const key = mode === 'phrases' ? 'phrases' : 'aiSpeech';
  const check = setupChecks[key], current = check?.identity === speechIdentity(mode);
+ if (engine === 'kokoro' && !demo && (!current || check.status !== 'checked' || !check.model?.ready)) {
+  return {ready:false, message:current && check.message || 'Preparing Kokoro model…'};
+ }
  if (current && check.status === 'failed') return {ready:false, message:(engine === 'kokoro' ? 'Kokoro: ' : '') + (check.message || 'Speech check failed')};
  if (current && check.status === 'checking') return {ready:false, message:'Checking speech…'};
  return {ready:true, message:current && check.status === 'checked' ? 'Engine available' : 'Not checked'};
@@ -247,10 +250,18 @@ function checkPresentation(key) {
  if (key === 'phrases' || key === 'aiSpeech') {
   const installation = speechInstallation(speechEngine(checkModes[key]));
   if (!installation.available) prerequisite = installation;
-  else if (!speechReadiness(checkModes[key]).ready && status !== 'failed' && status !== 'checking') prerequisite = {message:'Choose installed voices', tone:'warning'};
+  else {
+   const mode = checkModes[key], engine = speechEngine(mode);
+   const voices = mode === 'phrases' ? Object.values(state.phraseVoices[engine]) : [state.voices[engine]];
+   if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) prerequisite = {message:'Choose installed voices', tone:'warning'};
+  }
  }
  const result = {message:status === 'checked' ? success : status === 'failed' ? 'Check failed' : status === 'checking' ? pending : provider && !cli ? 'Not checked' : 'Not checked', tone:status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning'};
- return {action, pending, status, checking:check?.status === 'checking', prerequisite, ...(prerequisite || result)};
+ if (current && check.model) {
+  result.message = check.message;
+  result.tone = status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning';
+ }
+ return {action:current && check.model?.state === 'error' ? 'Retry model loading' : action, pending, status, checking:check?.status === 'checking', prerequisite, ...(prerequisite || result)};
 }
 function paintStatus(node, view) {
  const tone = {success:'ok', warning:'warn', error:'err'}[view.tone] || '';
@@ -267,34 +278,52 @@ function scheduleSetupChecks(delay=150) {
  if (demo || !setupChecksReady) return;
  clearTimeout(setupCheckTimer);
  const run = () => {
+  clearTimeout(modelPoll);
   for (const key of modeCheckKeys()) {
    const check = setupChecks[key];
-   if (check?.status === 'checking' || check?.identity === checkIdentity(key) || checkPresentation(key).prerequisite) continue;
+   if (check?.requesting || check?.status === 'checking' || check?.identity === checkIdentity(key) || checkPresentation(key).prerequisite) continue;
    checkSetup(key, {automatic:true});
   }
+  scheduleModelPoll();
  };
  if (delay) setupCheckTimer = setTimeout(run, delay); else run();
 }
 async function refreshSetup() { setup = {...setup, ...await api('/api/setup')}; }
+function scheduleModelPoll() {
+ clearTimeout(modelPoll);
+ if (demo || !['phrases','ai'].includes(state.viewMode) || speechEngine() !== 'kokoro' || !speechInstallation().available) return;
+ const key = state.viewMode === 'ai' ? 'aiSpeech' : 'phrases';
+ const check = setupChecks[key];
+ if (check?.identity === checkIdentity(key) && check.status === 'failed') return;
+ modelPoll = setTimeout(() => checkSetup(key, {automatic:true}), check?.status === 'checked' ? 5000 : 2000);
+}
 async function checkSetup(key, {automatic=false}={}) {
- if (setupChecks[key]?.status === 'checking' || (checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips')) return;
- const mode = checkModes[key], config = draftConfig(mode), identity = checkIdentity(key), button = checkButton(key);
- const check = setupChecks[key] = {identity, status:'checking'};
+ if (setupChecks[key]?.requesting || (checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips')) return;
+ const mode = checkModes[key], config = draftConfig(mode), identity = checkIdentity(key);
+ const previous = setupChecks[key]?.identity === identity ? setupChecks[key] : null;
+ const check = setupChecks[key] = {identity, requesting:true,
+  status:automatic && previous?.model ? previous.status : 'checking',
+  model:previous?.model, message:previous?.message};
  if (key === 'ai') checkedAI = null;
  if (!automatic) clearError();
  renderChecks();
  try {
   await refreshSetup();
-  await api('/api/draft-check', {mode, config, scope:key === 'ai' ? 'provider' : 'speech'});
-  check.status = 'checked';
-  if (identity === checkIdentity(key) && key === 'ai') { checkedAI = identity; refreshModels(); }
+  const result = await api('/api/draft-check', {mode, config, scope:key === 'ai' ? 'provider' : 'speech', retry:!automatic}, true);
+  check.model = result.model;
+  check.message = result.message || result.error || 'Check failed';
+  check.status = result.ok ? 'checked' : result.pending ? 'loading' : 'failed';
+  if (!result.ok && !result.pending && identity === checkIdentity(key)) showError(result.message || result.error || 'Check failed');
+  if (result.ok && identity === checkIdentity(key) && key === 'ai') { checkedAI = identity; refreshModels(); }
  } catch (error) {
   check.status = 'failed';
   check.message = error.message;
   if (identity === checkIdentity(key)) showError(error.message);
  } finally {
+  check.requesting = false;
   render({preservePhraseEditor:true});
   if (identity !== checkIdentity(key)) scheduleSetupChecks();
+  scheduleModelPoll();
  }
 }
 
@@ -521,9 +550,28 @@ function renderSpeech() {
  const activity = $('installActivity'), output = (setup.installOutput || []).join('\n');
  activity.hidden = !showInstall || !output;
  if (activity.textContent !== output) { activity.textContent = output; activity.scrollTop = activity.scrollHeight; }
+ const modelCheck = setupChecks[state.viewMode === 'ai' ? 'aiSpeech' : 'phrases'];
+ const modelCurrent = modelCheck?.identity === speechIdentity(state.viewMode);
+ const progress = modelCurrent ? modelCheck.model : null;
+ $('modelPreparation').hidden = !kokoro || !installation.available || !!demo;
+ paintStatus($('modelPreparationStatus'), {
+  message:modelCurrent && modelCheck.message || 'Preparing Kokoro model…',
+  tone:modelCurrent && modelCheck.status === 'failed' ? 'error' : progress?.ready ? 'success' : 'warning',
+ });
+ const bytes = value => (value / 1000000).toFixed(1) + ' MB';
+ const details = [];
+ if (progress?.file) details.push(progress.file);
+ if (progress?.total > 0) details.push(`${bytes(progress.completed || 0)} of ${bytes(progress.total)} prepared`);
+ else if (progress?.completed > 0) details.push(bytes(progress.completed) + ' prepared');
+ if (progress?.transferred > 0) details.push(bytes(progress.transferred) + ' received');
+ $('modelDownloadDetails').textContent = details.join(' · ');
+ const bar = $('modelDownloadProgress');
+ bar.hidden = !progress || progress.state !== 'downloading';
+ if (progress?.total > 0) { bar.max = progress.total; bar.value = Math.min(progress.completed || 0, progress.total); }
+ else bar.removeAttribute('value');
  $('kokoroInfo').hidden = !kokoro;
  $('verificationRow').hidden = !installation.available;
- const repair = ['phrases','aiSpeech'].some(key => setupChecks[key]?.status === 'failed' && setupChecks[key]?.identity === checkIdentity(key));
+ const repair = ['phrases','aiSpeech'].some(key => setupChecks[key]?.status === 'failed' && !setupChecks[key]?.model && setupChecks[key]?.identity === checkIdentity(key));
  $('installKokoro').hidden = !kokoro || (setup.kokoro && !repair) || !!setup.installing;
  $('installKokoro').disabled = !!setup.installing;
  $('installKokoro').textContent = setup.installStatus === 'error' ? 'Retry installation' : repair ? 'Repair installation' : 'Install Kokoro';
@@ -707,7 +755,14 @@ function renderPreviewState() {
   button.classList.toggle('is-generating', active && !playing);
   button.setAttribute('aria-busy', String(active));
   button.querySelector('svg use')?.setAttribute('href', active ? playing ? '#i-wave' : '#i-reset' : '#i-play');
-  if (mediaBusy) button.disabled = true;
+  const mode = button.dataset.preview;
+  if (['phrases','ai'].includes(mode) && !demo) {
+   const empty = mode === 'phrases' && !button.dataset.role &&
+    [state.phrases[button.dataset.event]?.[Number(button.dataset.variant)]].flat().some(text => !String(text || '').trim());
+   const blocked = speechEngine(mode) === 'kokoro' && !speechReadiness(mode).ready;
+   button.disabled = mediaBusy || empty || blocked;
+   button.title = blocked ? speechReadiness(mode).message : '';
+  } else if (mediaBusy) button.disabled = true;
  });
 }
 async function mediaAction(button, work, phase='playing') {

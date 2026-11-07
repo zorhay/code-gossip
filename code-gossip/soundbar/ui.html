@@ -317,6 +317,8 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
 .kokoro-info ul{margin:8px 0 0;padding-left:18px;}
 .kokoro-info li+li{margin-top:8px;}
 #engineDetail{display:block;width:100%;overflow-wrap:anywhere;}
+#modelPreparation {margin:12px 0;}
+#modelDownloadProgress {width:100%;accent-color:var(--accent);}
 #installActivity{max-height:170px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;line-height:1.6;background:var(--bg);padding:12px;border:1px solid var(--line);border-radius:8px;}
 .theme-note{margin-top:10px;}
 @media (prefers-reduced-motion:reduce) {*,*::before,*::after {animation:none!important; transition:none!important;}}
@@ -458,18 +460,23 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
     <p class="note" id="engineDetail"></p>
     <p class="note" id="installTiming" role="status" hidden></p>
     <pre id="installActivity" aria-label="Recent installation activity" hidden></pre>
+    <div id="modelPreparation" hidden>
+     <div class="check-row"><strong>Speech model</strong><span class="status" id="modelPreparationStatus" role="status"></span></div>
+     <p class="note" id="modelDownloadDetails"></p>
+     <progress id="modelDownloadProgress" aria-label="Kokoro model file preparation" hidden></progress>
+    </div>
     <div class="check-row" id="verificationRow"><strong>Verification</strong><button class="btn sm" type="button" id="speechCheck" data-check-setup="phrases">Check</button></div>
    </div>
    <div class="dlg-section kokoro-info" id="kokoroInfo" hidden>
     <p class="group-label">About Kokoro</p>
-    <p class="note">Kokoro turns text into speech on your computer. Install downloads Python packages; the speech model downloads on first use.</p>
+    <p class="note">Kokoro turns text into speech on your computer. Install downloads Python packages; opening a Kokoro speech mode prepares the model and selected voices.</p>
     <details><summary>What gets installed &amp; how it works</summary>
      <ul>
       <li><strong>Packages:</strong> Kokoro, SoundFile, PyTorch and their dependencies, plus the English spaCy language model. Allow roughly 1.5 GB for the Python environment, plus model downloads.</li>
       <li><strong>Location:</strong> an isolated Python environment at <code>~/.code-gossip/state/.venv</code>. In a development install, this points into your checkout.</li>
       <li><strong>Python:</strong> requires Python 3.10–3.12. Setup looks for a compatible interpreter; if needed and <code>uv</code> is available, it may download a managed Python through <code>uv</code>.</li>
       <li><strong>Model:</strong> Kokoro-82M and voice files download from Hugging Face on first use and are cached locally (normally <code>~/.cache/huggingface</code>, unless configured otherwise).</li>
-      <li><strong>While running:</strong> a background process starts on first speech use, keeps the model in memory, and receives requests through a local Unix socket. It stops after 10 minutes without activity.</li>
+      <li><strong>While running:</strong> a background process starts when checking or using Kokoro speech, keeps the model in memory, and receives requests through a local Unix socket. It stops after 10 minutes without activity.</li>
       <li><strong>Privacy:</strong> speech synthesis runs locally once the models are downloaded. AI commentary still uses your selected AI provider to generate its text.</li>
      </ul>
     </details>
