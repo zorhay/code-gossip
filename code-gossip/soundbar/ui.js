@@ -234,7 +234,7 @@ function checkButton(key) {
 }
 function checkPresentation(key) {
  const check = setupChecks[key], current = check?.identity === checkIdentity(key), status = current ? check.status : 'unchecked';
- const provider = key === 'ai', cli = provider && state.provider === 'claude_cli';
+ const provider = key === 'ai', cli = provider && ['claude_cli', 'codex_cli'].includes(state.provider);
  const action = provider ? (cli ? 'Check CLI' : state.provider === 'ollama' ? 'Check server' : 'Check connection') : 'Check';
  const pending = provider && !cli ? 'Connecting…' : 'Checking…';
  const success = provider ? (cli ? 'CLI found' : state.provider === 'ollama' ? 'Server reachable' : 'Connection verified') : key === 'effects' || key === 'clips' ? 'Audio available' : 'Engine available';
@@ -300,6 +300,7 @@ async function checkSetup(key, {automatic=false}={}) {
 
 function providerNote() {
  if (state.provider === 'claude_cli') return 'Checks that Claude CLI is installed. Play a sample to test sign-in and model access. Cloud providers are checked only when you ask.';
+ if (state.provider === 'codex_cli') return 'Uses your Codex sign-in and usage limits. Check CLI detects installation; Play sample tests sign-in and model access. Leave Model blank for the CLI default. Requires a recent Codex CLI.';
  if (state.provider === 'ollama') return 'Checks the local server. Play a sample to test the selected model.';
  return `${saved.narrator_providers[state.provider]?.description || ''} A connection check sends a short request and may be billed. It runs only when you ask.`;
 }

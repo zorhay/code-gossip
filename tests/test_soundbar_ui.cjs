@@ -11,7 +11,7 @@ const state = {
  ...read('configs/config.defaults.json'),
  effects_profiles: Object.fromEntries(Object.keys(manifest.effects).map(key => [key, {}])),
  narrator_styles: read('configs/narrator_styles.defaults.json'),
- narrator_providers: {claude_cli:{name:'Claude CLI',needs_key:false,default_model:'haiku'},openai:{name:'OpenAI',needs_key:true,default_model:'model'}},
+ narrator_providers: {codex_cli:{name:'Codex CLI',needs_key:false,default_model:''},claude_cli:{name:'Claude CLI',needs_key:false,default_model:'haiku'},openai:{name:'OpenAI',needs_key:true,default_model:'model'}},
  phrases: read('configs/phrases.defaults.json'), events: ['edit','subagent_start','subagent_stop','stop'],
  voices: [{name:'Tara',locale:'en_US'},{name:'Aman',locale:'en_US'},{name:'Samantha',locale:'en_US'}],
  kokoro_voices: [{id:'af_heart',name:'Heart'},{id:'af_bella',name:'Bella'},{id:'am_adam',name:'Adam'}],
@@ -52,7 +52,7 @@ const server = http.createServer((req,res)=>{
     }
    }else if(endpoint==='/api/config') {const body=req.postDataJSON();writes.push(body);if(configGate)await configGate;if(failSave)reply={ok:false,error:'Save failed'};else Object.assign(state,body);}
    else if(endpoint==='/api/draft-preview'){const body=req.postDataJSON();previews.push(body);if(body.action==='generate'&&generationGate)await generationGate;else if(previewGate)await previewGate;reply=failPreview?{ok:false,message:'Playback failed'}:failGeneration&&body.action==='generate'?{ok:false,message:'Generation failed'}:{ok:true,text:'Preview result'};}
-   else if(endpoint==='/api/narrator-models'){const body=req.postDataJSON();modelRequests.push(body);if(modelGate)await modelGate;reply=failModels?{ok:false,message:'Could not load models'}:body.config.narrator_provider==='claude_cli'?{ok:true,models:[],supported:false,message:'Claude CLI has no live model list.'}:{ok:true,models:['live-model-a','live-model-b'],supported:true};}
+   else if(endpoint==='/api/narrator-models'){const body=req.postDataJSON();modelRequests.push(body);if(modelGate)await modelGate;reply=failModels?{ok:false,message:'Could not load models'}:['claude_cli','codex_cli'].includes(body.config.narrator_provider)?{ok:true,models:[],supported:false,message:(body.config.narrator_provider==='codex_cli'?'Codex CLI':'Claude CLI')+' has no live model list.'}:{ok:true,models:['live-model-a','live-model-b'],supported:true};}
    else if(endpoint==='/api/draft-check'){checks.push(req.postDataJSON());if(checkGate)await checkGate;reply=failCheck?{ok:false,error:checkError}:{ok:true,message:'Ready'};}
    else if(endpoint==='/api/kokoro-install'){installations++;state.setup.kokoro=true;state.setup.installing=false;state.setup.installStatus='done';reply={ok:true,status:'done'};}
    else if(endpoint==='/api/kokoro-status')reply={ok:true,status:'done',installed:state.setup.kokoro};
@@ -307,6 +307,16 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => document.getElementById('modelStatus').textContent.includes('Claude CLI'));
   assert.equal(await page.locator('#modelChoices option').count(), 0);
   assert(await page.locator('#refreshModels').isDisabled());
+  await page.selectOption('#provider', 'codex_cli');
+  await settingsIdle();
+  await page.waitForFunction(() => document.getElementById('modelStatus').textContent.includes('Codex CLI'));
+  await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'CLI found');
+  assert.equal(await page.locator('#checkConnection').textContent(), 'Check CLI');
+  assert.equal(state.narrator_provider, 'codex_cli');
+  assert.equal(state.narrator_api_key, '');
+  assert(await page.locator('#refreshModels').isDisabled());
+  assert.equal(checks.at(-1).config.narrator_provider, 'codex_cli');
+
   await page.selectOption('#provider', 'openai');
   await settingsIdle();
   assert.equal(await page.locator('#modelChoices option').count(), 0);

@@ -920,7 +920,9 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 result = subprocess.run(
                     [get_python3(), str(ENGINE / "narrate.py"), "--dry-run"],
-                    input=test_context, capture_output=True, text=True, timeout=15,
+                    # Let the CLI's 15-second deadline reap its process group
+                    # before this outer worker deadline can terminate narrate.py.
+                    input=test_context, capture_output=True, text=True, timeout=20,
                 )
                 text = result.stdout.strip()
                 if text:

@@ -30,9 +30,9 @@ class TestNarrateImport:
 class TestProviders:
     """PROVIDERS dict completeness."""
 
-    def test_has_all_five_providers(self):
+    def test_has_all_six_providers(self):
         from narrate import PROVIDERS
-        expected = {"claude_cli", "anthropic", "gemini", "openai", "ollama"}
+        expected = {"claude_cli", "codex_cli", "anthropic", "gemini", "openai", "ollama"}
         assert set(PROVIDERS.keys()) == expected
 
     def test_providers_have_required_keys(self):
@@ -44,8 +44,9 @@ class TestProviders:
 
     def test_providers_needs_key_types(self):
         from narrate import PROVIDERS
-        # claude_cli and ollama don't need keys; the rest do
+        # CLI providers and Ollama do not need API keys
         assert PROVIDERS["claude_cli"]["needs_key"] is False
+        assert PROVIDERS["codex_cli"]["needs_key"] is False
         assert PROVIDERS["ollama"]["needs_key"] is False
         assert PROVIDERS["anthropic"]["needs_key"] is True
         assert PROVIDERS["gemini"]["needs_key"] is True

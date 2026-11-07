@@ -8,6 +8,9 @@
 # Narration voice profile reads phrases.json (TTS-specific).
 # Narrator voice profile pipes hook JSON to narrate.py (LLM-powered).
 
+# A narrator CLI can emit agent hooks; never narrate or play its own events.
+[ "${CODE_GOSSIP_NARRATOR:-}" = "1" ] && exit 0
+
 # Capture hook stdin and event before backgrounding (~1ms)
 STDIN_DATA=$(cat)
 EVENT="${1:-stop}"

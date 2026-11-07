@@ -389,6 +389,19 @@ def test_live_models_use_only_selected_provider_credentials(isolated_preferences
     assert all('models' not in provider for provider in server.NARRATOR_PROVIDERS.values())
 
 
+def test_narrator_test_allows_cli_timeout_cleanup(isolated_preferences):
+    server = isolated_preferences
+    handler = object.__new__(server.Handler)
+    handler.json_response = Mock()
+    with patch.object(server.subprocess, 'run', return_value=Mock(
+            stdout='', stderr='Codex commentary timed out.', returncode=1)) as worker, \
+            patch.object(server.subprocess, 'Popen') as speech:
+        handler._handle_post('/api/narrator-test', {})
+        assert worker.call_args.kwargs['timeout'] > 15
+        assert handler.json_response.call_args.args[0]['ok'] is False
+        speech.assert_not_called()
+
+
 @pytest.mark.parametrize('changes', [{'narrator_provider': 'unknown'}, {'narrator_api_key': 42}, {'tts_engine': 'kokoro'}, []])
 def test_live_models_reject_invalid_config(isolated_preferences, changes):
     with pytest.raises(ValueError):

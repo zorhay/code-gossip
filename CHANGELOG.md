@@ -6,6 +6,8 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
+- AI commentary adds Codex CLI using existing Codex sign-in, optional model selection, ephemeral requests, and protection against narrating its own hooks.
+
 - Soundbar separates Save/Discard below each editor from Use in the header. AI speech and provider settings save as they change, preserving phrase drafts and restoring settings after failed writes.
 - AI commentary defaults to Claude Haiku 5.5, Gemini 3.5 Flash-Lite, and GPT-6 Luna. Anthropic and OpenAI token costs are lower; Gemini uses the newer Flash-Lite model at the same text token rates as the previous Gemini 2.5 Flash default. Requests to these models minimize reasoning, and only response text is spoken. Existing explicit model selections are retained; clear the Model field to use the new provider default.
 

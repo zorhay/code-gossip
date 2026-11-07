@@ -57,10 +57,11 @@ def test_ollama_uses_only_installed_models(names):
     assert get.call_args.args[0].headers == {}
 
 
-def test_missing_key_and_cli_never_make_network_requests():
+@pytest.mark.parametrize('provider', ['claude_cli', 'codex_cli'])
+def test_missing_key_and_cli_never_make_network_requests(provider):
     with patch.object(model_catalog, 'urlopen') as get:
         assert not model_catalog.list_models('openai')['ok']
-        result = model_catalog.list_models('claude_cli')
+        result = model_catalog.list_models(provider)
         assert result['models'] == [] and result['supported'] is False
         get.assert_not_called()
 
