@@ -10,7 +10,7 @@ Installation opens Soundbar automatically. To open it again:
 ~/.code-gossip/soundbar/panel.sh
 ```
 
-At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phrases**, or **AI commentary**. Browsing and previews leave the sounds agents play unchanged. The header shows what is in use. **Sound on/off** and volume apply immediately. **Settings** holds appearance, pacing, Codex approval cues, and updates.
+At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phrases**, or **AI commentary**. Browsing sound packs, phrases, and commentary styles leaves the sounds agents play unchanged; previews audition the current selection. The header shows what is in use. **Sound on/off** and volume apply immediately. **Settings** holds appearance, pacing, Codex approval cues, and updates.
 
 | Category | Controls | Setup |
 |---|---|---|
@@ -19,11 +19,13 @@ At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phr
 | **Phrases** | Editable Senior phrases, main-agent and subagent voices | Built-in macOS speech or optional Kokoro |
 | **AI commentary** | Style, voice, and session context | Provider, model, optional API key, connection check, and speech engine |
 
-Previews play the selected event and alternative. Phrases also have per-row playback. AI commentary’s **Play sample** generates and plays a sample on the first click; replaying the displayed text does not make another AI request.
+Previews play the selected event and alternative. The clicked button shows a waveform until playback finishes, then returns to the play icon. Phrases also have per-row playback. AI commentary’s **Play sample** generates and plays a sample on the first click; replaying the displayed text does not make another AI request.
 
-**Save** writes the open tab without changing the active mode. Saving settings used by active audio requires its playback dependencies to be available. **Use** switches to a tab that has no unsaved edits. **Save & use** writes those edits and switches to that tab. A dot marks unsaved edits; the tab in use is labeled. **Discard** drops unsaved edits.
+**Save** and **Discard** sit below the editor, separate from **Use** in the header. In Phrases, they appear below the phrase rows. Save writes the edits without switching modes; saving settings used by active audio requires its playback dependencies to be available. Use saves any edits and switches to that mode. A dot marks unsaved edits; the tab in use is labeled.
 
-Each tab keeps setup in a details drawer. Effects, clips, and speech are checked for the visible tab. Cloud provider checks run only when you ask, because they can be billed. Claude CLI and Ollama may be checked when AI commentary is open. **Play sample** also verifies the provider. Kokoro installs only when you click **Install Kokoro**. SoX setup shows the installation command to run in your terminal. Using a tab selects one channel and preserves mute. Existing combined Effects + Voice settings remain unchanged until you use a tab; the CLI still supports independent channels.
+In AI commentary, the speech engine, speaker, and provider save immediately when selected. Model and API-key edits save when you leave the field. These settings apply to the runtime without switching modes; the speech engine and voices are shared with Phrases. Existing phrase edits are preserved. Failed saves restore the previous setting. Style and session-context changes still use Save or Discard.
+
+Each tab keeps setup in a details drawer. Effects, clips, and speech are checked for the visible tab. Cloud provider checks run only when you ask, because they can be billed. Claude CLI and Ollama may be checked when AI commentary is open. **Play sample** also verifies the provider. Kokoro installs only when you click **Install Kokoro**. Speech errors appear beside Use (or the In use label); the bottom **Details** button opens installation and repair controls. SoX setup shows the installation command to run in your terminal. Using a tab selects one channel and preserves mute. Existing combined Effects + Voice settings remain unchanged until you use a tab; the CLI still supports independent channels.
 
 **Settings → Appearance** switches between Amber and Mint; the choice stays in this browser. **Settings → Close Soundbar** stops the panel server; closing the browser tab alone leaves it running. Hook audio continues either way. **?** opens Getting started. Choosing a topic jumps to that part of the panel and does not save, play, or check anything.
 

@@ -30,6 +30,8 @@ const server = http.createServer((req,res)=>{
  try{
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[],writes=[],previews=[],checks=[],modelRequests=[];let saveGate=null,releaseSave;let modelGate=null,releaseModels,failModels=false;let failGeneration=false,failSave=false,failShutdown=true,installations=0,checkGate=null,releaseCheck,failCheck=false;
+  let configGate=null,releaseConfig,checkError='Check failed';
+  let previewGate=null,releasePreview,generationGate=null,releaseGeneration,failPreview=false;
   let versionState={installed:'0.8.0',available:false,release:null,checked_at:1,development:false,running:false,phase:'idle',message:''},updateChecks=0,updateStarts=0,failUpdateCheck=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});
   await page.route('**/api/**',async route=>{
@@ -48,10 +50,10 @@ const server = http.createServer((req,res)=>{
      if(endpoint==='/api/activate'){Object.assign(state,{effects_on:body.enabled&&body.mode==='effects',voice_on:body.enabled&&body.mode!=='effects',soundbar_mode:body.mode});if(body.mode!=='effects')state.voice_profile={clips:'generals',phrases:'senior',ai:'narrator'}[body.mode];}
      if(body.phrases)state.phrases=body.phrases;
     }
-   }else if(endpoint==='/api/config') {const body=req.postDataJSON();writes.push(body);if(failSave)reply={ok:false,error:'Save failed'};else Object.assign(state,body);}
-   else if(endpoint==='/api/draft-preview'){const body=req.postDataJSON();previews.push(body);reply=failGeneration&&body.action==='generate'?{ok:false,message:'Generation failed'}:{ok:true,text:'Preview result'};}
+   }else if(endpoint==='/api/config') {const body=req.postDataJSON();writes.push(body);if(configGate)await configGate;if(failSave)reply={ok:false,error:'Save failed'};else Object.assign(state,body);}
+   else if(endpoint==='/api/draft-preview'){const body=req.postDataJSON();previews.push(body);if(body.action==='generate'&&generationGate)await generationGate;else if(previewGate)await previewGate;reply=failPreview?{ok:false,message:'Playback failed'}:failGeneration&&body.action==='generate'?{ok:false,message:'Generation failed'}:{ok:true,text:'Preview result'};}
    else if(endpoint==='/api/narrator-models'){const body=req.postDataJSON();modelRequests.push(body);if(modelGate)await modelGate;reply=failModels?{ok:false,message:'Could not load models'}:body.config.narrator_provider==='claude_cli'?{ok:true,models:[],supported:false,message:'Claude CLI has no live model list.'}:{ok:true,models:['live-model-a','live-model-b'],supported:true};}
-   else if(endpoint==='/api/draft-check'){checks.push(req.postDataJSON());if(checkGate)await checkGate;reply=failCheck?{ok:false,error:'Check failed'}:{ok:true,message:'Ready'};}
+   else if(endpoint==='/api/draft-check'){checks.push(req.postDataJSON());if(checkGate)await checkGate;reply=failCheck?{ok:false,error:checkError}:{ok:true,message:'Ready'};}
    else if(endpoint==='/api/kokoro-install'){installations++;state.setup.kokoro=true;state.setup.installing=false;state.setup.installStatus='done';reply={ok:true,status:'done'};}
    else if(endpoint==='/api/kokoro-status')reply={ok:true,status:'done',installed:state.setup.kokoro};
    else if(endpoint==='/api/shutdown'){assert.equal(req.headers()['x-soundbar-request'],'ui');reply={ok:!failShutdown};}
@@ -59,6 +61,7 @@ const server = http.createServer((req,res)=>{
    await route.fulfill({json:reply});
   });
   await page.goto(`http://127.0.0.1:${server.address().port}`);
+  const settingsIdle = () => page.waitForFunction(() => document.getElementById('activationProgress').textContent !== 'Saving settings…');
   const ready = text => page.waitForFunction(value => document.getElementById('statusText').textContent === value, text);
   await page.waitForFunction(() => document.getElementById('statusText').textContent === 'In use · Effects · System sounds');
   await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Audio available');
@@ -91,8 +94,18 @@ const server = http.createServer((req,res)=>{
   await page.locator('#packList label', {hasText:'Sci-fi'}).click();
   assert(await page.locator('#panel-effects [data-act=save]').isDisabled(), 'Saving the active pack must not bypass missing audio dependencies');
   const beforePackSample = previews.length;
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
   await page.getByRole('button', {name:'Play a System sounds sample', exact:true}).click();
+  const packPreview=page.getByRole('button', {name:'Play a System sounds sample', exact:true});
+  assert.equal(await packPreview.locator('use').getAttribute('href'), '#i-wave');
+  assert(await packPreview.locator('svg').isVisible());
+  await page.locator('#tab-clips').click();
+  assert.equal(await page.locator('[data-preview]:not(:disabled)').count(), 0);
+  await page.locator('#tab-effects').click();
+  assert.equal(await packPreview.locator('use').getAttribute('href'), '#i-wave', 'Playback indicator survives a rerender');
+  releasePreview(); previewGate=null;
   await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
+  assert.equal(await packPreview.locator('use').getAttribute('href'), '#i-play');
   assert.equal(previews.length, beforePackSample + 1, 'A ready pack can be auditioned even when the selected pack is unavailable');
   assert.equal(previews.at(-1).config.effects_profile, 'default');
   await page.locator('#panel-effects [data-act=discard]').click();
@@ -100,20 +113,56 @@ const server = http.createServer((req,res)=>{
   await page.locator('#tab-ai').click();
   await page.locator('#panel-ai .strip [data-drawer=provider]').click();
   await page.selectOption('#provider', 'openai');
-  await page.locator('#closeDrawer').click();
-  await page.locator('#panel-ai [data-act=discard]').click();
-  await page.locator('#panel-ai .strip [data-drawer=provider]').click();
-  assert.equal(await page.locator('#provider').inputValue(), 'claude_cli', 'Discard restores the visible provider as well as the request configuration');
-  await page.locator('#closeDrawer').click();
-  await page.locator('#panel-ai .strip [data-drawer=speech]').click();
-  await page.selectOption('#phraseEngine', 'kokoro');
+  await settingsIdle();
+  assert.equal(state.narrator_provider, 'openai', 'Provider selection saves immediately');
+  assert.equal(state.soundbar_mode, 'effects', 'Saving provider settings does not activate AI');
+  assert.equal(await page.locator('#panel-ai [data-act=discard]').count(), 0);
+  failSave=true;
+  await page.selectOption('#provider', 'claude_cli');
+  await settingsIdle();
+  assert.equal(await page.locator('#provider').inputValue(), 'openai', 'A failed save restores the selected provider');
+  assert.equal(state.narrator_provider, 'openai');
+  await page.getByText('Save failed', {exact:true}).waitFor();
+  failSave=false;
+  configGate=new Promise(resolve=>{releaseConfig=resolve;});
+  const beforeQueued=writes.length;
+  await page.selectOption('#provider', 'claude_cli');
+  await page.selectOption('#provider', 'openai');
+  await page.selectOption('#provider', 'claude_cli');
+  assert.equal(writes.length,beforeQueued+1,'Rapid setting writes are serialized');
+  releaseConfig(); configGate=null;
+  await settingsIdle();
+  assert.equal(state.narrator_provider, 'claude_cli', 'The last provider selection wins');
+  assert.equal(await page.locator('#provider').inputValue(), 'claude_cli');
   await page.locator('#closeDrawer').click();
   await page.locator('#tab-phrases').click();
-  assert.equal(await page.locator('#phraseEngineLabel').innerText(), 'macOS speech', 'An AI engine draft must not change the Phrases draft');
-  assert.equal(await page.locator('#badges-phrases .dirty-dot').count(), 0);
+  await page.locator('#phraseRows input').first().fill('Keep this phrase draft');
   await page.locator('#tab-ai').click();
-  await page.locator('#panel-ai [data-act=discard]').click();
-  await page.locator('#tab-effects').click();
+  await page.locator('#panel-ai .strip [data-drawer=speech]').click();
+  await page.selectOption('#phraseEngine', 'kokoro');
+  await settingsIdle();
+  assert.equal(state.tts_engine, 'kokoro', 'Speech engine selection saves immediately, even before installation');
+  assert.equal(state.phrases.subagent_start[0][0], 'Look into this', 'Saving speech settings does not save phrase edits');
+  await page.locator('#closeDrawer').click();
+  await page.locator('#tab-phrases').click();
+  assert.equal(await page.locator('#phraseEngineLabel').innerText(), 'Kokoro', 'Untouched shared engine settings follow the saved value');
+  assert.equal(await page.locator('#phraseRows input').first().inputValue(), 'Keep this phrase draft');
+  await page.locator('#panel-phrases [data-act=discard]').click();
+  await page.locator('#tab-ai').click();
+  await page.locator('#panel-ai .strip [data-drawer=speech]').click();
+  failSave=true;
+  await page.selectOption('#phraseEngine', 'say');
+  await settingsIdle();
+  assert.equal(await page.locator('#phraseEngine').inputValue(), 'kokoro', 'A failed engine save restores the selected engine');
+  failSave=false;
+  await page.selectOption('#phraseEngine', 'say');
+  await settingsIdle();
+  assert.equal(state.tts_engine, 'say');
+  await page.locator('#closeDrawer').click();
+  await page.reload();
+  await page.locator('#tab-effects[aria-selected=true]').waitFor();
+  assert.equal(await page.locator('#provider').inputValue(), 'claude_cli', 'Immediate provider settings survive reload');
+  assert.equal(await page.locator('#phraseEngine').inputValue(), 'say', 'Immediate speech settings survive reload');
 
   // Hold the automatic setup check until a save error is visible, then let it run.
   await page.clock.install();
@@ -134,13 +183,17 @@ const server = http.createServer((req,res)=>{
   await page.locator('#activateSelection').click();
   assert.equal(await page.locator('#activateSelection').getAttribute('aria-busy'), 'true');
   assert.equal(await page.locator('#activationProgress').textContent(), 'Saving selection…');
+  for (const id of ['provider','model','sampleKey','phraseEngine','speaker']) assert(await page.locator('#'+id).isDisabled(), 'Settings cannot race an explicit mode save');
   releaseSave(); saveGate = null;
   await page.waitForFunction(() => document.getElementById('statusText').textContent.endsWith('Paper'));
   assert.equal(writes.at(-1).endpoint, '/api/save', 'Saving the mode already in use does not switch channels');
   assert.equal(writes.at(-1).config.effects_profile, 'paper');
   assert.equal(state.soundbar_mode, 'effects');
 
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
   await page.locator('#effectsEvents button', {hasText:'Stop'}).first().click();
+  assert.equal(await page.locator('#effectsEvents .is-playing use').getAttribute('href'), '#i-wave');
+  releasePreview(); previewGate=null;
   await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
   assert.equal(previews.at(-1).event, 'stop');
   assert.equal(previews.at(-1).config.effects_profile, 'paper');
@@ -156,6 +209,14 @@ const server = http.createServer((req,res)=>{
   await page.selectOption('#mainAgentVoice', 'Samantha');
   await page.selectOption('#subagentVoice', 'Aman');
   await page.locator('#phraseRows input').first().fill('Please investigate');
+  assert.equal(await page.locator('.panel-head [data-act=save],.panel-head [data-act=discard]').count(), 0, 'Draft actions stay outside the activation header');
+  assert(await page.locator('[data-draft-actions=phrases] [data-act=save]').isVisible());
+  assert(await page.locator('[data-draft-actions=phrases] [data-act=discard]').isVisible());
+  assert.equal(await page.locator('#panel-phrases .panel-head [data-act=save-use]').innerText(), 'Use Phrases');
+  const editorBottom = await page.locator('#phraseRows').evaluate(el => el.closest('.pane-body').getBoundingClientRect().bottom);
+  const actionsTop = await page.locator('[data-draft-actions=phrases]').evaluate(el => el.getBoundingClientRect().top);
+  assert(actionsTop >= editorBottom, 'Phrase draft actions appear below the editor');
+
   await page.locator('#panel-phrases .strip [data-drawer=speech]').click();
   failCheck = true;
   await page.locator('#speechCheck').click();
@@ -171,7 +232,11 @@ const server = http.createServer((req,res)=>{
   await page.locator('#speechCheck').click();
   await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Engine available');
   await page.locator('#closeDrawer').click();
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
   await page.getByRole('button', {name:'Preview alternative 1', exact:true}).click();
+  assert.equal(await page.locator('#phraseRows .is-playing use').getAttribute('href'), '#i-wave');
+  releasePreview(); previewGate=null;
+  await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
   assert.equal(previews.at(-1).variant, 0);
   await page.getByRole('button', {name:'Preview alternative 2', exact:true}).click();
   await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
@@ -181,6 +246,16 @@ const server = http.createServer((req,res)=>{
   assert.equal(previews.at(-1).config.voice_main, 'Samantha');
   assert.equal(previews.at(-1).config.voice_sub, 'Aman');
   assert.equal(previews.at(-1).phrases.subagent_start[0][0], 'Please investigate');
+
+  for (const id of ['previewMainAgent','previewSubagent']) {
+   previewGate=new Promise(resolve=>{releasePreview=resolve;});
+   await page.locator('#'+id).click();
+   assert.equal(await page.locator('#'+id+' use').getAttribute('href'), '#i-wave');
+   assert(await page.locator('#'+id+' svg').isVisible());
+   releasePreview(); previewGate=null;
+   await page.waitForFunction(id => document.getElementById(id).getAttribute('aria-busy')==='false',id);
+   assert.equal(await page.locator('#'+id+' use').getAttribute('href'), '#i-play');
+  }
   assert.equal(state.voice_on, false);
   await page.locator('#activateSelection').click();
   await ready('In use · Phrases · Senior');
@@ -201,6 +276,7 @@ const server = http.createServer((req,res)=>{
   assert(checks.slice(beforeAI).some(check => check.scope === 'provider'), 'A free CLI check can run when AI commentary is opened');
   await page.locator('#panel-ai .strip [data-drawer=provider]').click();
   await page.selectOption('#provider', 'openai');
+  await settingsIdle();
   assert.equal(await page.locator('#checkConnection').innerText(), 'Check connection');
   assert.equal(checks.at(-1).config.narrator_provider, 'claude_cli', 'Switching to a cloud provider does not check it');
   await page.locator('#sampleKey').fill('dummy-test-key');
@@ -226,11 +302,13 @@ const server = http.createServer((req,res)=>{
   await page.locator('#refreshModels').click();
   await page.waitForFunction(() => document.getElementById('modelStatus').dataset.status === 'loading');
   await page.selectOption('#provider', 'claude_cli');
+  await settingsIdle();
   releaseModels(); modelGate = null;
   await page.waitForFunction(() => document.getElementById('modelStatus').textContent.includes('Claude CLI'));
   assert.equal(await page.locator('#modelChoices option').count(), 0);
   assert(await page.locator('#refreshModels').isDisabled());
   await page.selectOption('#provider', 'openai');
+  await settingsIdle();
   assert.equal(await page.locator('#modelChoices option').count(), 0);
   assert(await page.locator('#refreshModels').isDisabled());
   await page.locator('#sampleKey').fill('dummy-test-key');
@@ -243,7 +321,10 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'Connection verified');
   assert.equal(checks.at(-1).scope, 'provider');
   assert.equal(checks.at(-1).config.narrator_api_key, 'dummy-test-key');
-  assert.equal(state.narrator_provider, 'claude_cli');
+  await settingsIdle();
+  assert.equal(state.narrator_provider, 'openai');
+  assert.equal(state.narrator_model, 'test-model');
+  assert.equal(state.narrator_api_key, 'dummy-test-key');
   await page.locator('#closeDrawer').click();
 
   await page.locator('#panel-ai .strip [data-drawer=speech]').click();
@@ -266,11 +347,15 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => document.getElementById('checkConnection').dataset.status === 'checked');
   await page.locator('#closeDrawer').click();
   await page.locator('#panel-ai .strip [data-drawer=speech]').click();
-  failCheck = true;
+  failCheck = true; checkError='Kokoro daemon could not load the voice model.';
   await page.locator('#speechCheck').click();
   await page.waitForFunction(() => document.getElementById('speechCheck').dataset.status === 'failed');
   assert.equal(await page.locator('#checkStatus-ai').innerText(), 'Connection verified');
   assert.equal(await page.locator('#installKokoro').innerText(), 'Repair installation');
+  assert((await page.locator('#panel-ai .panel-head .state-issue').innerText()).includes(checkError));
+  assert.equal(await page.locator('#panel-ai .panel-head [data-drawer=speech]').count(),0,'Speech errors show information instead of a duplicate Details button');
+  assert.equal(await page.locator('#panel-ai .strip [data-drawer=speech]').count(),1);
+
   assert.equal(checks.at(-1).scope, 'speech');
   failCheck = false;
   await page.locator('#speechCheck').click();
@@ -283,9 +368,19 @@ const server = http.createServer((req,res)=>{
   await page.getByText('Generation failed', {exact:true}).waitFor();
   assert.deepEqual(previews.slice(beforeFailedSample).map(request => request.action), ['generate']);
   assert.equal(await page.locator('#sampleLabel').innerText(), 'Play sample');
+  assert.equal(await page.locator('#sampleBtn use').getAttribute('href'), '#i-play');
   failGeneration = false;
   const firstSample = previews.length;
+  generationGate=new Promise(resolve=>{releaseGeneration=resolve;});
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
   await page.locator('#sampleBtn').click();
+  assert.equal(await page.locator('#sampleBtn use').getAttribute('href'), '#i-reset');
+  assert.equal(await page.locator('#sampleLabel').innerText(), 'Generating…');
+  releaseGeneration(); generationGate=null;
+  await page.waitForFunction(() => document.getElementById('sampleLabel').textContent==='Playing…');
+  assert.equal(await page.locator('#sampleBtn use').getAttribute('href'), '#i-wave');
+  assert(await page.locator('#sampleBtn svg').isVisible());
+  releasePreview(); previewGate=null;
   await page.waitForFunction(() => document.getElementById('sampleLabel').textContent === 'Replay');
   assert.equal(await page.locator('#commentarySample').innerText(), 'Preview result');
   assert.deepEqual(previews.slice(firstSample).map(request => request.action), ['generate', 'play']);
@@ -293,6 +388,19 @@ const server = http.createServer((req,res)=>{
   await page.locator('#sampleBtn').click();
   await page.waitForFunction(() => document.getElementById('sampleBtn').getAttribute('aria-busy') === 'false');
   assert.deepEqual(previews.slice(firstSample).map(request => request.action), ['generate', 'play', 'play']);
+  assert.equal(await page.locator('#sampleBtn use').getAttribute('href'), '#i-play');
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  failPreview=true;
+  await page.locator('#previewAIVoice').click();
+  assert.equal(await page.locator('#previewAIVoice use').getAttribute('href'), '#i-wave');
+  assert(await page.locator('#previewAIVoice svg').isVisible());
+  releasePreview(); previewGate=null;
+  await page.getByText('Playback failed', {exact:true}).waitFor();
+  assert.equal(await page.locator('#previewAIVoice use').getAttribute('href'), '#i-play');
+  assert(await page.locator('#previewAIVoice').isEnabled());
+  assert.equal(await page.locator('[data-preview].is-playing').count(), 0);
+  failPreview=false;
+
 
   await page.locator('#soundOn').uncheck();
   await page.waitForFunction(() => document.getElementById('powerLabel').textContent === 'Sound off');
@@ -387,6 +495,9 @@ const server = http.createServer((req,res)=>{
   state.setup.installing = false; state.setup.kokoro = false; state.setup.installStatus = 'error';
   state.setup.installMessage = 'Package installation failed: could not download dependencies. Check your network connection and retry installation.';
   await page.waitForFunction(() => document.getElementById('engineStatus').textContent === 'Installation failed');
+  await page.locator('#panel-ai .panel-head .state-issue').getByText('Kokoro: ' + state.setup.installMessage,{exact:true}).waitFor();
+  assert.equal(await page.locator('#panel-ai .panel-head [data-drawer=speech]').count(),0);
+
   await page.locator('#panel-ai .strip [data-drawer=speech]').click();
   assert.equal(await page.locator('#engineStatus').getAttribute('data-tone'), 'error');
   assert((await page.locator('#engineDetail').innerText()).includes('could not download'));

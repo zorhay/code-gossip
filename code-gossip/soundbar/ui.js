@@ -37,6 +37,8 @@ const GUIDE = [
 
 let saved, state, activeSelection, setup, voiceChoices, styleNames;
 let checkedAI = null, busy = false, savingSound = false, savingVolume = false, mediaBusy = false, installPoll = null;
+let activePreview = null;
+let savingAISettings = 0, aiSettingsQueue = Promise.resolve();
 const setupChecks = {}, filters = {effects:'All', clips:'All'}, cursors = {}, guideDone = new Set();
 let setupChecksReady = false, setupCheckTimer = null, enabledLayers, generatedSample = null, modelList = null;
 let versions = null, versionPoll = null, versionChecking = false, versionStarting = false, versionError = '', loadedVersion = null;
@@ -97,7 +99,7 @@ function normalizePhrases(source) {
 function voiceLabel(engine, id) { return (voiceChoices[engine] || []).find(([value]) => value === id)?.[1] || id; }
 function speechEngine(mode=state.viewMode) { return mode === 'ai' ? state.engine : state.phraseEngine; }
 function needsKey() { return !!saved.narrator_providers[state.provider]?.needs_key; }
-function providerKey() { return state.apiKey || (state.provider === saved.narrator_provider ? saved.narrator_api_key : '') || ''; }
+function providerKey() { if (state.keyEdited) return state.apiKey; return state.apiKey || (state.provider === saved.narrator_provider ? saved.narrator_api_key : '') || ''; }
 function hasProviderKey() { return !!demo || !needsKey() || !!providerKey().trim(); }
 function connectionIdentity() { return JSON.stringify([state.provider, state.model, providerKey()]); }
 function aiIdentity() { return connectionIdentity(); }
@@ -160,7 +162,7 @@ function draftConfig(mode=state.viewMode) {
  } else {
   config[engine === 'kokoro' ? 'kokoro_voice' : 'voice_main'] = state.voices[engine];
   Object.assign(config, {narrator_provider:state.provider, narrator_model:state.model, narrator_style:state.style, narrator_deep_context:state.context});
-  if (state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
+  if (state.keyEdited || state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
  }
  return config;
 }
@@ -180,12 +182,12 @@ function speechInstallation(engine=speechEngine()) {
 }
 function speechReadiness(mode) {
  const engine = speechEngine(mode), installation = speechInstallation(engine);
- if (!installation.available) return {ready:false, message:installation.message};
+ if (!installation.available) return {ready:false, message:engine === 'kokoro' ? 'Kokoro: ' + (setup.installStatus === 'error' && setup.installMessage || installation.message) : installation.message};
  const voices = mode === 'phrases' ? Object.values(state.phraseVoices[engine]) : [state.voices[engine]];
  if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) return {ready:false, message:'Choose installed voices'};
  const key = mode === 'phrases' ? 'phrases' : 'aiSpeech';
  const check = setupChecks[key], current = check?.identity === speechIdentity(mode);
- if (current && check.status === 'failed') return {ready:false, message:'Check failed'};
+ if (current && check.status === 'failed') return {ready:false, message:(engine === 'kokoro' ? 'Kokoro: ' : '') + (check.message || 'Speech check failed')};
  if (current && check.status === 'checking') return {ready:false, message:'Checking speech…'};
  return {ready:true, message:current && check.status === 'checked' ? 'Engine available' : 'Not checked'};
 }
@@ -288,6 +290,7 @@ async function checkSetup(key, {automatic=false}={}) {
   if (identity === checkIdentity(key) && key === 'ai') { checkedAI = identity; refreshModels(); }
  } catch (error) {
   check.status = 'failed';
+  check.message = error.message;
   if (identity === checkIdentity(key)) showError(error.message);
  } finally {
   render();
@@ -316,7 +319,7 @@ async function refreshModels(force=false) {
  const request = modelList = {identity, status:'loading', models:[], message:'Loading available models…'};
  renderModelList();
  const config = {narrator_provider:state.provider};
- if (state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
+ if (state.keyEdited || state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
  try {
   const result = await api('/api/narrator-models', {config});
   if (modelList !== request || identity !== modelListIdentity()) return;
@@ -358,26 +361,27 @@ function renderPanelState(mode) {
  if (demo) return;
  const inUse = modeInUse(mode), exclusive = activeSelection.mode === mode, dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
  const readiness = setupReadiness(mode), blocked = !readiness.ready, drawer = blockerDrawer(mode);
- const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume;
- const link = `<button type="button" class="link" data-drawer="${drawer}">${drawer === 'provider' ? 'Configure' : 'Details'}</button>`;
- let html = '';
+ const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume || savingAISettings;
+ const link = drawer === 'speech' ? '' : `<button type="button" class="link" data-drawer="${drawer}">${drawer === 'provider' ? 'Configure' : 'Details'}</button>`;
+ let actions = '', html = '';
  if (dirty) {
-  html += '<span class="unsaved"><i class="dirty-dot"></i>Unsaved changes</span>';
-  if (issue) html += `<span class="state-issue">${icon('warn')}${esc(issue)}</span>`;
-  else if (!saveReady.ready || !exclusive && blocked) html += `<span class="state-issue">${icon('warn')}${esc(!saveReady.ready ? saveReady.message : readiness.message)} · ${link}</span>`;
-  const saveDisabled = busy || mediaBusy || !!issue;
-  html += `<button type="button" class="btn ghost" data-act="discard" ${busy || mediaBusy ? 'disabled' : ''}>Discard</button>`;
-  html += `<button type="button" class="btn ${exclusive ? 'primary' : ''}" data-act="save" ${saveDisabled || saving || !saveReady.ready ? 'disabled' : ''}${mode === state.viewMode && exclusive ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>${inUse ? 'Save changes' : 'Save'}</button>`;
-  if (!exclusive) html += `<button type="button" class="btn primary" data-act="save-use" ${saveDisabled || saving || blocked ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Save &amp; use</button>`;
- } else if (exclusive) html += `<span class="pill success">${icon('check')}In use</span>`;
- else {
-  if (inUse) html += `<span class="pill success">${icon('check')}In use</span>`;
-  if (blocked) html += `<span class="state-issue">${icon('warn')}${esc(readiness.message)} · ${link}</span>`;
-  html += `<button type="button" class="btn primary" data-act="use" ${saving || blocked ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
+  actions += '<span class="unsaved"><i class="dirty-dot"></i>Unsaved changes</span>';
+  if (issue) actions += `<span class="state-issue">${icon('warn')}${esc(issue)}</span>`;
+  else if (!saveReady.ready && saveReady.message !== readiness.message) actions += `<span class="state-issue">${icon('warn')}${esc(saveReady.message)}</span>`;
+  actions += `<button type="button" class="btn ghost" data-act="discard" ${saving ? 'disabled' : ''}>Discard</button>`;
+  actions += `<button type="button" class="btn primary" data-act="save" ${saving || !!issue || !saveReady.ready ? 'disabled' : ''}${mode === state.viewMode && exclusive ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>${inUse ? 'Save changes' : 'Save'}</button>`;
+ }
+ if (inUse) html += `<span class="pill success">${icon('check')}In use</span>`;
+ if (blocked) html += `<span class="state-issue">${icon('warn')}<span>${esc(readiness.message)}${link ? ' · ' + link : ''}</span></span>`;
+ if (!exclusive) {
+  html += `<button type="button" class="btn primary" data-act="${dirty ? 'save-use' : 'use'}" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
  }
  document.querySelector(`[data-state="${mode}"]`).innerHTML = html;
+ const footer = document.querySelector(`[data-draft-actions="${mode}"]`);
+ if (footer) { footer.innerHTML = actions; footer.hidden = !dirty; }
 }
 function renderChrome() {
+ if (!demo) for (const id of ['provider','model','sampleKey','phraseEngine','speaker']) $(id).disabled = busy;
  renderTabs();
  renderNow();
  for (const mode of Object.keys(TABS)) renderPanelState(mode);
@@ -386,7 +390,8 @@ function renderChrome() {
  $('resetEvent').hidden = !defaults;
  $('resetEvent').disabled = !!defaults && same(state.phrases[state.phraseEvent], defaults);
  $('clipsInUse').innerHTML = modeInUse('clips') ? '<span class="pill success sm">In use</span>' : '';
- $('activationProgress').textContent = busy ? 'Saving selection…' : '';
+ $('activationProgress').textContent = busy ? 'Saving selection…' : savingAISettings ? 'Saving settings…' : '';
+ renderPreviewState();
 }
 
 function renderFilters(mode) {
@@ -570,7 +575,7 @@ function scrollEventIntoView() {
 }
 
 async function commit(mode, activate) {
- if (busy || mediaBusy || savingSound || savingVolume) return;
+ if (busy || mediaBusy || savingSound || savingVolume || savingAISettings) return;
  const issue = saveIssue(mode);
  if (issue) { showError(issue); return; }
  if (activate && !setupReadiness(mode).ready) { openDrawer(blockerDrawer(mode)); return; }
@@ -584,7 +589,7 @@ async function commit(mode, activate) {
   syncSpeechDrafts(config);
   Object.assign(saved, config);
   if (mode === 'ai' && state.provider === draft.provider && state.apiKey === draft.apiKey) {
-   state.apiKey = '';
+   state.apiKey = ''; state.keyEdited = false;
    $('sampleKey').value = '';
   }
   if (mode === 'phrases') saved.phrases = clone(draft.phrases);
@@ -630,7 +635,7 @@ function discard(mode) {
   state.style = saved.narrator_style;
   state.provider = saved.narrator_provider;
   state.model = saved.narrator_model || '';
-  state.apiKey = '';
+  state.apiKey = ''; state.keyEdited = false;
   state.context = !!saved.narrator_deep_context;
   $('model').value = state.model;
   $('sampleKey').value = '';
@@ -672,10 +677,25 @@ function variantFor(button, mode) {
  if (samples.length) cursors[key] = (variant + 1) % samples.length;
  return variant;
 }
-async function mediaAction(button, work) {
+function previewKey(button) {
+ return JSON.stringify([button.id, ...['preview','pack','event','variant','role'].map(key => button.dataset[key] || '')]);
+}
+function renderPreviewState() {
+ document.querySelectorAll('[data-preview]').forEach(button => {
+  const active = activePreview?.key === previewKey(button);
+  const playing = active && activePreview.phase === 'playing';
+  button.classList.toggle('is-playing', playing);
+  button.classList.toggle('is-generating', active && !playing);
+  button.setAttribute('aria-busy', String(active));
+  button.querySelector('svg use')?.setAttribute('href', active ? playing ? '#i-wave' : '#i-reset' : '#i-play');
+  if (mediaBusy) button.disabled = true;
+ });
+}
+async function mediaAction(button, work, phase='playing') {
  if (mediaBusy) return;
  clearError();
  mediaBusy = true;
+ activePreview = button?.matches('[data-preview]') ? {key:previewKey(button), phase} : null;
  button?.setAttribute('aria-busy', 'true');
  const controls = [...document.querySelectorAll('[data-preview]')].map(control => [control, control.disabled]);
  controls.forEach(([control]) => { control.disabled = true; });
@@ -684,6 +704,7 @@ async function mediaAction(button, work) {
  catch (error) { if (error.name !== 'AbortError') showError(error.message); }
  finally {
   mediaBusy = false;
+  activePreview = null;
   button?.setAttribute('aria-busy', 'false');
   controls.forEach(([control, disabled]) => { control.disabled = disabled; });
   render();
@@ -718,8 +739,10 @@ async function playCommentarySample(button) {
    renderSample();
   }
   $('sampleLabel').textContent = 'Playing…';
+  activePreview.phase = 'playing';
+  renderPreviewState();
   await api('/api/draft-preview', {mode:'ai', action:'play', config, text:generatedSample.text});
- });
+ }, 'generating');
 }
 
 async function installKokoro() {
@@ -749,6 +772,44 @@ async function pollInstall() {
   showError(error.message);
   installPoll = setTimeout(pollInstall, 5000);
  }
+}
+function aiSettings(kind) {
+ if (kind === 'provider') return {narrator_provider:state.provider, narrator_model:state.model, narrator_api_key:providerKey()};
+ return {tts_engine:state.engine, [state.engine === 'kokoro' ? 'kokoro_voice' : 'voice_main']:state.voices[state.engine]};
+}
+function persistAISettings(kind) {
+ if (demo) return;
+ const changes = aiSettings(kind);
+ savingAISettings++;
+ clearError(); renderChrome();
+ // Keep rapid edits ordered; each request contains only this settings group.
+ aiSettingsQueue = aiSettingsQueue.then(async () => {
+  try {
+   await api('/api/config', changes);
+   syncSpeechDrafts(changes);
+   Object.assign(saved, changes);
+   if (kind === 'provider' && same(aiSettings(kind), changes)) {
+    state.apiKey = ''; state.keyEdited = false; $('sampleKey').value = '';
+   }
+  } catch (error) {
+   // A failed older request must not overwrite a newer edit waiting in the queue.
+   if (same(aiSettings(kind), changes)) {
+    if (kind === 'provider') {
+     state.provider = saved.narrator_provider; state.model = saved.narrator_model || ''; state.apiKey = ''; state.keyEdited = false;
+     $('model').value = state.model; $('sampleKey').value = '';
+     invalidateProvider({clearModels:true});
+    } else {
+     state.engine = saved.tts_engine;
+     state.voices = {say:saved.voice_main, kokoro:saved.kokoro_voice};
+    }
+   }
+   showError(error.message);
+  } finally {
+   savingAISettings--;
+   render(); scheduleSetupChecks();
+  }
+ });
+ return aiSettingsQueue;
 }
 async function saveConfig(changes) { await api('/api/config', changes); Object.assign(saved, changes); }
 async function toggleSound() {
@@ -870,7 +931,7 @@ function wire() {
   const drawer = target.closest('[data-drawer]');
   if (drawer) { openDrawer(drawer.dataset.drawer); return; }
   const filter = target.closest('[data-filter]');
-  if (filter) { const [mode, group] = filter.dataset.filter.split(':'); filters[mode] = group; mode === 'effects' ? renderEffectsDetail() : renderClips(); return; }
+  if (filter) { const [mode, group] = filter.dataset.filter.split(':'); filters[mode] = group; mode === 'effects' ? renderEffectsDetail() : renderClips(); renderPreviewState(); return; }
   const phraseEvent = target.closest('[data-phrase-event]');
   if (phraseEvent) { state.phraseEvent = phraseEvent.dataset.phraseEvent; renderPhraseRows(); renderChrome(); $('phraseRows').parentElement.scrollTop = 0; return; }
   const remove = target.closest('[data-remove]');
@@ -907,10 +968,10 @@ function wire() {
  };
  $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; state.pack = event.target.value; render(); scheduleSetupChecks(); });
  $('styleList').addEventListener('change', event => { if (event.target.name !== 'style') return; state.style = event.target.value; generatedSample = null; renderStyles(); renderSample(); renderChrome(); });
- $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); scheduleSetupChecks(); };
+ $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); if (state.viewMode === 'ai') persistAISettings('speech'); scheduleSetupChecks(); };
  $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
  $('subagentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].sub = $('subagentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
- $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; renderChrome(); scheduleSetupChecks(); };
+ $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; persistAISettings('speech'); scheduleSetupChecks(); };
  $('phraseRows').addEventListener('input', event => {
   const input = event.target;
   if (input.tagName !== 'INPUT') return;
@@ -931,16 +992,18 @@ function wire() {
  $('addPhrase').onclick = addPhrase;
  $('resetEvent').onclick = resetPhraseEvent;
  $('provider').onchange = () => {
-  state.provider = $('provider').value; state.model = ''; state.apiKey = '';
+  state.provider = $('provider').value; state.model = ''; state.apiKey = ''; state.keyEdited = true;
   $('model').value = ''; $('sampleKey').value = '';
   invalidateProvider({clearModels:true});
   delete setupChecks.ai;
   showProvider(); renderSample(); renderChecks();
+  persistAISettings('provider');
   if (!needsKey()) { refreshModels(); scheduleSetupChecks(0); }
  };
  $('model').oninput = () => { state.model = $('model').value; invalidateProvider(); showProvider(); renderChrome(); if (!needsKey()) scheduleSetupChecks(); };
- $('sampleKey').oninput = () => { state.apiKey = $('sampleKey').value; invalidateProvider({clearModels:true}); renderModelList(); renderChecks(); };
- $('sampleKey').onchange = () => refreshModels();
+ $('sampleKey').oninput = () => { state.apiKey = $('sampleKey').value; state.keyEdited = true; invalidateProvider({clearModels:true}); renderModelList(); renderChecks(); };
+ $('model').onchange = () => persistAISettings('provider');
+ $('sampleKey').onchange = () => { persistAISettings('provider'); refreshModels(); };
  $('refreshModels').onclick = () => refreshModels(true);
  $('sessionContext').onchange = () => { state.context = $('sessionContext').checked; renderChrome(); };
  document.querySelectorAll('[data-check-setup]').forEach(button => button.onclick = () => checkSetup(button.dataset.checkSetup));
