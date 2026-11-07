@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Fixed
+
+- Kokoro setup now accepts Python 3.12, including existing pyenv installations. Setup guidance and interpreter selection use Python 3.10–3.12 to match the current published Kokoro package; Python 3.9 is no longer selected for new setups.
+
 ## [0.13.1] - 2026-10-28
 
 ### Changed
