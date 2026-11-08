@@ -16,6 +16,9 @@ jobs:
   test:
     # Follow the supported stable image instead of retaining a retired macOS pin.
     runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      NODE_PATH: ${{ runner.temp }}/browser/node_modules
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -31,16 +34,25 @@ jobs:
         env:
           PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
         run: python3 -B scripts/build_pages.py --tag "$PACKAGE_TAG" --package dist/code-gossip.zip
-      - name: Test installers, updates, and development mode
+      - name: Test Python runtime and installers
+        timeout-minutes: 5
         run: |
           python3 -m pip install pytest pytest-subtests PyYAML
           python3 -m pytest -q
+      - name: Install browser test dependencies
+        timeout-minutes: 5
+        run: |
           npm install --prefix "$RUNNER_TEMP/browser" playwright
           "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
-          export NODE_PATH="$RUNNER_TEMP/browser/node_modules"
-          node tests/test_soundbar_ui.cjs
-          node tests/test_pages.cjs
-          E2E_RELEASE_PACKAGE="$PWD/dist/code-gossip.zip" node tests/test_soundbar_e2e.cjs
+      - name: Test Soundbar UI
+        timeout-minutes: 5
+        run: node tests/test_soundbar_ui.cjs
+      - name: Test Pages demo
+        timeout-minutes: 5
+        run: node tests/test_pages.cjs
+      - name: Test normal and development installations
+        timeout-minutes: 5
+        run: E2E_RELEASE_PACKAGE="$PWD/dist/code-gossip.zip" node tests/test_soundbar_e2e.cjs
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name == 'release'
         with:

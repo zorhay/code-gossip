@@ -30,8 +30,8 @@ def test_website_is_tested_with_package_then_deployed_without_rebuilding(workflo
     build = next(step for step in steps if step.get("name") == "Build matching website")
     assert build["env"]["PACKAGE_TAG"] == "${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}"
     assert '--tag "$PACKAGE_TAG" --package dist/code-gossip.zip' in build["run"]
-    tests = next(step for step in steps if step.get("name") == "Test installers, updates, and development mode")
-    assert "node tests/test_pages.cjs" in tests["run"]
+    tests = next(step for step in steps if step.get("name") == "Test Pages demo")
+    assert tests["run"] == "node tests/test_pages.cjs"
     upload = next(step for step in steps if step.get("with", {}).get("name") == "tested-website")
     assert steps.index(build) < steps.index(tests) < steps.index(upload)
     assert upload["with"]["include-hidden-files"] == "true"
