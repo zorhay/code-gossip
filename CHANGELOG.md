@@ -13,6 +13,8 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Fixed
 
+- Selecting another effect pack offers Use Effects in the header, even when Effects is already active. Pack browsing no longer shows Save/Discard controls or marks the new selection as In use.
+
 - Kokoro reports model and voice preparation separately from package installation, shows download progress, and enables previews only when the selected voices are ready. Model failures offer a dedicated retry; loading previews return clear errors and never queue delayed playback.
 
 - Soundbar reserves space for both sound and status labels, keeping header controls and panels stationary when sound is toggled.

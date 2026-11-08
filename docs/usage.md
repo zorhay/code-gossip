@@ -21,7 +21,9 @@ At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phr
 
 Previews play the selected event and alternative. The clicked button shows a waveform until playback finishes, then returns to the play icon. Phrases also have per-row playback. AI commentary’s **Play sample** generates and plays a sample on the first click; replaying the displayed text does not make another AI request.
 
-**Save** and **Discard** sit below the editor, separate from **Use** in the header. In Phrases, they appear below the phrase rows. Save writes the edits without switching modes; saving settings used by active audio requires its playback dependencies to be available. Use saves any edits and switches to that mode. A dot marks unsaved edits; the tab in use is labeled.
+Choosing an effect pack is browsing, not editing: **Use Effects** applies it from the header, including when another effect pack is already active. **In use** identifies the active pack, and pack browsing has no Save/Discard controls.
+
+For editable content, **Save** and **Discard** sit below the editor, separate from **Use** in the header. In Phrases, they appear below the phrase rows. Save writes the edits without switching modes; saving settings used by active audio requires its playback dependencies to be available. Use saves any edits and switches to that mode. A dot marks unsaved edits; the tab in use is labeled.
 
 In AI commentary, the speech engine, speaker, and provider save immediately when selected. Model and API-key edits save when you leave the field. These settings apply to the runtime without switching modes; the speech engine and voices are shared with Phrases. Existing phrase edits are preserved. Failed saves restore the previous setting. Style and session-context changes still use Save or Discard.
 

@@ -137,7 +137,7 @@ function savedDraft(mode) {
  }
  return {mode, style:saved.narrator_style, engine, voice:engine === 'kokoro' ? saved.kokoro_voice : saved.voice_main, provider:saved.narrator_provider, model:saved.narrator_model || '', context:!!saved.narrator_deep_context, apiKey:''};
 }
-function isDirty(mode) { return !demo && !same(selectionDraft(mode), savedDraft(mode)); }
+function isDirty(mode) { return !demo && mode !== 'effects' && !same(selectionDraft(mode), savedDraft(mode)); }
 function modeInUse(mode) {
  if (demo) return false;
  if (activeSelection.mode === 'combined') return mode === 'effects' || mode === (profileModes[saved.voice_profile] || 'phrases');
@@ -390,7 +390,8 @@ function renderNow() {
 }
 function renderPanelState(mode) {
  if (demo) return;
- const inUse = modeInUse(mode), exclusive = activeSelection.mode === mode, dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
+ const inUse = modeInUse(mode) && (mode !== 'effects' || state.pack === saved.effects_profile);
+ const exclusive = activeSelection.mode === mode && inUse, dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
  const readiness = setupReadiness(mode), blocked = !readiness.ready, drawer = blockerDrawer(mode);
  const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume || savingAISettings;
  const link = drawer === 'speech' ? '' : `<button type="button" class="link" data-drawer="${drawer}">${drawer === 'provider' ? 'Configure' : 'Details'}</button>`;

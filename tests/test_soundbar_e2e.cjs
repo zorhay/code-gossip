@@ -129,6 +129,9 @@ async function until(check, description) {
         assert.equal(await page.locator('[role=tab]').count(), 4);
         await page.locator('#packList label', {hasText:'Paper'}).click();
         assert.equal((await status()).effects_profile, 'default', 'Browsing does not save');
+        assert.equal(await page.locator('#panel-effects .panel-head .pill.success').count(), 0);
+        assert.equal(await page.locator('#panel-effects [data-act=save],#panel-effects [data-act=discard]').count(), 0);
+        assert.equal(await page.locator('#activateSelection').textContent(), 'Use Effects');
         await page.locator('#activateSelection').click();
         await until(async () => (await status()).effects_profile === 'paper', 'activated Effects profile');
         if(!dev){

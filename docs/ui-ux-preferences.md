@@ -23,7 +23,7 @@ The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.
 ## Actions and settings
 
 - Keep **Use** beside the section heading. Place **Save** and **Discard** with the edited content, below the editor; in Phrases, put them below the phrase rows. Do not regroup them beside Use.
-- Keep saving and activation distinct. Save persists a draft; Use applies the selected mode. Browsing and previewing must preserve the active mode.
+- Keep saving and activation distinct. Save persists content edits; Use applies a selection. Browsing and previewing must preserve the active selection. Choosing another effect pack shows **Use Effects**, even when Effects is already active. Show **In use** in the panel header only for the selected active pack. Pack browsing has no Save/Discard controls or unsaved-edits indicator.
 - In AI commentary, apply engine, speaker, and provider selections immediately. Save model and API-key edits on field change. Keep phrase edits, phrase engine/voices, commentary style, and session context under their existing draft/save behavior.
 - Show the relevant speech or Kokoro error beside **Use** or **In use**. Keep one speech **Details** entry point in the bottom setup strip; avoid duplicating that button in the header. Describe the error where the blocked action is visible.
 

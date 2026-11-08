@@ -92,7 +92,8 @@ const server = http.createServer((req,res)=>{
   assert.deepEqual({writes:writes.length, previews:previews.length, checks:checks.length, models:modelRequests.length}, beforeHelp, 'Getting started does not save, play, or check');
 
   await page.locator('#packList label', {hasText:'Sci-fi'}).click();
-  assert(await page.locator('#panel-effects [data-act=save]').isDisabled(), 'Saving the active pack must not bypass missing audio dependencies');
+  assert(await page.locator('#panel-effects .panel-head [data-act=use]').isDisabled(), 'Applying a pack must not bypass missing audio dependencies');
+  assert.equal(await page.locator('#panel-effects [data-act=save],#panel-effects [data-act=discard]').count(),0,'Browsing packs is not content editing');
   const beforePackSample = previews.length;
   previewGate=new Promise(resolve=>{releasePreview=resolve;});
   await page.getByRole('button', {name:'Play a System sounds sample', exact:true}).click();
@@ -108,7 +109,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(await packPreview.locator('use').getAttribute('href'), '#i-play');
   assert.equal(previews.length, beforePackSample + 1, 'A ready pack can be auditioned even when the selected pack is unavailable');
   assert.equal(previews.at(-1).config.effects_profile, 'default');
-  await page.locator('#panel-effects [data-act=discard]').click();
+  await page.locator('#packList label', {hasText:'System sounds'}).click();
 
   await page.locator('#tab-ai').click();
   await page.locator('#panel-ai .strip [data-drawer=provider]').click();
@@ -233,7 +234,11 @@ const server = http.createServer((req,res)=>{
   await page.clock.install();
   await page.clock.pauseAt(new Date());
   await page.locator('#packList label', {hasText:'Paper'}).click();
-  assert.equal(writes.filter(item => item.endpoint).length, 0, 'Choosing a pack stays a draft');
+  assert.equal(writes.filter(item => item.endpoint).length, 0, 'Browsing a pack does not apply it');
+  assert.equal(await page.locator('#panel-effects .panel-head .pill.success').count(),0,'The newly selected pack is not marked In use');
+  assert.equal(await page.locator('#panel-effects .panel-head [data-act=use]').textContent(),'Use Effects');
+  assert.equal(await page.locator('#panel-effects [data-act=save],#panel-effects [data-act=discard],#badges-effects .dirty-dot').count(),0);
+  assert((await page.locator('#packList .list-row').filter({hasText:'System sounds'}).innerText()).includes('In use'));
   assert((await page.locator('#statusText').innerText()).includes('System sounds'));
   failSave = true;
   await page.locator('#activateSelection').click();
@@ -251,9 +256,15 @@ const server = http.createServer((req,res)=>{
   for (const id of ['provider','model','sampleKey','phraseEngine','speaker']) assert(await page.locator('#'+id).isDisabled(), 'Settings cannot race an explicit mode save');
   releaseSave(); saveGate = null;
   await page.waitForFunction(() => document.getElementById('statusText').textContent.endsWith('Paper'));
-  assert.equal(writes.at(-1).endpoint, '/api/save', 'Saving the mode already in use does not switch channels');
+  assert.equal(writes.at(-1).endpoint, '/api/activate', 'A different pack applies through Use even when Effects is already active');
   assert.equal(writes.at(-1).config.effects_profile, 'paper');
   assert.equal(state.soundbar_mode, 'effects');
+  assert.equal(await page.locator('#panel-effects .panel-head .pill.success').textContent(),'In use');
+  assert.equal(await page.locator('#panel-effects .panel-head [data-act=use]').count(),0);
+  await page.reload();
+  await page.locator('#tab-effects[aria-selected=true]').waitFor();
+  assert.equal(await page.locator('#statusText').textContent(),'In use · Effects · Paper','Applied pack survives reload');
+  await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Ready');
 
   previewGate=new Promise(resolve=>{releasePreview=resolve;});
   await page.locator('#effectsEvents button', {hasText:'Stop'}).first().click();
@@ -263,10 +274,12 @@ const server = http.createServer((req,res)=>{
   assert.equal(previews.at(-1).event, 'stop');
   assert.equal(previews.at(-1).config.effects_profile, 'paper');
   assert(await page.locator('#previewMainAgent').isEnabled(), 'Speech preview controls recover after an effects preview');
+  const beforeBrowsing=writes.length;
   await page.locator('#packList label', {hasText:'Silent'}).click();
   assert.equal(await page.locator('#effectsEvents [data-preview]').count(), 0);
   await page.locator('#packList label', {hasText:'Paper'}).click();
-  assert.equal(await page.locator('#activateSelection').count(), 0, 'Returning to the saved pack clears the draft');
+  assert.equal(await page.locator('#activateSelection').count(), 0, 'Returning to the active pack restores In use');
+  assert.equal(writes.length,beforeBrowsing,'Browsing away and back does not write settings');
   assert.equal(await page.locator('#statusText').textContent(), 'In use · Effects · Paper');
 
   await page.getByRole('tab', {name:'Phrases', exact:true}).click();
@@ -566,10 +579,8 @@ const server = http.createServer((req,res)=>{
   await page.getByRole('tab', {name:/^Effects/}).click();
   await page.locator('#packList label', {hasText:'Sci-fi'}).click();
   assert(await page.locator('#activateSelection').isDisabled());
-  const saveInactivePack = page.waitForResponse('**/api/save');
-  await page.locator('#panel-effects [data-act=save]').click();
-  await saveInactivePack;
-  assert.equal(state.effects_profile, 'sci-fi', 'An unavailable inactive pack can still be saved for later');
+  assert.equal(await page.locator('#panel-effects [data-act=save]').count(),0);
+  assert.equal(state.effects_profile, 'paper', 'Browsing an unavailable inactive pack does not change the saved selection');
   assert.equal(state.soundbar_mode, 'ai');
   assert((await page.locator('#panel-effects .state-issue').innerText()).includes('Install SoX'));
   await page.locator('#panel-effects .state-issue .link').click();
@@ -590,9 +601,6 @@ const server = http.createServer((req,res)=>{
   await page.setViewportSize({width:1280, height:900});
   await page.locator('#tab-effects').click();
   await page.locator('#packList label', {hasText:'Paper'}).click();
-  const restorePack = page.waitForResponse('**/api/save');
-  await page.locator('#panel-effects [data-act=save]').click();
-  await restorePack;
   Object.assign(state, {effects_on:true, voice_on:true, voice_profile:'senior'});
   await page.reload();
   await page.waitForFunction(() => document.getElementById('statusText').textContent.includes(' + Phrases'));
