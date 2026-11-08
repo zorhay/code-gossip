@@ -4,6 +4,8 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-09
+
 ### Changed
 
 - The Pages demo now follows Soundbar’s control styling, responsive layout, and status strips. Profile Play handles example sessions; the separate demo toolbar is removed and installation stays outside the panel.
