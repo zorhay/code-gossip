@@ -23,6 +23,12 @@ NARRATOR_PROVIDERS = {
         "needs_key": False,
         "default_model": "haiku",
     },
+    "codex_cli": {
+        "name": "Codex CLI",
+        "description": "Uses your existing Codex sign-in. Requires a recent Codex CLI.",
+        "needs_key": False,
+        "default_model": "",
+    },
     "anthropic": {
         "name": "Anthropic API",
         "description": "Direct Claude API. Requires key from console.anthropic.com",

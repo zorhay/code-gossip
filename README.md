@@ -32,6 +32,7 @@ For prerequisites, agent selection, development setup, or older installations, s
 - [Updates and removal](docs/updates.md) — releases, older installations, and uninstalling.
 - [Troubleshooting](docs/usage.md#no-sound) — checks when audio is silent.
 - [Architecture](ARCHITECTURE.md) — runtime, integrations, and data contracts.
+- [UI/UX preferences](docs/ui-ux-preferences.md) — interface styles, interaction rules, and validation for contributors.
 - [Contributing](AGENTS.md) — project conventions and validation.
 - [Sound design](dev-skills/sound-design/SKILL.md) · [Maintaining docs](dev-skills/maintain-docs/SKILL.md).
 - [Changelog](CHANGELOG.md).

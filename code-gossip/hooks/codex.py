@@ -7,6 +7,7 @@ managed by Codex; installation never modifies trust or config.toml.
 
 import copy
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -270,6 +271,8 @@ def normalize(data):
 
 
 def dispatch(data, soundbar):
+    if os.environ.get("CODE_GOSSIP_NARRATOR") == "1":
+        return
     result = normalize(data)
     if result is None:
         return

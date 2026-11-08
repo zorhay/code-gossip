@@ -26,6 +26,7 @@ Run:
 
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -45,31 +46,140 @@ SOCK_PATH = str(STATE / "kokoro.sock")
 IDLE_TIMEOUT = 600  # 10 minutes
 
 
+def download_progress(report):
+    """A quiet tqdm adapter for both HTTP and Xet's buffered transfers."""
+    from tqdm import tqdm
+
+    class Progress(tqdm):
+        def __init__(self, *args, **kwargs):
+            kwargs.pop("name", None)
+            kwargs["disable"] = True
+            self.transferred = 0
+            super().__init__(*args, **kwargs)
+            self.publish()
+
+        def publish(self):
+            report(completed=self.n, total=self.total, transferred=self.transferred)
+
+        def update(self, n=1):
+            # tqdm skips counters when disabled; retain them without terminal output.
+            self.n += n
+            self.publish()
+
+        def update_transfer(self, n):
+            # Xet can receive bytes before reconstructing any of the model file.
+            self.transferred += n
+            self.publish()
+
+        def set_transfer_postfix_str(self, text, refresh=True):
+            # Xet's aggregate progress protocol also sends terminal-only rate text.
+            pass
+
+        def refresh(self, *args, **kwargs):
+            self.publish()
+
+    return Progress
+
+
 class ModelManager:
-    """Lazily loads and caches Kokoro pipelines per language code."""
+    """Prepare the shared model and requested voices without blocking health calls."""
 
     def __init__(self):
         self.pipelines = {}
-        self.lock = threading.Lock()
-        self.ready = threading.Event()
+        self.weights = None
+        self.voices = set()
+        self.requested = set()
+        self.lock = threading.RLock()
+        self.loading = False
+        self.error = False
+        self.progress = {"state": "idle", "message": "Kokoro model has not loaded yet."}
         self.last_activity = time.time()
 
-    def preload(self, lang_code="a"):
-        """Load a pipeline in background thread."""
-        def _load():
-            self.get_pipeline(lang_code)
-            self.ready.set()
-        threading.Thread(target=_load, daemon=True).start()
-
-    def get_pipeline(self, lang_code):
+    def status(self, voices=()):
         with self.lock:
-            if lang_code not in self.pipelines:
-                from kokoro import KPipeline
-                self.pipelines[lang_code] = KPipeline(
-                    lang_code=lang_code, repo_id="hexgrad/Kokoro-82M"
-                )
-            self.last_activity = time.time()
-            return self.pipelines[lang_code]
+            ready = self.weights is not None and set(voices).issubset(self.voices)
+            progress = ({"state": "ready", "message": "Kokoro model and selected voices are ready."}
+                        if ready else dict(self.progress))
+            return {"ok": True, "ready": ready, "loaded": sorted(self.pipelines),
+                    "voices": sorted(self.voices), "idle": int(self.idle_seconds()), **progress}
+
+    def prepare(self, voices=(), retry=False):
+        if not isinstance(voices, (list, tuple)) or any(
+                not isinstance(v, str) or not re.fullmatch(r"[ab][fm]_[a-z0-9]+", v) for v in voices):
+            raise ValueError("Invalid Kokoro voices")
+        with self.lock:
+            self.touch()
+            self.requested.update(voices)
+            if not self.loading and (not self.error or retry):
+                if self.weights is None or self.requested - self.voices:
+                    self.error = False
+                    self.loading = True
+                    self.progress = {"state": "loading", "message": "Preparing Kokoro model…"}
+                    threading.Thread(target=self._prepare, daemon=True).start()
+            return self.status(voices)
+
+    def _stage(self, state, message, **details):
+        with self.lock:
+            self.progress = {"state": state, "message": message, **details}
+            self.touch()
+
+    def _download(self, filename):
+        from huggingface_hub import hf_hub_download
+        self._stage("downloading", "Downloading " + filename, file=filename,
+                    completed=0, total=None, transferred=0)
+
+        def report(**values):
+            self._stage("downloading", "Downloading " + filename, file=filename, **values)
+
+        return hf_hub_download(repo_id="hexgrad/Kokoro-82M", filename=filename,
+                               tqdm_class=download_progress(report))
+
+    def _load_model(self):
+        from kokoro import KModel
+        config = self._download("config.json")
+        weights = self._download(KModel.MODEL_NAMES["hexgrad/Kokoro-82M"])
+        self._stage("loading", "Loading Kokoro model into memory…")
+        return KModel(repo_id="hexgrad/Kokoro-82M", config=config, model=weights).eval()
+
+    def _load_voice(self, voice):
+        from kokoro import KPipeline
+        path = self._download("voices/" + voice + ".pt")
+        self._stage("loading", "Loading Kokoro voice " + voice + "…")
+        lang = voice[0]
+        # Downloads must not block speech with a voice that is already ready.
+        with inference_lock:
+            if lang not in self.pipelines:
+                self.pipelines[lang] = KPipeline(lang_code=lang, repo_id="hexgrad/Kokoro-82M",
+                                                model=self.weights)
+            pipeline = self.pipelines[lang]
+            # Cache under the voice ID so synthesis never starts a hidden download.
+            pipeline.voices[voice] = pipeline.load_voice(path)
+
+    def _prepare(self):
+        try:
+            if self.weights is None:
+                weights = self._load_model()
+                with self.lock:
+                    self.weights = weights
+            while True:
+                with self.lock:
+                    pending = sorted(self.requested - self.voices)
+                    if not pending:
+                        self.loading = False
+                        self._stage("ready", "Kokoro model and selected voices are ready.")
+                        return
+                for voice in pending:
+                    self._load_voice(voice)
+                    with self.lock:
+                        self.voices.add(voice)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            with self.lock:
+                self.loading = False
+                self.error = True
+                # Do not expose signed download URLs, tokens, or local paths.
+                self._stage("error", "Kokoro model or voice could not load. Check your connection and retry model loading.")
 
     def touch(self):
         self.last_activity = time.time()
@@ -95,12 +205,9 @@ class Handler(socketserver.StreamRequestHandler):
 
             if cmd == "health":
                 model.touch()
-                resp = {
-                    "ok": True,
-                    "ready": model.ready.is_set(),
-                    "loaded": list(model.pipelines.keys()),
-                    "idle": int(model.idle_seconds()),
-                }
+                resp = model.status(req.get("voices", []))
+            elif cmd == "prepare":
+                resp = model.prepare(req.get("voices", []), retry=req.get("retry") is True)
             elif cmd == "speak":
                 resp = self._speak(req)
             else:
@@ -118,8 +225,6 @@ class Handler(socketserver.StreamRequestHandler):
                 pass
 
     def _speak(self, req):
-        import numpy as np
-
         text = req.get("text", "")
         voice = req.get("voice", "af_heart")
         volume = req.get("volume", 100)
@@ -127,11 +232,16 @@ class Handler(socketserver.StreamRequestHandler):
         if not text:
             return {"ok": False, "error": "no text"}
 
-        lang_code = "b" if voice.startswith("b") else "a"
+        status = model.prepare([voice])
+        if not status["ready"]:
+            return {**status, "ok": False, "error": status["message"]}
+
+        import numpy as np
+        lang_code = voice[0]
 
         # Serialize inference — model is not thread-safe
         with inference_lock:
-            pipeline = model.get_pipeline(lang_code)
+            pipeline = model.pipelines[lang_code]
             chunks = []
             for _gs, _ps, audio in pipeline(text, voice=voice):
                 if audio is not None:
@@ -176,7 +286,7 @@ def idle_watcher(server):
     """Shut down server after idle timeout."""
     while True:
         time.sleep(30)
-        if model.idle_seconds() > IDLE_TIMEOUT:
+        if not model.loading and model.idle_seconds() > IDLE_TIMEOUT:
             print("Idle timeout — shutting down.")
             server.shutdown()
             return
@@ -194,7 +304,7 @@ def main():
     if "--check" in sys.argv:
         try:
             from kokoro import KPipeline  # noqa: F401
-            print(json.dumps({"ok": True, "message": "Kokoro is installed and ready."}))
+            print(json.dumps({"ok": True, "message": "Kokoro packages are installed; model readiness is checked separately."}))
         except ImportError:
             print(json.dumps({
                 "ok": False,
@@ -213,8 +323,8 @@ def main():
 
     signal.signal(signal.SIGTERM, _shutdown)
 
-    # Preload American English pipeline in background
-    model.preload("a")
+    # Model preparation continues independently of short-lived preview requests.
+    model.prepare()
 
     server = UnixServer(SOCK_PATH, Handler)
     os.chmod(SOCK_PATH, 0o600)

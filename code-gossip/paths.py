@@ -13,7 +13,7 @@ SOUNDBAR = RUNTIME / "soundbar"
 
 
 def executable(name):
-    """Find audio tools even when a hook or launcher has a restricted PATH."""
+    """Find runtime tools even when a hook or launcher has a restricted PATH."""
     import os
     import shutil
     found = shutil.which(name)
@@ -23,4 +23,11 @@ def executable(name):
         candidate = Path(directory) / name
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
+    if name == "codex":
+        for candidate in (
+            Path.home() / ".local/bin/codex",
+            Path("/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex"),
+        ):
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return str(candidate)
     return None

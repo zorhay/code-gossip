@@ -4,7 +4,7 @@
 
 ## Updates
 
-Soundbar checks GitHub for a newer stable release on startup when its last check is more than 24 hours old, then about once a day while the server runs. **Settings → Updates** shows the installed version, release notes, **Check for updates**, and **Update**. Updates install only when you choose them; closing the browser tab does not stop the server or its checks.
+Soundbar checks GitHub for a newer stable release on startup when its last check is more than 24 hours old, then about once a day while the server runs. A badge on **Settings** signals available updates or update problems without moving the panel. **Settings → Updates** shows the installed version, release notes, **Check for updates**, and **Update**. Updates install only when you choose them; closing the browser tab does not stop the server or its checks.
 
 Both actions are also available from the installed runtime:
 

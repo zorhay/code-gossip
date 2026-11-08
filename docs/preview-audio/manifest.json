@@ -4,7 +4,7 @@
     "code-gossip/configs/config.defaults.json": "a90da5095ef73d458354a9ca125b806cb523c928d8ca4ef4a802aaa88c785c41",
     "code-gossip/configs/phrases.defaults.json": "9b3daf05d8081ec0beb5cadb387f34071b2f90419047fcb29184873dd050bf45",
     "code-gossip/configs/narrator_styles.defaults.json": "1956750f0c693c9f24304e1ed157e5110ba1359b4a4309d58f8260c5608df7fa",
-    "code-gossip/soundbar/catalog.py": "84e9a303bc0a9fa9af9861d0c32218450ed578319c74a559fa9dd82ffcaf118b",
+    "code-gossip/soundbar/catalog.py": "b3da362300cb98b14a494e027e123929c63e3c1e8b4b733417ba521d36b96286",
     "code-gossip/engine/melody.py": "8c2dd44cf0af68ee62695f98073fa6da7a8d003b7ef68f35c6cd8a7820c1f068",
     "code-gossip/data/sounds/generals/generate.sh": "00ca7316199357cedcf325ef9b4b5518993302bcf536727b81f4425e11981801",
     "docs/demo-commentary.json": "fb856765574d51c40e0dcae576399955489d975b0d9a6d8290866bdab098fd47",

@@ -7,9 +7,10 @@ from urllib.request import Request, urlopen
 
 
 def list_models(provider, api_key=""):
-    if provider == "claude_cli":
+    if provider in ("claude_cli", "codex_cli"):
+        name = "Codex CLI" if provider == "codex_cli" else "Claude CLI"
         return {"ok": True, "models": [], "supported": False,
-                "message": "Claude CLI has no live model list. Enter a model or use the default."}
+                "message": f"{name} has no live model list. Enter a model or use the default."}
     endpoints = {
         "anthropic": ("https://api.anthropic.com/v1/models", {"x-api-key": api_key, "anthropic-version": "2023-06-01"}),
         "gemini": ("https://generativelanguage.googleapis.com/v1beta/models", {"x-goog-api-key": api_key}),

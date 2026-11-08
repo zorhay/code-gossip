@@ -6,11 +6,30 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
+- The Pages demo now follows Soundbar’s control styling, responsive layout, and status strips. Profile Play handles example sessions; the separate demo toolbar is removed and installation stays outside the panel.
+- Sound-pack Play buttons run a short example session and highlight each playing event using the existing controls. Event previews remain single cues.
+- AI commentary adds Codex CLI using existing Codex sign-in, optional model selection, ephemeral requests, and protection against narrating its own hooks.
+- Kokoro installation shows recent package activity and elapsed time in Soundbar, retains output after failures, and allows 20 minutes for package setup on slower connections.
+- Soundbar separates Save/Discard below each editor from Use in the header. AI speech and provider settings save as they change, preserving phrase drafts and restoring settings after failed writes.
 - AI commentary defaults to Claude Haiku 5.5, Gemini 3.5 Flash-Lite, and GPT-6 Luna. Anthropic and OpenAI token costs are lower; Gemini uses the newer Flash-Lite model at the same text token rates as the previous Gemini 2.5 Flash default. Requests to these models minimize reasoning, and only response text is spoken. Existing explicit model selections are retained; clear the Model field to use the new provider default.
 
 ### Fixed
 
+- Soundbar and the Pages demo let the current preview finish when browsing, keep event labels on the sounding alternative, and skip the generation indicator for cached or prerecorded commentary. Clips retain their alternative sequence when browsing effect packs; blocked pack previews show that pack's setup details. Soundbar previews now honor master mute without changing saved volumes.
+
+- Soundbar caches readiness by configuration until page reload, eliminating repeated checks and brief Checking flashes when browsing sections or profiles. Explicit Check/Retry refreshes a result; Kokoro polling stops when model preparation finishes.
+
+- Readiness notices, edit actions, and AI sample text no longer move section workspaces or speaker controls. Long messages remain scrollable; request errors can be dismissed without shifting the page. Update availability appears as a Settings badge instead of inserting a header row.
+
+- Soundbar keeps playback indicators attached to the previewed content and voices when browsing or editing, preserves keyboard focus across background refreshes in every section, and explains Use correctly in preview help.
+
+- Soundbar consistently separates browsing, editing, and activation across all sections. Use applies a selected effect pack or commentary style; Save/Discard handle edits without applying or resetting the browsed selection. In use identifies the active selection.
+
+- Kokoro reports model and voice preparation separately from package installation, shows download progress, and enables previews only when the selected voices are ready. Model failures offer a dedicated retry; loading previews return clear errors and never queue delayed playback.
+
+- Soundbar reserves space for the full 0–100% volume range, sound labels, tab badges, preview/check/update actions, and setup statuses. Header controls stay anchored when the active selection changes, pending checks retain their layout space, and update messages no longer recenter Settings.
 - Kokoro setup now accepts Python 3.12, including existing pyenv installations. Setup guidance and interpreter selection use Python 3.10–3.12 to match the current published Kokoro package; Python 3.9 is no longer selected for new setups.
+- Preview buttons show playback and generation indicators and recover after errors. Kokoro failures show their error text in the header, with installation and repair available from the bottom Details button.
 
 ## [0.13.1] - 2026-10-28
 

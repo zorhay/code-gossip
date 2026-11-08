@@ -316,6 +316,35 @@ def test_effect_preview_uses_unsaved_pack(isolated_preferences):
     assert server.CONFIG_FILE.read_bytes() == before
 
 
+@pytest.mark.parametrize('mode', ['effects', 'clips', 'phrases', 'ai'])
+@pytest.mark.parametrize('channels', [(False, False), (True, False), (False, True), (True, True)])
+def test_previews_respect_master_mute_without_muting_inactive_auditions(isolated_preferences, mode, channels):
+    server = isolated_preferences
+    config = {**server.read_config(), 'effects_on': channels[0], 'voice_on': channels[1],
+              'effects_volume': 37, 'voice_volume': 62}
+    server.CONFIG_FILE.write_text(json.dumps(config))
+    before = server.CONFIG_FILE.read_bytes()
+    with patch.object(server, 'setup_status', return_value={
+            'effects': {'paper': {'ready': True}}, 'clips': {'generals': {'ready': True}}}), \
+            patch.object(server, 'play_profile_event') as play, \
+            patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok":true}')) as worker:
+        assert server.draft_request({'mode': mode, 'config': {'effects_profile': 'paper'}})['ok']
+    played = play.call_args.args[3] if mode in ('effects', 'clips') else json.loads(worker.call_args.kwargs['input'])['config']
+    assert played['effects_volume'] == (37 if any(channels) else 0)
+    assert played['voice_volume'] == (62 if any(channels) else 0)
+    assert server.CONFIG_FILE.read_bytes() == before
+
+
+def test_muted_readiness_check_retains_saved_volumes(isolated_preferences):
+    server = isolated_preferences
+    config = {**server.read_config(), 'effects_on': False, 'voice_on': False,
+              'effects_volume': 37, 'voice_volume': 62}
+    server.CONFIG_FILE.write_text(json.dumps(config))
+    with patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok":true}')) as worker:
+        assert server.draft_request({'mode': 'phrases'}, check=True)['ok']
+    assert json.loads(worker.call_args.kwargs['input'])['config'] == config
+
+
 def test_setup_discovers_sox_from_manifest(isolated_preferences):
     server = isolated_preferences
     with patch.object(server, 'executable', side_effect=lambda name: None if name == 'play' else '/usr/bin/'+name), patch.object(server.kokoro, 'is_present', return_value=False):
@@ -361,6 +390,10 @@ def test_install_progress_is_read_without_python_installation(isolated_preferenc
         status = server.setup_status()
         assert status['installing']
         assert status['installMessage'] == 'Installing packages'
+        assert status['installTimeout'] == 1200
+        assert isinstance(status['installElapsed'], int)
+        assert isinstance(status['installQuiet'], int)
+        assert isinstance(status['installOutput'], list)
         find.assert_not_called()
 
 
@@ -387,6 +420,19 @@ def test_live_models_use_only_selected_provider_credentials(isolated_preferences
         discover.assert_called_with('openai', 'draft-secret')
     assert server.CONFIG_FILE.read_bytes() == before
     assert all('models' not in provider for provider in server.NARRATOR_PROVIDERS.values())
+
+
+def test_narrator_test_allows_cli_timeout_cleanup(isolated_preferences):
+    server = isolated_preferences
+    handler = object.__new__(server.Handler)
+    handler.json_response = Mock()
+    with patch.object(server.subprocess, 'run', return_value=Mock(
+            stdout='', stderr='Codex commentary timed out.', returncode=1)) as worker, \
+            patch.object(server.subprocess, 'Popen') as speech:
+        handler._handle_post('/api/narrator-test', {})
+        assert worker.call_args.kwargs['timeout'] > 15
+        assert handler.json_response.call_args.args[0]['ok'] is False
+        speech.assert_not_called()
 
 
 @pytest.mark.parametrize('changes', [{'narrator_provider': 'unknown'}, {'narrator_api_key': 42}, {'tts_engine': 'kokoro'}, []])
@@ -539,6 +585,19 @@ def test_initial_status_never_imports_kokoro(isolated_preferences):
     with patch.object(server.kokoro, 'is_installed', side_effect=AssertionError('Expensive import during page load')), patch.object(server.kokoro, 'is_present', return_value=True):
         assert server.get_status()['setup']['kokoro'] is True
         assert server.setup_status()['kokoro'] is True
+
+
+def test_draft_check_forwards_model_progress_and_explicit_retry(isolated_preferences):
+    server = isolated_preferences
+    response = {'ok':False, 'pending':True, 'message':'Downloading Kokoro model',
+                'model': {'state':'downloading', 'ready':False, 'completed':0,
+                          'total':327212226, 'transferred':12000000}}
+    with patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout=json.dumps(response))) as run:
+        result = server.draft_request({'mode':'phrases', 'config':{'tts_engine':'kokoro'}, 'retry':True}, check=True)
+    assert result == response
+    request = json.loads(run.call_args.kwargs['input'])
+    assert request['retry'] is True
+    assert request['scope'] == 'speech'
 
 
 @pytest.mark.parametrize("method", ["GET", "POST"])

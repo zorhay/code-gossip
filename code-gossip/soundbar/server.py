@@ -478,11 +478,14 @@ def setup_status():
         return {"ready": ready, "sox": sox, "missing": sorted(set(missing)),
                 "message": "Missing audio files" if missing else "Install SoX" if sox and not executable("play") else "Ready" if ready else "macOS audio player unavailable"}
     manifest = read_sounds()
+    progress = kokoro.progress
     return {"effects": {name: inspect(profile) for name, profile in manifest.get("effects", {}).items()},
             "clips": {name: inspect(profile) for name, profile in manifest.get("voice", {}).items()},
             "say": bool(executable("say")), "kokoro": kokoro.is_present(),
-            "installing": kokoro.progress["status"] == "running",
-            "installStatus": kokoro.progress["status"], "installMessage": kokoro.progress.get("message", "")}
+            "installing": progress["status"] == "running",
+            "installStatus": progress["status"], "installMessage": progress.get("message", ""),
+            "installOutput": progress["output"], "installElapsed": progress["elapsed"],
+            "installQuiet": progress["quiet"], "installTimeout": progress["timeout"]}
 
 
 def validate_phrases(phrases):
@@ -587,6 +590,9 @@ def draft_request(body, check=False):
         raise ValueError("Unknown mode")
     scope = ("audio" if mode in ("effects", "clips") else body.get("scope", "speech")) if check else None
     config = draft_config(body, scope=scope)
+    if not check and not (config["effects_on"] or config["voice_on"]):
+        # Master mute applies to auditions without changing saved channel volumes.
+        config = {**config, "effects_volume": 0, "voice_volume": 0}
     if mode in ("effects", "clips"):
         layer, profile = ("effects", config["effects_profile"]) if mode == "effects" else ("voice", "generals")
         status = setup_status()["effects" if mode == "effects" else "clips"].get(profile, {})
@@ -607,7 +613,8 @@ def draft_request(body, check=False):
         return {"ok": True, "message": "Ready"}
     request = {"config": config, "mode": mode, "check": check,
                "role": body.get("role"), "event": body.get("event", "edit"),
-               "scope": body.get("scope", "speech"), "action": body.get("action", "play"),
+               "scope": body.get("scope", "speech"), "retry": body.get("retry") is True,
+               "action": body.get("action", "play"),
                "variant": body.get("variant", 0), "text": body.get("text", "")}
     if mode == "phrases" and not check and not request["role"]:
         request["phrases"] = validate_phrases(body.get("phrases", {}))
@@ -920,7 +927,9 @@ class Handler(SimpleHTTPRequestHandler):
             try:
                 result = subprocess.run(
                     [get_python3(), str(ENGINE / "narrate.py"), "--dry-run"],
-                    input=test_context, capture_output=True, text=True, timeout=15,
+                    # Let the CLI's 15-second deadline reap its process group
+                    # before this outer worker deadline can terminate narrate.py.
+                    input=test_context, capture_output=True, text=True, timeout=20,
                 )
                 text = result.stdout.strip()
                 if text:

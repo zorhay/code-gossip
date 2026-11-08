@@ -1,5 +1,9 @@
 """Environment health and repair must not trust a stale install flag."""
 from unittest.mock import Mock
+import subprocess
+import sys
+import threading
+import time
 
 import pytest
 from engine import integrations
@@ -47,11 +51,65 @@ def test_verified_health_cache_invalidated_by_repair_and_missing_python(integrat
 @pytest.mark.parametrize('uv', [False, True])
 def test_repair_reinstalls_existing_packages(integration, monkeypatch, uv):
     worker = Mock(return_value=Mock(returncode=0, stdout='', stderr=''))
-    monkeypatch.setattr(integrations.subprocess, 'run', worker)
+    monkeypatch.setattr(integration, '_run_install', worker)
+    monkeypatch.setattr(integrations.subprocess, 'run', Mock())
     monkeypatch.setattr(integrations.shutil, 'which', lambda _: '/usr/bin/uv' if uv else None)
     assert integration.install_packages(uv, reinstall=True)
     command = worker.call_args.args[0]
     assert ('--reinstall' if uv else '--force-reinstall') in command
+
+
+def test_install_output_is_visible_before_process_finishes(integration):
+    integration._set_progress('running', 'Installing packages')
+    results = []
+    worker = threading.Thread(target=lambda: results.append(integration._run_install([
+        sys.executable, '-u', '-c',
+        "import time; print('Downloading torch (138.6 MB)', flush=True); time.sleep(2)",
+    ])))
+    worker.start()
+    try:
+        deadline = time.monotonic() + 1.5
+        while not integration.progress['output'] and time.monotonic() < deadline:
+            time.sleep(.01)
+        assert integration.progress['output'] == ['Downloading torch (138.6 MB)']
+        assert worker.is_alive()
+        assert integration.progress['timeout'] == 1200
+    finally:
+        worker.join(5)
+    assert results[0].returncode == 0
+
+
+def test_install_output_is_bounded_redacted_and_retained_after_failure(integration):
+    integration._set_progress('running', 'Installing packages')
+    result = integration._run_install([sys.executable, '-c',
+        "for n in range(20): print('Collecting package', n)\n"
+        "print('ERROR https://user:secret@example.com/pkg?token=private')\nraise SystemExit(1)"])
+    integration._set_progress('error', 'Package installation failed')
+    progress = integration.progress
+    assert result.returncode == 1
+    assert len(progress['output']) == 8
+    assert progress['output'][-1] == 'ERROR [download source]'
+    assert 'secret' not in result.stderr
+    elapsed = progress['elapsed']
+    assert integration.progress['elapsed'] == elapsed
+    integration._set_progress('running', 'Retrying')
+    assert integration.progress['output'] == []
+    assert integration.progress['elapsed'] == 0
+
+
+def test_silent_install_process_obeys_remaining_twenty_minute_budget(integration, monkeypatch):
+    integration._set_progress('running', 'Installing packages')
+    integration._started = time.monotonic() - 1199.9
+    popen = integrations.subprocess.Popen
+    processes = []
+    def launch(*args, **kwargs):
+        process = popen(*args, **kwargs)
+        processes.append(process)
+        return process
+    monkeypatch.setattr(integrations.subprocess, 'Popen', launch)
+    with pytest.raises(subprocess.TimeoutExpired):
+        integration._run_install([sys.executable, '-c', 'import time; time.sleep(30)'])
+    assert processes[0].poll() is not None
 
 
 def test_installation_inventory_needs_files_but_never_imports(integration, monkeypatch):

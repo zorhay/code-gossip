@@ -14,6 +14,7 @@ const GROUPS = [
  ['Memory',['pre_compact','compact']],
 ];
 const PACK_ORDER = ['default','wood-thrush','paper','construction','minimal','sci-fi','submarine','attention','silent'];
+const PROFILE_SESSION_EVENTS = ['session_start','read','edit','test','stop'];
 const PACK_META = {
  default:{desc:'Classic macOS alert sounds. Nothing to install.', kind:'macOS sounds'},
  'wood-thrush':{desc:'A birdsong melody that evolves as the session goes on.', kind:'Generated'},
@@ -28,7 +29,7 @@ const PACK_META = {
 const themeKey = 'code-gossip.soundbar-theme';
 const GUIDE = [
  ['effects','Choose a mode','Effects, recorded clips, spoken phrases, or AI commentary.'],
- ['events','Audition sounds','Press an event to hear it. Nothing changes until you save.'],
+ ['events','Audition sounds','Preview any sound. Use applies your selection.'],
  ['phrases','Edit phrases','Pick an event on the left and rewrite its lines.'],
  ['provider','Connect AI commentary','Pick a provider. Cloud checks run only when you ask.'],
  ['state','Save and use','Save keeps edits. Use switches what agents play.'],
@@ -36,9 +37,11 @@ const GUIDE = [
 ];
 
 let saved, state, activeSelection, setup, voiceChoices, styleNames;
-let checkedAI = null, busy = false, savingSound = false, savingVolume = false, mediaBusy = false, installPoll = null;
-const setupChecks = {}, filters = {effects:'All', clips:'All'}, cursors = {}, guideDone = new Set();
-let setupChecksReady = false, setupCheckTimer = null, enabledLayers, generatedSample = null, modelList = null;
+let busy = false, savingSound = false, savingVolume = false, mediaBusy = false, installPoll = null;
+let activePreview = null, modelPoll = null;
+let savingAISettings = 0, aiSettingsQueue = Promise.resolve();
+const setupChecks = new Map(), filters = {effects:'All', clips:'All'}, cursors = {}, guideDone = new Set();
+let enabledLayers, generatedSample = null, modelList = null;
 let versions = null, versionPoll = null, versionChecking = false, versionStarting = false, versionError = '', loadedVersion = null;
 let toastTimer;
 
@@ -58,11 +61,11 @@ function applyTheme(theme) {
  document.querySelectorAll('[data-theme-choice]').forEach(button => button.setAttribute('aria-pressed', String(button.dataset.themeChoice === next)));
 }
 
-async function api(path, body) {
+async function api(path, body, allowFailure=false) {
  if (demo) return demo.request(path, body);
  const response = await fetch(path, body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-Soundbar-Request':'ui'}, body:JSON.stringify(body)});
  const data = await response.json();
- if (!response.ok || data.ok === false) throw new Error(data.error || data.message || 'Request failed');
+ if (!response.ok || !allowFailure && data.ok === false) throw new Error(data.error || data.message || 'Request failed');
  return data;
 }
 function toast(message) {
@@ -71,8 +74,10 @@ function toast(message) {
  clearTimeout(toastTimer);
  toastTimer = setTimeout(() => $('toast').classList.remove('show'), 2400);
 }
-function showError(message) { $('errorBanner').textContent = message || ''; }
-function clearError() { if ($('errorBanner')) $('errorBanner').textContent = ''; }
+function showError(message) {
+ setMarkup($('errorBanner'), message ? `<span id="errorMessage" class="error-message" tabindex="0">${esc(message)}</span><button type="button" class="icon-sm" data-dismiss-error aria-label="Dismiss error">${icon('x')}</button>` : '');
+}
+function clearError() { if ($('errorBanner')) setMarkup($('errorBanner'), ''); }
 
 function packIds() {
  return Object.keys(saved.effects_profiles).sort((a, b) => {
@@ -97,7 +102,7 @@ function normalizePhrases(source) {
 function voiceLabel(engine, id) { return (voiceChoices[engine] || []).find(([value]) => value === id)?.[1] || id; }
 function speechEngine(mode=state.viewMode) { return mode === 'ai' ? state.engine : state.phraseEngine; }
 function needsKey() { return !!saved.narrator_providers[state.provider]?.needs_key; }
-function providerKey() { return state.apiKey || (state.provider === saved.narrator_provider ? saved.narrator_api_key : '') || ''; }
+function providerKey() { if (state.keyEdited) return state.apiKey; return state.apiKey || (state.provider === saved.narrator_provider ? saved.narrator_api_key : '') || ''; }
 function hasProviderKey() { return !!demo || !needsKey() || !!providerKey().trim(); }
 function connectionIdentity() { return JSON.stringify([state.provider, state.model, providerKey()]); }
 function aiIdentity() { return connectionIdentity(); }
@@ -135,7 +140,32 @@ function savedDraft(mode) {
  }
  return {mode, style:saved.narrator_style, engine, voice:engine === 'kokoro' ? saved.kokoro_voice : saved.voice_main, provider:saved.narrator_provider, model:saved.narrator_model || '', context:!!saved.narrator_deep_context, apiKey:''};
 }
-function isDirty(mode) { return !demo && !same(selectionDraft(mode), savedDraft(mode)); }
+// Browsed presets are activation choices; only editor fields are saveable edits.
+function selectionIdentity({mode, pack, profile, style}) { return {mode, pack, profile, style}; }
+function editableDraft({mode, pack, profile, style, ...edits}) { return edits; }
+function isDirty(mode) { return !demo && !same(editableDraft(selectionDraft(mode)), editableDraft(savedDraft(mode))); }
+function selectionInUse(mode) {
+ return modeInUse(mode) && same(selectionIdentity(selectionDraft(mode)), selectionIdentity(savedDraft(mode)));
+}
+const renderedMarkup = new WeakMap();
+function setMarkup(node, html) {
+ // Keep unchanged controls mounted through polling and other background updates.
+ if (renderedMarkup.get(node) === html) return;
+ const focused = document.activeElement;
+ const attributes = ['id','name','data-act','data-filter','data-phrase-event','data-preview','data-pack','data-event','data-variant','data-role','data-remove','data-index','data-part'];
+ if (focused.matches('input[type=radio]')) attributes.push('value');
+ const identity = attributes.filter(name => focused.hasAttribute(name));
+ const selector = node.contains(focused) && identity.length
+  ? focused.tagName + identity.map(name => `[${name}="${CSS.escape(focused.getAttribute(name))}"]`).join('') : null;
+ const selection = selector && focused.selectionStart != null ? [focused.selectionStart, focused.selectionEnd, focused.selectionDirection] : null;
+ node.innerHTML = html;
+ renderedMarkup.set(node, html);
+ const replacement = selector && node.querySelector(selector);
+ if (replacement && !replacement.disabled) {
+  replacement.focus({preventScroll:true});
+  if (selection) replacement.setSelectionRange(...selection);
+ }
+}
 function modeInUse(mode) {
  if (demo) return false;
  if (activeSelection.mode === 'combined') return mode === 'effects' || mode === (profileModes[saved.voice_profile] || 'phrases');
@@ -160,7 +190,7 @@ function draftConfig(mode=state.viewMode) {
  } else {
   config[engine === 'kokoro' ? 'kokoro_voice' : 'voice_main'] = state.voices[engine];
   Object.assign(config, {narrator_provider:state.provider, narrator_model:state.model, narrator_style:state.style, narrator_deep_context:state.context});
-  if (state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
+  if (state.keyEdited || state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
  }
  return config;
 }
@@ -180,12 +210,15 @@ function speechInstallation(engine=speechEngine()) {
 }
 function speechReadiness(mode) {
  const engine = speechEngine(mode), installation = speechInstallation(engine);
- if (!installation.available) return {ready:false, message:installation.message};
+ if (!installation.available) return {ready:false, message:engine === 'kokoro' ? 'Kokoro: ' + (setup.installStatus === 'error' && setup.installMessage || installation.message) : installation.message};
  const voices = mode === 'phrases' ? Object.values(state.phraseVoices[engine]) : [state.voices[engine]];
  if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) return {ready:false, message:'Choose installed voices'};
  const key = mode === 'phrases' ? 'phrases' : 'aiSpeech';
- const check = setupChecks[key], current = check?.identity === speechIdentity(mode);
- if (current && check.status === 'failed') return {ready:false, message:'Check failed'};
+ const check = cachedCheck(key), current = check?.identity === speechIdentity(mode);
+ if (engine === 'kokoro' && !demo && (!current || check.status !== 'checked' || !check.model?.ready)) {
+  return {ready:false, message:current ? check.message || 'Preparing speech…' : 'Check the speech engine'};
+ }
+ if (current && check.status === 'failed') return {ready:false, message:(engine === 'kokoro' ? 'Kokoro: ' : '') + (check.message || 'Speech check failed')};
  if (current && check.status === 'checking') return {ready:false, message:'Checking speech…'};
  return {ready:true, message:current && check.status === 'checked' ? 'Engine available' : 'Not checked'};
 }
@@ -193,14 +226,14 @@ function setupReadiness(mode, pack=state.pack) {
  if (mode === 'effects' || mode === 'clips') {
   const available = mode === 'effects' ? setup.effects?.[pack] : setup.clips?.generals;
   if (!available?.ready) return available || {ready:false, message:'Audio unavailable'};
-  const check = setupChecks[mode], current = check?.identity === checkIdentity(mode, pack);
+  const check = cachedCheck(mode, checkIdentity(mode, pack)), current = check?.identity === checkIdentity(mode, pack);
   if (current && check.status === 'failed') return {ready:false, message:'Check failed'};
   if (current && check.status === 'checking') return {ready:false, message:'Checking…'};
   return {ready:true, message:current && check.status === 'checked' ? 'Audio available' : 'Not checked'};
  }
  const speech = speechReadiness(mode);
  if (!speech.ready) return speech;
- if (mode === 'ai' && checkedAI !== aiIdentity()) return {ready:false, message:'Check the provider first'};
+ if (mode === 'ai' && cachedCheck('ai')?.status !== 'checked') return {ready:false, message:'Check the provider first'};
  return speech;
 }
 function saveReadiness(mode) {
@@ -231,72 +264,112 @@ function checkButton(key) {
  return $('checkEffects');
 }
 function checkPresentation(key) {
- const check = setupChecks[key], current = check?.identity === checkIdentity(key), status = current ? check.status : 'unchecked';
- const provider = key === 'ai', cli = provider && state.provider === 'claude_cli';
+ if (demo) return {status:'checked', checking:false, requesting:false, message:'Recorded', tone:'success', action:'Check'};
+ const check = cachedCheck(key), current = check?.identity === checkIdentity(key), status = current ? check.status : 'unchecked';
+ const provider = key === 'ai', cli = provider && ['claude_cli', 'codex_cli'].includes(state.provider);
  const action = provider ? (cli ? 'Check CLI' : state.provider === 'ollama' ? 'Check server' : 'Check connection') : 'Check';
  const pending = provider && !cli ? 'Connecting…' : 'Checking…';
- const success = provider ? (cli ? 'CLI found' : state.provider === 'ollama' ? 'Server reachable' : 'Connection verified') : key === 'effects' || key === 'clips' ? 'Audio available' : 'Engine available';
+ const success = provider ? (cli ? 'Detected' : 'Connected') : 'Ready';
  let prerequisite = null;
- if (provider && !hasProviderKey()) prerequisite = {message:'API key required', tone:'warning'};
+ if (provider && !hasProviderKey()) prerequisite = {message:'Key required', tone:'warning'};
  if (key === 'effects' || key === 'clips') {
   const resource = key === 'effects' ? setup.effects?.[state.pack] : setup.clips?.generals;
-  if (!resource?.ready) prerequisite = {message:resource?.message || 'Audio unavailable', tone:resource?.missing?.length ? 'error' : 'warning'};
+  if (!resource?.ready) prerequisite = {message:resource?.missing?.length ? 'Missing files' : resource?.sox ? 'Install SoX' : 'Unavailable', tone:resource?.missing?.length ? 'error' : 'warning'};
  }
  if (key === 'phrases' || key === 'aiSpeech') {
   const installation = speechInstallation(speechEngine(checkModes[key]));
-  if (!installation.available) prerequisite = installation;
-  else if (!speechReadiness(checkModes[key]).ready && status !== 'failed' && status !== 'checking') prerequisite = {message:'Choose installed voices', tone:'warning'};
+  if (!installation.available) prerequisite = {...installation, message:installation.message === 'Installation failed' ? 'Install failed' : installation.message};
+  else {
+   const mode = checkModes[key], engine = speechEngine(mode);
+   const voices = mode === 'phrases' ? Object.values(state.phraseVoices[engine]) : [state.voices[engine]];
+   if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) prerequisite = {message:'Choose voices', tone:'warning'};
+  }
  }
- const result = {message:status === 'checked' ? success : status === 'failed' ? 'Check failed' : status === 'checking' ? pending : provider && !cli ? 'Not checked' : 'Not checked', tone:status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning'};
- return {action, pending, status, checking:check?.status === 'checking', prerequisite, ...(prerequisite || result)};
+ const result = {message:status === 'checked' ? success : status === 'failed' ? 'Check failed' : status === 'checking' ? pending : status === 'loading' ? 'Loading…' : 'Not checked', tone:status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning'};
+ if (current && check.model) {
+  result.message = status === 'failed' ? 'Load failed' : status === 'checking' ? pending :
+   ({ready:'Ready', downloading:'Downloading…', loading:'Loading…'}[check.model.state] || 'Preparing…');
+  result.tone = status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning';
+ }
+ return {action:current && check.model?.state === 'error' ? 'Retry model loading' : action, pending, status, checking:status === 'checking', requesting:!!check?.requesting, prerequisite, ...(prerequisite || result)};
 }
 function paintStatus(node, view) {
  const tone = {success:'ok', warning:'warn', error:'err'}[view.tone] || '';
  node.className = 'status' + (tone ? ' ' + tone : '');
  node.dataset.tone = view.tone || 'neutral';
- node.textContent = view.message;
- node.hidden = !!(view.checking && !view.prerequisite);
+ if (node.hasAttribute('data-status-for')) setSizedText(node, view.message, 'Downloading…', 'Choose voices');
+ else node.textContent = view.message;
+ // An in-flight check must not collapse its slot and move adjacent controls.
+ node.hidden = false;
+ node.style.visibility = view.checking && !view.prerequisite ? 'hidden' : '';
 }
-function modeCheckKeys() {
- if (state.viewMode === 'ai') return needsKey() ? ['aiSpeech'] : ['aiSpeech', 'ai'];
- return [state.viewMode === 'phrases' ? 'phrases' : state.viewMode];
+function setSizedText(node, text, widthLabel, alternate='') {
+ setMarkup(node, `<span class="label-slot" data-width-label="${esc(widthLabel)}" data-alternate-label="${esc(alternate)}"><span>${esc(text)}</span></span>`);
 }
-function scheduleSetupChecks(delay=150) {
- if (demo || !setupChecksReady) return;
- clearTimeout(setupCheckTimer);
- const run = () => {
-  for (const key of modeCheckKeys()) {
-   const check = setupChecks[key];
-   if (check?.status === 'checking' || check?.identity === checkIdentity(key) || checkPresentation(key).prerequisite) continue;
-   checkSetup(key, {automatic:true});
-  }
- };
- if (delay) setupCheckTimer = setTimeout(run, delay); else run();
+// Results belong to a configuration for this page's lifetime, not to the last
+// visited section. Reload creates a fresh cache; explicit Check replaces one entry.
+function cachedCheck(key, identity=checkIdentity(key)) {
+ return setupChecks.get(JSON.stringify([key, identity]));
 }
+function rememberCheck(key, check) {
+ check.key = key;
+ setupChecks.set(JSON.stringify([key, check.identity]), check);
+ return check;
+}
+function cacheAudioSetup() {
+ for (const [pack, resource] of Object.entries(setup.effects || {})) {
+  rememberCheck('effects', {identity:checkIdentity('effects', pack), status:resource.ready ? 'checked' : 'failed', message:resource.message});
+ }
+ const resource = setup.clips?.generals;
+ if (resource) rememberCheck('clips', {identity:checkIdentity('clips'), status:resource.ready ? 'checked' : 'failed', message:resource.message});
+}
+function checkInitialSpeech() {
+ if (demo) return;
+ for (const key of ['phrases', 'aiSpeech']) checkSetup(key, {automatic:true});
+}
+
 async function refreshSetup() { setup = {...setup, ...await api('/api/setup')}; }
-async function checkSetup(key, {automatic=false}={}) {
- if (setupChecks[key]?.status === 'checking' || (checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips')) return;
- const mode = checkModes[key], config = draftConfig(mode), identity = checkIdentity(key), button = checkButton(key);
- const check = setupChecks[key] = {identity, status:'checking'};
- if (key === 'ai') checkedAI = null;
+function scheduleModelPoll() {
+ clearTimeout(modelPoll);
+ // Continue only unfinished model preparation, including while browsing elsewhere.
+ const pending = [...setupChecks.values()].filter(check => check.status === 'loading' && !check.requesting);
+ if (demo || !pending.length) return;
+ modelPoll = setTimeout(() => {
+  for (const check of pending) checkSetup(check.key, {automatic:true, pending:check});
+ }, 2000);
+}
+async function checkSetup(key, {automatic=false, pending=null}={}) {
+ const mode = checkModes[key], config = pending?.config || draftConfig(mode), identity = pending?.identity || checkIdentity(key);
+ const previous = cachedCheck(key, identity);
+ if (previous?.requesting || automatic && previous && previous.status !== 'loading') return;
+ if (!pending && checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips') return;
+ const check = rememberCheck(key, {identity, config, requesting:true,
+  status:automatic ? previous?.status || 'loading' : 'checking',
+  model:previous?.model, message:previous?.message});
  if (!automatic) clearError();
  renderChecks();
  try {
-  await refreshSetup();
-  await api('/api/draft-check', {mode, config, scope:key === 'ai' ? 'provider' : 'speech'});
-  check.status = 'checked';
-  if (identity === checkIdentity(key) && key === 'ai') { checkedAI = identity; refreshModels(); }
+  if (!automatic) await refreshSetup();
+  const result = await api('/api/draft-check', {mode, config, scope:key === 'ai' ? 'provider' : 'speech', retry:!automatic}, true);
+  check.model = result.model;
+  check.message = result.message || result.error || 'Check failed';
+  check.status = result.ok ? 'checked' : result.pending ? 'loading' : 'failed';
+  if (!result.ok && !result.pending && identity === checkIdentity(key) && mode === state.viewMode) showError(check.message);
+  if (result.ok && identity === checkIdentity(key) && key === 'ai') refreshModels();
  } catch (error) {
   check.status = 'failed';
-  if (identity === checkIdentity(key)) showError(error.message);
+  check.message = error.message;
+  if (identity === checkIdentity(key) && mode === state.viewMode) showError(error.message);
  } finally {
-  render();
-  if (identity !== checkIdentity(key)) scheduleSetupChecks();
+  check.requesting = false;
+  render({preservePhraseEditor:true});
+  scheduleModelPoll();
  }
 }
 
 function providerNote() {
  if (state.provider === 'claude_cli') return 'Checks that Claude CLI is installed. Play a sample to test sign-in and model access. Cloud providers are checked only when you ask.';
+ if (state.provider === 'codex_cli') return 'Uses your Codex sign-in and usage limits. Check CLI detects installation; Play sample tests sign-in and model access. Leave Model blank for the CLI default. Requires a recent Codex CLI.';
  if (state.provider === 'ollama') return 'Checks the local server. Play a sample to test the selected model.';
  return `${saved.narrator_providers[state.provider]?.description || ''} A connection check sends a short request and may be billed. It runs only when you ask.`;
 }
@@ -316,7 +389,7 @@ async function refreshModels(force=false) {
  const request = modelList = {identity, status:'loading', models:[], message:'Loading available models…'};
  renderModelList();
  const config = {narrator_provider:state.provider};
- if (state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
+ if (state.keyEdited || state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
  try {
   const result = await api('/api/narrator-models', {config});
   if (modelList !== request || identity !== modelListIdentity()) return;
@@ -340,44 +413,47 @@ function renderTabs() {
   let badges = '';
   if (modeInUse(id)) badges += '<span class="tab-inuse"><i class="live-dot"></i>In use</span>';
   if (isDirty(id)) badges += '<span class="dirty-dot" title="Unsaved changes"></span>';
-  if (!demo && id === 'ai' && checkedAI !== aiIdentity()) badges += `<span title="Provider not checked">${icon('warn','tab-warn')}</span>`;
+  if (!demo && id === 'ai' && cachedCheck('ai')?.status !== 'checked') badges += `<span title="Provider not checked">${icon('warn','tab-warn')}</span>`;
   $('badges-' + id).innerHTML = badges;
  }
 }
 function renderNow() {
  $('now').classList.toggle('muted', !state.enabled);
  $('now').classList.toggle('is-playing', mediaBusy);
- $('statusText').textContent = `${state.enabled ? demo ? 'Preview' : 'In use' : 'Muted'} · ${selectionLabel(demo ? selectionDraft() : activeSelection)}`;
+ $('statusText').innerHTML = `<span class="label-slot" data-width-label="${demo ? 'Preview' : 'In use'}" data-alternate-label="Muted"><span>${state.enabled ? demo ? 'Preview' : 'In use' : 'Muted'}</span></span> · ${esc(selectionLabel(demo ? selectionDraft() : activeSelection))}`;
+ $('now').title = 'Show the mode in use: ' + selectionLabel(demo ? selectionDraft() : activeSelection);
  $('powerLabel').textContent = state.enabled ? 'Sound on' : 'Sound off';
  $('soundOn').checked = state.enabled;
  $('soundOn').disabled = busy || !demo && mediaBusy || savingSound;
  $('volume').disabled = busy || !demo && mediaBusy || savingVolume;
- if (demo) { $('demoSession').disabled = mediaBusy; $('demoStop').disabled = !mediaBusy; }
 }
 function renderPanelState(mode) {
  if (demo) return;
- const inUse = modeInUse(mode), exclusive = activeSelection.mode === mode, dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
+ const inUse = selectionInUse(mode);
+ const exclusive = activeSelection.mode === mode && inUse, dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
  const readiness = setupReadiness(mode), blocked = !readiness.ready, drawer = blockerDrawer(mode);
- const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume;
- const link = `<button type="button" class="link" data-drawer="${drawer}">${drawer === 'provider' ? 'Configure' : 'Details'}</button>`;
- let html = '';
+ const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume || savingAISettings;
+ const link = drawer === 'speech' ? '' : `<button type="button" class="link" data-drawer="${drawer}">${drawer === 'provider' ? 'Configure' : 'Details'}</button>`;
+ let actions = '', activation = '';
  if (dirty) {
-  html += '<span class="unsaved"><i class="dirty-dot"></i>Unsaved changes</span>';
-  if (issue) html += `<span class="state-issue">${icon('warn')}${esc(issue)}</span>`;
-  else if (!saveReady.ready || !exclusive && blocked) html += `<span class="state-issue">${icon('warn')}${esc(!saveReady.ready ? saveReady.message : readiness.message)} · ${link}</span>`;
-  const saveDisabled = busy || mediaBusy || !!issue;
-  html += `<button type="button" class="btn ghost" data-act="discard" ${busy || mediaBusy ? 'disabled' : ''}>Discard</button>`;
-  html += `<button type="button" class="btn ${exclusive ? 'primary' : ''}" data-act="save" ${saveDisabled || saving || !saveReady.ready ? 'disabled' : ''}${mode === state.viewMode && exclusive ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>${inUse ? 'Save changes' : 'Save'}</button>`;
-  if (!exclusive) html += `<button type="button" class="btn primary" data-act="save-use" ${saveDisabled || saving || blocked ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Save &amp; use</button>`;
- } else if (exclusive) html += `<span class="pill success">${icon('check')}In use</span>`;
- else {
-  if (inUse) html += `<span class="pill success">${icon('check')}In use</span>`;
-  if (blocked) html += `<span class="state-issue">${icon('warn')}${esc(readiness.message)} · ${link}</span>`;
-  html += `<button type="button" class="btn primary" data-act="use" ${saving || blocked ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
+  actions += `<div id="draftNotice-${mode}" class="draft-notice"${issue || !saveReady.ready ? ' tabindex="0"' : ''}><span class="unsaved"><i class="dirty-dot"></i>Unsaved changes</span>`;
+  if (issue) actions += `<span class="state-issue">${icon('warn')}${esc(issue)}</span>`;
+  else if (!saveReady.ready && saveReady.message !== readiness.message) actions += `<span class="state-issue">${icon('warn')}${esc(saveReady.message)}</span>`;
+  actions += `</div><button type="button" class="btn ghost" data-act="discard" ${saving ? 'disabled' : ''}>Discard</button>`;
+  actions += `<button type="button" class="btn primary" data-act="save" ${saving || !!issue || !saveReady.ready ? 'disabled' : ''}${busy ? ' aria-busy="true"' : ''}>Save changes</button>`;
  }
- document.querySelector(`[data-state="${mode}"]`).innerHTML = html;
+ if (inUse) activation += `<span class="pill success">${icon('check')}In use</span>`;
+ if (!exclusive) {
+  activation += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
+ }
+ const notice = blocked ? `<span class="state-issue">${icon('warn')}<span>${esc(readiness.message)}${link ? ' · ' + link : ''}</span></span>` : '';
+ const html = `<div id="activationNotice-${mode}" class="activation-notice" role="status"${blocked ? ' tabindex="0"' : ''}>${notice}</div><div class="activation-actions">${activation}</div>`;
+ setMarkup(document.querySelector(`[data-state="${mode}"]`), html);
+ const footer = document.querySelector(`[data-draft-actions="${mode}"]`);
+ if (footer) { setMarkup(footer, actions); footer.hidden = false; footer.style.visibility = dirty ? '' : 'hidden'; footer.setAttribute('aria-hidden', String(!dirty)); }
 }
 function renderChrome() {
+ if (!demo) for (const id of ['provider','model','sampleKey','phraseEngine','speaker']) $(id).disabled = busy;
  renderTabs();
  renderNow();
  for (const mode of Object.keys(TABS)) renderPanelState(mode);
@@ -386,34 +462,35 @@ function renderChrome() {
  $('resetEvent').hidden = !defaults;
  $('resetEvent').disabled = !!defaults && same(state.phrases[state.phraseEvent], defaults);
  $('clipsInUse').innerHTML = modeInUse('clips') ? '<span class="pill success sm">In use</span>' : '';
- $('activationProgress').textContent = busy ? 'Saving selection…' : '';
+ $('activationProgress').textContent = busy ? 'Saving selection…' : savingAISettings ? 'Saving settings…' : '';
+ renderPreviewState();
 }
 
 function renderFilters(mode) {
- $('filters-' + mode).innerHTML = ['All', ...groupedEvents().map(([group]) => group)].map(group => `<button type="button" class="filter" data-filter="${mode}:${esc(group)}" aria-pressed="${filters[mode] === group}">${esc(group)}</button>`).join('');
+ setMarkup($('filters-' + mode), ['All', ...groupedEvents().map(([group]) => group)].map(group => `<button type="button" class="filter" data-filter="${mode}:${esc(group)}" aria-pressed="${filters[mode] === group}">${esc(group)}</button>`).join(''));
 }
 function renderEvents(container, mode, pack) {
  const events = catalog(mode, pack);
  if (!Object.keys(events).length) {
-  container.innerHTML = '<p class="empty">This pack is intentionally silent. Agents make no effect sounds while it is in use.</p>';
+  setMarkup(container, '<p class="empty">This pack is intentionally silent. Agents make no effect sounds while it is in use.</p>');
   return;
  }
  const groups = filters[mode] === 'All' ? groupedEvents() : groupedEvents().filter(([group]) => group === filters[mode]);
- container.innerHTML = `<div class="ev-grid">${groups.map(([group, names]) => (filters[mode] === 'All' ? `<p class="group-label">${esc(group)}</p>` : '') + names.map(event => {
+ setMarkup(container, `<div class="ev-grid">${groups.map(([group, names]) => (filters[mode] === 'All' ? `<p class="group-label">${esc(group)}</p>` : '') + names.map(event => {
   const samples = events[event];
   if (!samples?.length) return `<div class="ev-tile silent"><span class="ev-ico">–</span><span class="ev-body"><span class="ev-name">${esc(eventLabel(event))}</span><span class="ev-sound">Silent</span></span></div>`;
-  const key = mode + ':' + pack + ':' + event, index = (cursors[key] || 0) % samples.length;
+  const index = displayedVariant(mode, pack, event, samples.length);
   return `<button type="button" class="ev-tile" data-preview="${mode}" data-event="${esc(event)}" ${mode === 'effects' ? `data-pack="${esc(pack)}"` : ''}><span class="ev-ico">${icon('play')}</span><span class="ev-body"><span class="ev-name">${esc(eventLabel(event))}</span><span class="ev-sound">${esc(samples[index])}</span></span>${samples.length > 1 ? `<span class="ev-count" title="${samples.length} alternatives">×${samples.length}</span>` : ''}</button>`;
- }).join('')).join('')}</div>`;
+ }).join('')).join('')}</div>`);
 }
 function renderPacks() {
  $('packCount').textContent = packIds().length;
- $('packList').innerHTML = packIds().map(id => {
+ setMarkup($('packList'), packIds().map(id => {
   const meta = PACK_META[id] || {kind:'Custom'}, effect = setup.effects?.[id] || {}, count = Object.keys(catalog('effects', id)).length;
   const selected = state.pack === id, inUse = modeInUse('effects') && saved.effects_profile === id;
   const sample = catalog('effects', id).edit ? 'edit' : Object.keys(catalog('effects', id))[0];
-  return `<div class="list-row ${selected ? 'selected' : ''}"><label><input type="radio" name="pack" value="${esc(id)}" ${selected ? 'checked' : ''}><span class="row-main"><span class="row-title">${esc(packName(id))}${inUse ? '<span class="pill success sm">In use</span>' : ''}</span><span class="row-meta">${esc(meta.kind)} · ${count ? count + ' events' : 'silent'}${effect.sox ? ' · SoX' : ''}</span></span></label>${sample ? `<button class="play-btn" type="button" data-preview="effects" data-pack="${esc(id)}" data-event="${esc(sample)}" data-variant="0" aria-label="Play a ${esc(packName(id))} sample">${icon('play')}</button>` : ''}</div>`;
- }).join('');
+  return `<div class="list-row ${selected ? 'selected' : ''}"><label><input type="radio" name="pack" value="${esc(id)}" ${selected ? 'checked' : ''}><span class="row-main"><span class="row-title">${esc(packName(id))}${inUse ? '<span class="pill success sm">In use</span>' : ''}</span><span class="row-meta">${esc(meta.kind)} · ${count ? count + ' events' : 'silent'}${effect.sox ? ' · SoX' : ''}</span></span></label>${sample ? `<button class="play-btn" type="button" data-preview="effects" data-pack="${esc(id)}" data-session aria-label="Play a ${esc(packName(id))} sample">${icon('play')}</button>` : ''}</div>`;
+ }).join(''));
 }
 function renderEffectsDetail() {
  const meta = PACK_META[state.pack] || {desc:'Custom sound pack.', kind:'Audio'}, effect = setup.effects?.[state.pack] || {};
@@ -421,6 +498,7 @@ function renderEffectsDetail() {
  $('packDesc').textContent = meta.desc || 'Custom sound pack.';
  $('packChips').innerHTML = `<span class="chip">${esc(meta.kind || 'Audio')}</span>${effect.sox ? '<span class="chip">Uses SoX</span>' : ''}`;
  $('effectsSource').textContent = `${packName(state.pack)} · ${packSource(state.pack)}`;
+ $('effectsSource').title = $('effectsSource').textContent;
  $('drawerPack').textContent = packName(state.pack);
  $('drawerSource').textContent = packSource(state.pack);
  $('effectsFiles').textContent = effect.missing?.length ? 'Missing: ' + effect.missing.join(', ') : effect.ready ? 'All sounds present' : (effect.message || 'Audio unavailable');
@@ -438,11 +516,11 @@ function renderClips() {
 function renderEventList() {
  const list = $('evList'), scroll = list.scrollTop;
  $('eventCount').textContent = saved.events.length;
- list.innerHTML = groupedEvents().map(([group, events]) => `<p class="group-label">${esc(group)}</p>` + events.map(event => {
+ setMarkup(list, groupedEvents().map(([group, events]) => `<p class="group-label">${esc(group)}</p>` + events.map(event => {
   const changed = !same(state.phrases[event], saved.phrases[event]);
   const empty = state.phrases[event].flat().some(text => !String(text).trim());
   return `<button type="button" class="ev-item" data-phrase-event="${esc(event)}" aria-current="${event === state.phraseEvent}"><span>${esc(eventLabel(event))}</span><span class="ev-meta">${empty ? icon('warn') : ''}${changed ? '<i class="dirty-dot" title="Unsaved"></i>' : ''}${state.phrases[event].length}</span></button>`;
- }).join('')).join('');
+ }).join('')).join(''));
  list.scrollTop = scroll;
 }
 function renderPhraseRows() {
@@ -451,10 +529,10 @@ function renderPhraseRows() {
  $('editorHint').textContent = roles ? (event === 'subagent_start' ? 'The main agent speaks first, then the subagent replies.' : 'The subagent reports back, then the main agent responds.') : 'Spoken by the main agent. One alternative plays at random.';
  $('addLabel').textContent = roles ? 'Add exchange' : 'Add phrase';
  const head = roles && items.length ? `<div class="row row-head"><span></span><div class="inputs pair"><span>${esc(roleName(roles[0]))}</span><span>${esc(roleName(roles[1]))}</span></div><span></span><span></span></div>` : '';
- $('phraseRows').innerHTML = items.length ? head + items.map((item, index) => {
+ setMarkup($('phraseRows'), items.length ? head + items.map((item, index) => {
   const texts = [item].flat(), playable = texts.every(text => String(text).trim());
   return `<div class="row"><span class="row-num">${index + 1}</span><div class="inputs ${roles ? 'pair' : ''}">${texts.map((text, part) => `<input type="text" value="${esc(text)}" data-index="${index}" data-part="${part}" class="${String(text).trim() ? '' : 'invalid'}" placeholder="${part ? 'Reply…' : 'Write a phrase…'}" aria-label="${esc(roles ? roleName(roles[part]) : 'Phrase')} ${index + 1}">`).join('')}</div><button class="play-btn" type="button" data-preview="phrases" data-event="${esc(event)}" data-variant="${index}" aria-label="Preview alternative ${index + 1}" ${playable ? '' : 'disabled'}>${icon('play')}</button><button class="icon-sm" type="button" data-remove="${index}" aria-label="Remove ${index + 1}">${icon('x')}</button></div>`;
- }).join('') : '<p class="empty">No phrases yet, so this event stays silent. Add one below.</p>';
+ }).join('') : '<p class="empty">No phrases yet, so this event stays silent. Add one below.</p>');
  if (demo) $('phraseRows').querySelectorAll('input').forEach(input => { input.readOnly = true; });
 }
 function roleName(role) { return (role === 'main' ? 'Main agent · ' : 'Subagent · ') + voiceLabel(state.phraseEngine, state.phraseVoices[state.phraseEngine][role]); }
@@ -472,24 +550,33 @@ function renderVoices() {
  fillSelect('mainAgentVoice', choices, state.phraseVoices[state.phraseEngine].main);
  fillSelect('subagentVoice', choices, state.phraseVoices[state.phraseEngine].sub);
  fillSelect('speaker', voiceChoices[state.engine] || [], state.voices[state.engine]);
+ // Shared voice settings can change while a phrase is being edited.
+ const roles = phraseRoles(state.phraseEvent);
+ if (roles) {
+  $('phraseRows').querySelectorAll('.row-head .inputs > span').forEach((label, part) => { label.textContent = roleName(roles[part]); });
+  $('phraseRows').querySelectorAll('input').forEach(input => { input.setAttribute('aria-label', `${roleName(roles[input.dataset.part])} ${Number(input.dataset.index) + 1}`); });
+ }
 }
 function renderStyles() {
  $('styleCount').textContent = Object.keys(styleNames).length;
- $('styleList').innerHTML = Object.entries(styleNames).map(([id, name]) => {
+ setMarkup($('styleList'), Object.entries(styleNames).map(([id, name]) => {
   const selected = state.style === id, inUse = modeInUse('ai') && saved.narrator_style === id;
   return `<label class="list-row ${selected ? 'selected' : ''}"><input type="radio" name="style" value="${esc(id)}" ${selected ? 'checked' : ''}><span class="row-main"><span class="row-title">${esc(name)}${inUse ? '<span class="pill success sm">In use</span>' : ''}</span></span></label>`;
- }).join('');
+ }).join(''));
  $('styleTitle').textContent = styleNames[state.style] || state.style;
 }
 function renderSample() {
  const current = generatedSample?.identity === sampleIdentity() ? generatedSample : null;
  if (!current) generatedSample = null;
- $('commentarySample').textContent = current ? current.text : 'Play a sample to hear ' + (styleNames[state.style] || state.style) + '.';
+ const text = current ? current.text : 'Play a sample to hear ' + (styleNames[state.style] || state.style) + '.';
+ if ($('commentarySample').textContent !== text) {
+  $('commentarySample').textContent = text;
+  $('commentarySample').closest('.pane-body').scrollTop = 0;
+ }
  $('commentarySample').classList.toggle('placeholder', !current);
  const name = saved.narrator_providers[state.provider]?.name || state.provider;
- $('sampleNote').textContent = demo ? 'Prerecorded sample · Kokoro. Example commentary written for this demo. Install to generate fresh lines and edit phrases.' : current ? 'Replay uses this line and does not ask the provider again.' : `The first play writes one line with ${name}${needsKey() ? ', which may be billed' : ''}. A successful sample also verifies the provider.`;
- if (demo) document.querySelector('.sample-context').textContent = 'Example event · ' + (current?.event ? eventLabel(current.event) : 'Edit src/app.ts');
- if (!mediaBusy) $('sampleLabel').textContent = current ? 'Replay' : 'Play sample';
+ $('sampleNote').textContent = demo ? 'Prerecorded sample · Kokoro.' : current ? 'Replay uses this line and does not ask the provider again.' : `The first play writes one line with ${name}${needsKey() ? ', which may be billed' : ''}. A successful sample also verifies the provider.`;
+ renderSampleLabel();
  $('sampleBtn').disabled = mediaBusy;
 }
 function renderSpeech() {
@@ -502,12 +589,38 @@ function renderSpeech() {
  $('engineStatus').dataset.tone = installation.tone;
  $('engineStatus').className = 'status ' + ({success:'ok', warning:'warn', error:'err', neutral:''}[installation.tone] || '');
  $('engineDetail').textContent = setup.installing || setup.installStatus === 'error' ? (setup.installMessage || '') : kokoro ? 'Local speech · about 1.5 GB' : '';
+ const showInstall = kokoro && (setup.installing || setup.installStatus === 'error');
+ const duration = seconds => `${Math.floor((seconds || 0) / 60)}:${String((seconds || 0) % 60).padStart(2, '0')}`;
+ $('installTiming').hidden = !showInstall;
+ $('installTiming').textContent = `${duration(setup.installElapsed)} elapsed · ${Math.round((setup.installTimeout || 1200) / 60)} minute limit` + (setup.installing && setup.installQuiet >= 10 ? ` · Last output ${duration(setup.installQuiet)} ago; waiting for the installer` : '');
+ const activity = $('installActivity'), output = (setup.installOutput || []).join('\n');
+ activity.hidden = !showInstall || !output;
+ if (activity.textContent !== output) { activity.textContent = output; activity.scrollTop = activity.scrollHeight; }
+ const modelCheck = cachedCheck(state.viewMode === 'ai' ? 'aiSpeech' : 'phrases');
+ const modelCurrent = modelCheck?.identity === speechIdentity(state.viewMode);
+ const progress = modelCurrent ? modelCheck.model : null;
+ $('modelPreparation').hidden = !kokoro || !installation.available || !!demo;
+ paintStatus($('modelPreparationStatus'), {
+  message:progress?.ready ? 'Ready' : modelCurrent ? modelCheck.message || 'Preparing…' : 'Not checked',
+  tone:modelCurrent && modelCheck.status === 'failed' ? 'error' : progress?.ready ? 'success' : 'warning',
+ });
+ const bytes = value => (value / 1000000).toFixed(1) + ' MB';
+ const details = [];
+ if (progress?.file) details.push(progress.file);
+ if (progress?.total > 0) details.push(`${bytes(progress.completed || 0)} of ${bytes(progress.total)} prepared`);
+ else if (progress?.completed > 0) details.push(bytes(progress.completed) + ' prepared');
+ if (progress?.transferred > 0) details.push(bytes(progress.transferred) + ' received');
+ $('modelDownloadDetails').textContent = details.join(' · ');
+ const bar = $('modelDownloadProgress');
+ bar.hidden = !progress || progress.state !== 'downloading';
+ if (progress?.total > 0) { bar.max = progress.total; bar.value = Math.min(progress.completed || 0, progress.total); }
+ else bar.removeAttribute('value');
  $('kokoroInfo').hidden = !kokoro;
  $('verificationRow').hidden = !installation.available;
- const repair = ['phrases','aiSpeech'].some(key => setupChecks[key]?.status === 'failed' && setupChecks[key]?.identity === checkIdentity(key));
+ const repair = ['phrases','aiSpeech'].some(key => cachedCheck(key)?.status === 'failed' && !cachedCheck(key)?.model && cachedCheck(key)?.identity === checkIdentity(key));
  $('installKokoro').hidden = !kokoro || (setup.kokoro && !repair) || !!setup.installing;
  $('installKokoro').disabled = !!setup.installing;
- $('installKokoro').textContent = setup.installStatus === 'error' ? 'Retry installation' : repair ? 'Repair installation' : 'Install Kokoro';
+ setSizedText($('installKokoro'), setup.installStatus === 'error' ? 'Retry installation' : repair ? 'Repair installation' : 'Install Kokoro', 'Repair installation');
 }
 function renderChecks() {
  for (const key of Object.keys(checkModes)) {
@@ -515,19 +628,20 @@ function renderChecks() {
   document.querySelectorAll(`[data-status-for="${key}"]`).forEach(node => paintStatus(node, view));
   const button = checkButton(key);
   if ((key === 'phrases' || key === 'aiSpeech') && key !== speechKey()) continue;
-  button.textContent = view.checking ? view.pending : view.action;
-  button.disabled = !!(view.checking || view.prerequisite && key !== 'effects' && key !== 'clips');
-  button.setAttribute('aria-busy', String(!!view.checking));
+  setSizedText(button, view.checking ? view.pending : view.action,
+   key === 'ai' ? 'Check connection' : ['phrases','aiSpeech'].includes(key) ? 'Retry model loading' : 'Checking…');
+  button.disabled = !!(view.requesting || view.prerequisite && key !== 'effects' && key !== 'clips');
+  button.setAttribute('aria-busy', String(view.requesting));
   button.dataset.status = view.checking ? 'checking' : view.status;
   if (key === 'phrases' || key === 'aiSpeech') button.dataset.checkSetup = key;
  }
  renderChrome();
 }
-function render() {
+function render({preservePhraseEditor=false}={}) {
  renderPacks();
  renderEffectsDetail();
  renderClips();
- renderPhraseRows();
+ if (!preservePhraseEditor) renderPhraseRows();
  renderStyles();
  renderVoices();
  showProvider();
@@ -542,7 +656,8 @@ function showProvider() {
  $('sampleKey').placeholder = state.provider === saved.narrator_provider && saved.narrator_api_key ? 'Key saved — enter a new one to replace' : 'Paste your API key';
  $('providerHint').textContent = providerNote();
  const name = saved.narrator_providers[state.provider]?.name || state.provider;
- $('stripProvider').textContent = name + (state.model ? ' · ' + state.model : '');
+ $('stripProvider').textContent = demo ? 'Prerecorded' : name + (state.model ? ' · ' + state.model : '');
+ $('stripProvider').title = $('stripProvider').textContent;
  renderModelList();
 }
 function openDrawer(kind) {
@@ -557,10 +672,9 @@ function openDrawer(kind) {
 }
 function selectTab(mode) {
  if (!TABS[mode] || state.viewMode === mode) { if (TABS[mode]) renderTabs(); return; }
- if (demo) demo.stop();
+ cancelProfileSession();
  state.viewMode = mode;
  render();
- scheduleSetupChecks();
  if (mode === 'phrases') requestAnimationFrame(scrollEventIntoView);
 }
 function scrollEventIntoView() {
@@ -570,12 +684,16 @@ function scrollEventIntoView() {
 }
 
 async function commit(mode, activate) {
- if (busy || mediaBusy || savingSound || savingVolume) return;
+ if (busy || mediaBusy || savingSound || savingVolume || savingAISettings) return;
  const issue = saveIssue(mode);
  if (issue) { showError(issue); return; }
  if (activate && !setupReadiness(mode).ready) { openDrawer(blockerDrawer(mode)); return; }
  if (!activate && !saveReadiness(mode).ready) { openDrawer(blockerDrawer(mode)); return; }
  const draft = selectionDraft(mode), config = draftConfig(mode);
+ if (!activate) {
+  delete config.effects_profile;
+  delete config.narrator_style;
+ }
  busy = true; clearError(); renderChrome();
  try {
   const body = {mode, config, ...(mode === 'phrases' ? {phrases:draft.phrases} : {})};
@@ -584,7 +702,7 @@ async function commit(mode, activate) {
   syncSpeechDrafts(config);
   Object.assign(saved, config);
   if (mode === 'ai' && state.provider === draft.provider && state.apiKey === draft.apiKey) {
-   state.apiKey = '';
+   state.apiKey = ''; state.keyEdited = false;
    $('sampleKey').value = '';
   }
   if (mode === 'phrases') saved.phrases = clone(draft.phrases);
@@ -597,28 +715,32 @@ async function commit(mode, activate) {
    enabledLayers = {effects_on:mode === 'effects', voice_on:mode !== 'effects'};
    toast('Saved · now using ' + selectionLabel());
   } else {
-   if (activeSelection.mode === mode) activeSelection = draft;
+   if (activeSelection.mode === mode) activeSelection = savedDraft(mode);
    toast('Saved');
   }
  } catch (error) { showError(error.message); }
  finally { busy = false; render(); }
 }
-function syncSpeechDrafts(config) {
+function syncSpeechDrafts(config, {syncAI=true}={}) {
  // Rebase untouched shared fields without overwriting edits in the other tab.
  const fields = {
-  tts_engine:[[state,'engine'], [state,'phraseEngine']],
-  voice_main:[[state.voices,'say'], [state.phraseVoices.say,'main']],
+  tts_engine:[[state,'phraseEngine']],
+  voice_main:[[state.phraseVoices.say,'main']],
   voice_sub:[[state.phraseVoices.say,'sub']],
-  kokoro_voice:[[state.voices,'kokoro'], [state.phraseVoices.kokoro,'main']],
+  kokoro_voice:[[state.phraseVoices.kokoro,'main']],
   kokoro_voice_sub:[[state.phraseVoices.kokoro,'sub']],
  };
+ if (syncAI) {
+  fields.tts_engine.push([state,'engine']);
+  fields.voice_main.push([state.voices,'say']);
+  fields.kokoro_voice.push([state.voices,'kokoro']);
+ }
  for (const [key, targets] of Object.entries(fields)) {
   if (!Object.hasOwn(config, key)) continue;
   for (const [target, field] of targets) if (target[field] === saved[key]) target[field] = config[key];
  }
 }
 function discard(mode) {
- if (mode === 'effects') state.pack = saved.effects_profile;
  if (mode === 'phrases') {
   state.phraseEngine = saved.tts_engine;
   state.phraseVoices = {say:{main:saved.voice_main, sub:saved.voice_sub}, kokoro:{main:saved.kokoro_voice, sub:saved.kokoro_voice_sub || 'am_adam'}};
@@ -627,10 +749,9 @@ function discard(mode) {
  if (mode === 'ai') {
   state.engine = saved.tts_engine;
   state.voices = {say:saved.voice_main, kokoro:saved.kokoro_voice};
-  state.style = saved.narrator_style;
   state.provider = saved.narrator_provider;
   state.model = saved.narrator_model || '';
-  state.apiKey = '';
+  state.apiKey = ''; state.keyEdited = false;
   state.context = !!saved.narrator_deep_context;
   $('model').value = state.model;
   $('sampleKey').value = '';
@@ -668,14 +789,61 @@ function variantFor(button, mode) {
  if (button?.hasAttribute('data-variant')) return Number(button.dataset.variant);
  const event = button?.dataset.event || 'edit', pack = button?.dataset.pack || state.pack;
  const samples = (mode === 'effects' ? catalog('effects', pack) : catalog('clips'))[event] || [];
- const key = mode + ':' + pack + ':' + event, variant = cursors[key] || 0;
+ const key = soundCursorKey(mode, pack, event), variant = cursors[key] || 0;
  if (samples.length) cursors[key] = (variant + 1) % samples.length;
  return variant;
 }
-async function mediaAction(button, work) {
+function previewKey(button) {
+ const {preview:mode, event, variant, role} = button.dataset;
+ const content = mode === 'phrases' && !role ? state.phrases[event]?.[Number(variant)] : null;
+ const speech = ['phrases','ai'].includes(mode) ? speechIdentity(mode) : null;
+ return JSON.stringify([button.id, ...['preview','pack','event','variant','role'].map(key => button.dataset[key] || ''),
+  content, speech, mode === 'ai' && !role ? sampleIdentity() : null]);
+}
+function playingCue(mode, pack, event) {
+ const cue = activePreview?.cue;
+ return cue?.mode === mode && cue.event === event && (mode !== 'effects' || cue.pack === pack) ? cue : null;
+}
+function soundCursorKey(mode, pack, event) {
+ return mode + ':' + (mode === 'clips' ? 'generals' : pack) + ':' + event;
+}
+function displayedVariant(mode, pack, event, count) {
+ return (playingCue(mode, pack, event)?.variant ?? cursors[soundCursorKey(mode, pack, event)] ?? 0) % count;
+}
+function renderSampleLabel() {
+ const active = activePreview?.key === previewKey($('sampleBtn'));
+ $('sampleLabel').textContent = active ? activePreview.phase === 'playing' ? 'Playing…' : 'Generating…'
+  : generatedSample?.identity === sampleIdentity() ? 'Replay' : 'Play sample';
+}
+function renderPreviewState() {
+ renderSampleLabel();
+ document.querySelectorAll('[data-preview]').forEach(button => {
+  const {preview:mode, pack, event} = button.dataset;
+  const cue = button.matches('.ev-tile') ? playingCue(mode, pack, event) : null;
+  const active = activePreview?.key === previewKey(button) || !!cue;
+  const playing = active && activePreview.phase === 'playing';
+  button.classList.toggle('is-playing', playing);
+  button.classList.toggle('is-generating', active && !playing);
+  button.setAttribute('aria-busy', String(active));
+  button.querySelector('svg use')?.setAttribute('href', active ? playing ? '#i-wave' : '#i-reset' : '#i-play');
+  if (button.matches('.ev-tile')) {
+   const samples = catalog(mode, pack)[event] || [];
+   button.querySelector('.ev-sound').textContent = samples[displayedVariant(mode, pack, event, samples.length)] || '';
+  }
+  if (['phrases','ai'].includes(mode) && !demo) {
+   const empty = mode === 'phrases' && !button.dataset.role &&
+    [state.phrases[button.dataset.event]?.[Number(button.dataset.variant)]].flat().some(text => !String(text || '').trim());
+   const blocked = speechEngine(mode) === 'kokoro' && !speechReadiness(mode).ready;
+   button.disabled = mediaBusy || empty || blocked;
+   button.title = blocked ? speechReadiness(mode).message : '';
+  } else button.disabled = mediaBusy;
+ });
+}
+async function mediaAction(button, work, phase='playing', cue=null) {
  if (mediaBusy) return;
  clearError();
  mediaBusy = true;
+ activePreview = button?.matches('[data-preview]') ? {key:previewKey(button), phase, cue} : null;
  button?.setAttribute('aria-busy', 'true');
  const controls = [...document.querySelectorAll('[data-preview]')].map(control => [control, control.disabled]);
  controls.forEach(([control]) => { control.disabled = true; });
@@ -684,50 +852,88 @@ async function mediaAction(button, work) {
  catch (error) { if (error.name !== 'AbortError') showError(error.message); }
  finally {
   mediaBusy = false;
+  activePreview = null;
   button?.setAttribute('aria-busy', 'false');
   controls.forEach(([control, disabled]) => { control.disabled = disabled; });
   render();
  }
 }
 async function preview(mode, button) {
+ if (mediaBusy) return;
  const role = button?.dataset.role || null;
  if (mode === 'ai' && !role) { await playCommentarySample(button); return; }
  const pack = button?.dataset.pack;
+ if (button?.hasAttribute('data-session')) {
+  // Browsing the requested pack is independent of readiness and activation.
+  state.pack = pack; filters[mode] = 'All'; render();
+ }
  const readiness = mode === 'phrases' || mode === 'ai' ? speechReadiness(mode) : setupReadiness(mode, pack);
  if (pack && !setup.effects?.[pack]?.ready) { openDrawer('effects'); showError(setup.effects?.[pack]?.message || 'Audio unavailable'); return; }
  if (!readiness.ready) { openDrawer(blockerDrawer(mode)); return; }
+ if (button?.hasAttribute('data-session')) { await playProfileSession(mode, pack, button); return; }
  const event = button?.dataset.event || (mode === 'phrases' ? state.phraseEvent : 'edit');
  const variant = variantFor(button, mode);
  const config = pack ? {effects_profile:pack} : draftConfig(mode);
  const body = {mode, config, role, event, variant};
  if (mode === 'phrases' && !role) body.phrases = {[event]: state.phrases[event]};
- await mediaAction(button, () => api('/api/draft-preview', body));
+ await mediaAction(button, () => api('/api/draft-preview', body), 'playing',
+  ['effects','clips'].includes(mode) ? {mode, pack, event, variant} : null);
+}
+function cancelProfileSession() {
+ if (activePreview?.session) activePreview.session.cancelled = true;
+}
+async function playProfileSession(mode, pack, button) {
+ const available = catalog(mode, pack);
+ const sequence = PROFILE_SESSION_EVENTS.filter(event => available[event]?.length);
+ const events = sequence.length ? sequence : Object.keys(available).slice(0, 5);
+ await mediaAction(button, async () => {
+  const session = activePreview.session = {cancelled:false};
+  const token = demo?.playbackToken();
+  for (const [index, event] of events.entries()) {
+   if (session.cancelled || demo && token !== demo.playbackToken()) break;
+   activePreview.cue = {mode, pack, event, variant:0};
+   renderPreviewState();
+   const container = $('effectsEvents');
+   const tile = [...container.querySelectorAll('.ev-tile')].find(node => node.dataset.event === event);
+   if (tile) {
+    const bounds = container.getBoundingClientRect(), cue = tile.getBoundingClientRect();
+    if (cue.top < bounds.top) container.scrollTop += cue.top - bounds.top;
+    else if (cue.bottom > bounds.bottom) container.scrollTop += cue.bottom - bounds.bottom;
+   }
+   await api('/api/draft-preview', {mode, config:{effects_profile:pack}, event, variant:0});
+   activePreview.cue = null;
+   renderPreviewState();
+   if (index < events.length - 1 && !session.cancelled) await new Promise(resolve => setTimeout(resolve, 400));
+  }
+ });
 }
 async function playCommentarySample(button) {
  if (!speechReadiness('ai').ready) { openDrawer('speech'); return; }
  if ((!generatedSample || generatedSample.identity !== sampleIdentity()) && !hasProviderKey()) { openDrawer('provider'); showError('API key required'); return; }
  const config = draftConfig('ai'), identity = sampleIdentity();
+ const generate = generatedSample?.identity !== identity;
  await mediaAction(button, async () => {
-  if (!generatedSample || generatedSample.identity !== identity) {
-   $('sampleLabel').textContent = 'Generating…';
+  if (generate) {
    const result = await api('/api/draft-preview', {mode:'ai', action:'generate', config});
    if (identity !== sampleIdentity()) return;
    generatedSample = {identity, text:result.text};
-   checkedAI = aiIdentity();
-   setupChecks.ai = {identity:checkedAI, status:'checked'};
+   rememberCheck('ai', {identity:aiIdentity(), status:'checked'});
    renderSample();
   }
-  $('sampleLabel').textContent = 'Playing…';
+  activePreview.phase = 'playing';
+  renderPreviewState();
   await api('/api/draft-preview', {mode:'ai', action:'play', config, text:generatedSample.text});
- });
+ }, generate && !demo ? 'generating' : 'playing');
 }
 
 async function installKokoro() {
  if (setup.installing) return;
- const repair = !!setup.kokoro || ['phrases','aiSpeech'].some(key => setupChecks[key]?.status === 'failed' && setupChecks[key]?.identity === checkIdentity(key));
- for (const key of ['phrases','aiSpeech']) delete setupChecks[key];
+ const repair = !!setup.kokoro || ['phrases','aiSpeech'].some(key => cachedCheck(key)?.status === 'failed' && cachedCheck(key)?.identity === checkIdentity(key));
+ for (const [id, check] of setupChecks) if (check.config?.tts_engine === 'kokoro') setupChecks.delete(id);
+ clearTimeout(modelPoll);
  clearError();
  setup.installing = true; setup.installStatus = 'running'; setup.installMessage = '';
+ setup.installElapsed = setup.installQuiet = 0; setup.installOutput = [];
  render();
  try {
   const result = await api('/api/kokoro-install', {repair});
@@ -744,11 +950,50 @@ async function pollInstall() {
   await refreshSetup();
   render();
   if (setup.installing) installPoll = setTimeout(pollInstall, 2000);
-  else scheduleSetupChecks(0);
+  else checkInitialSpeech();
  } catch (error) {
   showError(error.message);
   installPoll = setTimeout(pollInstall, 5000);
  }
+}
+function aiSettings(kind) {
+ if (kind === 'provider') return {narrator_provider:state.provider, narrator_model:state.model, narrator_api_key:providerKey()};
+ return {tts_engine:state.engine, [state.engine === 'kokoro' ? 'kokoro_voice' : 'voice_main']:state.voices[state.engine]};
+}
+function persistAISettings(kind) {
+ if (demo) return;
+ const changes = aiSettings(kind);
+ savingAISettings++;
+ clearError(); renderChrome();
+ // Keep rapid edits ordered; each request contains only this settings group.
+ aiSettingsQueue = aiSettingsQueue.then(async () => {
+  try {
+   await api('/api/config', changes);
+   // AI already holds the latest selection, which may be newer than this save.
+   syncSpeechDrafts(changes, {syncAI:false});
+   Object.assign(saved, changes);
+   if (kind === 'provider' && same(aiSettings(kind), changes)) {
+    state.apiKey = ''; state.keyEdited = false; $('sampleKey').value = '';
+   }
+  } catch (error) {
+   // A failed older request must not overwrite a newer edit waiting in the queue.
+   if (same(aiSettings(kind), changes)) {
+    if (kind === 'provider') {
+     state.provider = saved.narrator_provider; state.model = saved.narrator_model || ''; state.apiKey = ''; state.keyEdited = false;
+     $('model').value = state.model; $('sampleKey').value = '';
+     invalidateProvider({clearModels:true});
+    } else {
+     state.engine = saved.tts_engine;
+     state.voices = {say:saved.voice_main, kokoro:saved.kokoro_voice};
+    }
+   }
+   showError(error.message);
+  } finally {
+   savingAISettings--;
+   render({preservePhraseEditor:true});
+  }
+ });
+ return aiSettingsQueue;
 }
 async function saveConfig(changes) { await api('/api/config', changes); Object.assign(saved, changes); }
 async function toggleSound() {
@@ -776,15 +1021,18 @@ function renderVersions() {
  $('installedVersion').textContent = 'Installed: ' + versions.installed;
  $('versionNotice').hidden = !versions.available && !running && !needsAttention;
  $('versionNotice').textContent = running ? 'Updating Code Gossip…' : needsAttention ? 'Update needs attention' : versions.available ? `Update available: ${versions.installed} → ${versions.release.version}` : 'Code Gossip updates';
+ const settingsLabel = $('versionNotice').hidden ? 'Settings' : 'Settings · ' + $('versionNotice').textContent;
+ $('settingsButton').setAttribute('aria-label', settingsLabel);
+ $('settingsButton').title = settingsLabel;
  $('availableVersion').textContent = versions.development ? 'Updates come from your checkout.' : versions.available ? 'Available: ' + versions.release.version : versions.checked_at ? 'You have the latest stable release.' : 'Updates are checked automatically while Soundbar runs.';
  $('releaseNotes').hidden = !versions.release;
  if (versions.release) $('releaseNotes').href = versions.release.notes_url;
  $('checkUpdates').disabled = versions.development || running || versionChecking;
- $('checkUpdates').textContent = versionChecking ? 'Checking…' : 'Check for updates';
+ setSizedText($('checkUpdates'), versionChecking ? 'Checking…' : 'Check for updates', 'Check for updates');
  $('checkUpdates').setAttribute('aria-busy', String(versionChecking));
  $('applyUpdate').hidden = versions.development || !versions.available && !needsAttention && !running;
  $('applyUpdate').disabled = running || versionChecking || !!setup?.installing;
- $('applyUpdate').textContent = running ? 'Updating…' : needsAttention ? 'Retry update' : 'Update';
+ setSizedText($('applyUpdate'), running ? 'Updating…' : needsAttention ? 'Retry update' : 'Update', 'Retry update', 'Updating…');
  $('applyUpdate').setAttribute('aria-busy', String(running));
  $('updateResult').textContent = versionError || [versions.message, versions.guidance].filter(Boolean).join(' ');
  $('updateResult').dataset.tone = versionError || needsAttention ? 'error' : running ? 'warning' : 'neutral';
@@ -821,7 +1069,7 @@ async function closeSoundbar() {
   const response = await fetch('/api/shutdown', {method:'POST', headers:{'X-Soundbar-Request':'ui'}});
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error('Could not stop Soundbar');
-  clearTimeout(installPoll); clearTimeout(setupCheckTimer); clearTimeout(versionPoll);
+  clearTimeout(installPoll); clearTimeout(modelPoll); clearTimeout(versionPoll);
   $('settingsDialog').close();
   $('closedDialog').showModal();
   $('closedTitle').focus();
@@ -852,9 +1100,7 @@ function gotoGuide(target) {
  requestAnimationFrame(() => flash(element));
 }
 function invalidateProvider(options={}) {
- checkedAI = null;
  generatedSample = null;
- if (setupChecks.ai) setupChecks.ai.identity = '';
  if (options.clearModels) modelList = null;
 }
 
@@ -863,14 +1109,15 @@ function wire() {
  $('helpButton').onclick = event => { event.stopPropagation(); toggleHelp(); };
  document.addEventListener('click', event => {
   const target = event.target;
+  if (target.closest('[data-dismiss-error]')) { clearError(); return; }
   const tab = target.closest('[data-mode]');
   if (tab?.closest('#tabs')) { selectTab(tab.dataset.mode); return; }
   const act = target.closest('[data-act]');
-  if (act) { ({save:() => commit(state.viewMode, false), use:() => commit(state.viewMode, true), 'save-use':() => commit(state.viewMode, true), discard:() => discard(state.viewMode)})[act.dataset.act](); return; }
+  if (act) { ({save:() => commit(state.viewMode, false), use:() => commit(state.viewMode, true), discard:() => discard(state.viewMode)})[act.dataset.act](); return; }
   const drawer = target.closest('[data-drawer]');
   if (drawer) { openDrawer(drawer.dataset.drawer); return; }
   const filter = target.closest('[data-filter]');
-  if (filter) { const [mode, group] = filter.dataset.filter.split(':'); filters[mode] = group; mode === 'effects' ? renderEffectsDetail() : renderClips(); return; }
+  if (filter) { const [mode, group] = filter.dataset.filter.split(':'); filters[mode] = group; mode === 'effects' ? renderEffectsDetail() : renderClips(); renderPreviewState(); return; }
   const phraseEvent = target.closest('[data-phrase-event]');
   if (phraseEvent) { state.phraseEvent = phraseEvent.dataset.phraseEvent; renderPhraseRows(); renderChrome(); $('phraseRows').parentElement.scrollTop = 0; return; }
   const remove = target.closest('[data-remove]');
@@ -905,12 +1152,12 @@ function wire() {
   catch (error) { showError(error.message); }
   finally { savingVolume = false; $('volume').value = state.volume; $('volumeValue').textContent = state.volume + '%'; renderChrome(); }
  };
- $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; state.pack = event.target.value; render(); scheduleSetupChecks(); });
+ $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; cancelProfileSession(); state.pack = event.target.value; render(); });
  $('styleList').addEventListener('change', event => { if (event.target.name !== 'style') return; state.style = event.target.value; generatedSample = null; renderStyles(); renderSample(); renderChrome(); });
- $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); scheduleSetupChecks(); };
- $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
- $('subagentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].sub = $('subagentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
- $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; renderChrome(); scheduleSetupChecks(); };
+ $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); if (state.viewMode === 'ai') persistAISettings('speech'); };
+ $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; render(); };
+ $('subagentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].sub = $('subagentVoice').value; render(); };
+ $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; render(); persistAISettings('speech'); };
  $('phraseRows').addEventListener('input', event => {
   const input = event.target;
   if (input.tagName !== 'INPUT') return;
@@ -931,16 +1178,17 @@ function wire() {
  $('addPhrase').onclick = addPhrase;
  $('resetEvent').onclick = resetPhraseEvent;
  $('provider').onchange = () => {
-  state.provider = $('provider').value; state.model = ''; state.apiKey = '';
+  state.provider = $('provider').value; state.model = ''; state.apiKey = ''; state.keyEdited = true;
   $('model').value = ''; $('sampleKey').value = '';
   invalidateProvider({clearModels:true});
-  delete setupChecks.ai;
   showProvider(); renderSample(); renderChecks();
-  if (!needsKey()) { refreshModels(); scheduleSetupChecks(0); }
+  persistAISettings('provider');
+  if (!needsKey()) { refreshModels(); }
  };
- $('model').oninput = () => { state.model = $('model').value; invalidateProvider(); showProvider(); renderChrome(); if (!needsKey()) scheduleSetupChecks(); };
- $('sampleKey').oninput = () => { state.apiKey = $('sampleKey').value; invalidateProvider({clearModels:true}); renderModelList(); renderChecks(); };
- $('sampleKey').onchange = () => refreshModels();
+ $('model').oninput = () => { state.model = $('model').value; invalidateProvider(); showProvider(); renderChecks(); };
+ $('sampleKey').oninput = () => { state.apiKey = $('sampleKey').value; state.keyEdited = true; invalidateProvider({clearModels:true}); renderModelList(); renderChecks(); };
+ $('model').onchange = () => persistAISettings('provider');
+ $('sampleKey').onchange = () => { persistAISettings('provider'); refreshModels(); };
  $('refreshModels').onclick = () => refreshModels(true);
  $('sessionContext').onchange = () => { state.context = $('sessionContext').checked; renderChrome(); };
  document.querySelectorAll('[data-check-setup]').forEach(button => button.onclick = () => checkSetup(button.dataset.checkSetup));
@@ -950,7 +1198,7 @@ function wire() {
  $('drawer').addEventListener('click', event => { if (event.target === $('drawer')) $('drawer').close(); });
  $('settingsButton').onclick = () => $('settingsDialog').showModal();
  $('closeSettings').onclick = () => $('settingsDialog').close();
- $('versionNotice').onclick = () => { $('settingsDialog').showModal(); $('versionPreferences').scrollIntoView({block:'nearest'}); };
+ $('versionNotice').onclick = event => { event.stopPropagation(); $('settingsDialog').showModal(); $('versionPreferences').scrollIntoView({block:'nearest'}); };
  $('checkUpdates').onclick = checkUpdates;
  $('applyUpdate').onclick = applyUpdate;
  $('closeSoundbar').onclick = closeSoundbar;
@@ -1001,6 +1249,7 @@ async function load() {
   $(id).disabled = !saved.sound_spacing_on;
   $(id + 'Value').textContent = (saved[key] / 1000) + 's';
  }
+ if (!demo) cacheAudioSetup();
  applyTheme(currentTheme());
  buildTabs();
  render();
@@ -1012,15 +1261,11 @@ window.addEventListener('DOMContentLoaded', async () => {
  try {
   await load();
   wire();
-  if (demo) demo.ready(() => mediaAction($('demoSession'), async () => {
-   const mode = state.viewMode, config = clone(draftConfig(mode));
-   await demo.session(mode, config, (event, text) => {
-    if (mode === 'phrases') { state.phraseEvent = event; renderPhraseRows(); renderEventList(); }
-    if (mode === 'ai') { generatedSample = {identity:sampleIdentity(), text, event}; renderSample(); }
-   });
-  }), selectTab);
-  setupChecksReady = true;
-  scheduleSetupChecks(0);
+  if (demo) demo.ready(selectTab);
+  if (!demo) {
+   checkInitialSpeech();
+   if (!needsKey()) checkSetup('ai', {automatic:true});
+  }
   refreshVersions();
  } catch (error) {
   $('loadError').hidden = false;
