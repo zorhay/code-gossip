@@ -2,8 +2,8 @@ name: Build, test, and release
 
 on:
   pull_request:
-  release:
-    types: [published]
+  push:
+    tags: ['[0-9]*', 'v[0-9]*']
 
 permissions:
   contents: read
@@ -14,8 +14,25 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  validate:
+    name: Validate version tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Validate stable version and tagged commit
+        id: version
+        run: python3 -B scripts/release_metadata.py
+
   build:
     name: Build installer and demo
+    needs: validate
     # Follow the supported stable image instead of retaining a retired macOS pin.
     runs-on: macos-latest
     timeout-minutes: 5
@@ -30,11 +47,11 @@ jobs:
           python-version: '3.11'
       - name: Build installer
         env:
-          PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
+          PACKAGE_TAG: ${{ needs.validate.outputs.tag }}
         run: python3 -B scripts/package_release.py "$PACKAGE_TAG"
       - name: Build matching website
         env:
-          PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
+          PACKAGE_TAG: ${{ needs.validate.outputs.tag }}
         run: python3 -B scripts/build_pages.py --tag "$PACKAGE_TAG" --package dist/code-gossip.zip
       - name: Share installer with test jobs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -58,6 +75,7 @@ jobs:
 
   runtime:
     name: Python tests
+    needs: validate
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
@@ -76,7 +94,7 @@ jobs:
 
   browser:
     name: ${{ matrix.name }}
-    needs: build
+    needs: [build, validate]
     runs-on: macos-latest
     timeout-minutes: 7
     strategy:
@@ -120,8 +138,8 @@ jobs:
       - name: Verify website and installer match
         if: matrix.suite == 'pages'
         env:
-          PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
-          SOURCE_COMMIT: ${{ github.sha }}
+          PACKAGE_TAG: ${{ needs.validate.outputs.tag }}
+          SOURCE_COMMIT: ${{ needs.validate.outputs.commit }}
         run: python3 -B scripts/verify_pages.py --site dist/pages --package dist/code-gossip.zip --tag "$PACKAGE_TAG" --commit "$SOURCE_COMMIT"
       - name: Install Playwright
         run: |
@@ -152,38 +170,38 @@ jobs:
 
   publish:
     name: Publish installer
-    if: github.event_name == 'release'
-    needs: test
+    concurrency:
+      group: release-publication
+      cancel-in-progress: false
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    needs: [test, validate]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Check out publication helper
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - name: Download the tested installer
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: installation-package
           path: dist
-      - name: Publish the completed package
+      - name: Create release and publish the tested installer
         env:
           GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          assets=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[] | select(.state == "uploaded") | .name')
-          if grep -Fxq 'code-gossip.zip' <<< "$assets"; then
-            mkdir -p "$RUNNER_TEMP/published-package"
-            gh release download "$RELEASE_TAG" --pattern code-gossip.zip --dir "$RUNNER_TEMP/published-package" --clobber
-            cmp dist/code-gossip.zip "$RUNNER_TEMP/published-package/code-gossip.zip"
-            echo "The identical tested installation package is already uploaded."
-          else
-            gh release upload "$RELEASE_TAG" dist/code-gossip.zip
-          fi
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: python3 -B scripts/publish_release.py "$RELEASE_TAG" dist/code-gossip.zip
 
   pages:
     name: Publish website
-    needs: publish
+    needs: [publish, validate]
     permissions:
       contents: read
       pages: write
       id-token: write
     uses: ./.github/workflows/pages.yml
+    with:
+      release_tag: ${{ needs.validate.outputs.tag }}
+      release_commit: ${{ needs.validate.outputs.commit }}
