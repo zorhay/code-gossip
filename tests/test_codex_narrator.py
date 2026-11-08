@@ -2,6 +2,7 @@
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import time
@@ -97,15 +98,43 @@ def test_missing_binary_and_failure_do_not_expose_diagnostics(tmp_path, monkeypa
 def test_timeout_kills_child_processes(tmp_path, monkeypatch):
     marker = tmp_path / "orphan.txt"
     ready = tmp_path / "child-started"
-    source = f'''import subprocess,sys,time
+    start = tmp_path / "start-timer"
+    child = f'''import time
 from pathlib import Path
-subprocess.Popen([sys.executable, "-c", {f"import time; from pathlib import Path; Path({str(ready)!r}).touch(); time.sleep(1); Path({str(marker)!r}).touch()"!r}])
+Path({str(ready)!r}).touch()
+while not Path({str(start)!r}).exists():
+    time.sleep(0.01)
+time.sleep(1)
+Path({str(marker)!r}).touch()
+'''
+    source = f'''import subprocess,sys,time
+subprocess.Popen([sys.executable, "-c", {child!r}])
 time.sleep(30)
 '''
     fake_cli(tmp_path, monkeypatch, source)
+    real_popen = subprocess.Popen
+
+    def started_cli(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        try:
+            # Test group cleanup after startup, independent of interpreter launch time.
+            deadline = time.monotonic() + 5
+            while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert ready.exists(), "The child must actually start before testing cleanup"
+            start.touch()
+            return process
+        except BaseException:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.communicate()
+            raise
+
+    monkeypatch.setattr(narrate.subprocess, "Popen", started_cli)
     with pytest.raises(RuntimeError, match="timed out"):
         narrate._call_codex_cli("", "System", "Event", timeout=0.5)
-    assert ready.exists(), "The child must actually start before testing cleanup"
     time.sleep(0.7)
     assert not marker.exists(), "A child must not outlive the narrator deadline"
 
