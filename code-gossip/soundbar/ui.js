@@ -28,7 +28,7 @@ const PACK_META = {
 const themeKey = 'code-gossip.soundbar-theme';
 const GUIDE = [
  ['effects','Choose a mode','Effects, recorded clips, spoken phrases, or AI commentary.'],
- ['events','Audition sounds','Press an event to hear it. Nothing changes until you save.'],
+ ['events','Audition sounds','Preview any sound. Use applies your selection.'],
  ['phrases','Edit phrases','Pick an event on the left and rewrite its lines.'],
  ['provider','Connect AI commentary','Pick a provider. Cloud checks run only when you ask.'],
  ['state','Save and use','Save keeps edits. Use switches what agents play.'],
@@ -143,6 +143,25 @@ function editableDraft({mode, pack, profile, style, ...edits}) { return edits; }
 function isDirty(mode) { return !demo && !same(editableDraft(selectionDraft(mode)), editableDraft(savedDraft(mode))); }
 function selectionInUse(mode) {
  return modeInUse(mode) && same(selectionIdentity(selectionDraft(mode)), selectionIdentity(savedDraft(mode)));
+}
+const renderedMarkup = new WeakMap();
+function setMarkup(node, html) {
+ // Keep unchanged controls mounted through polling and other background updates.
+ if (renderedMarkup.get(node) === html) return;
+ const focused = document.activeElement;
+ const attributes = ['id','name','data-act','data-filter','data-phrase-event','data-preview','data-pack','data-event','data-variant','data-role','data-remove','data-index','data-part'];
+ if (focused.matches('input[type=radio]')) attributes.push('value');
+ const identity = attributes.filter(name => focused.hasAttribute(name));
+ const selector = node.contains(focused) && identity.length
+  ? focused.tagName + identity.map(name => `[${name}="${CSS.escape(focused.getAttribute(name))}"]`).join('') : null;
+ const selection = selector && focused.selectionStart != null ? [focused.selectionStart, focused.selectionEnd, focused.selectionDirection] : null;
+ node.innerHTML = html;
+ renderedMarkup.set(node, html);
+ const replacement = selector && node.querySelector(selector);
+ if (replacement && !replacement.disabled) {
+  replacement.focus({preventScroll:true});
+  if (selection) replacement.setSelectionRange(...selection);
+ }
 }
 function modeInUse(mode) {
  if (demo) return false;
@@ -414,9 +433,9 @@ function renderPanelState(mode) {
  if (!exclusive) {
   html += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
  }
- document.querySelector(`[data-state="${mode}"]`).innerHTML = html;
+ setMarkup(document.querySelector(`[data-state="${mode}"]`), html);
  const footer = document.querySelector(`[data-draft-actions="${mode}"]`);
- if (footer) { footer.innerHTML = actions; footer.hidden = !dirty; }
+ if (footer) { setMarkup(footer, actions); footer.hidden = !dirty; }
 }
 function renderChrome() {
  if (!demo) for (const id of ['provider','model','sampleKey','phraseEngine','speaker']) $(id).disabled = busy;
@@ -433,30 +452,30 @@ function renderChrome() {
 }
 
 function renderFilters(mode) {
- $('filters-' + mode).innerHTML = ['All', ...groupedEvents().map(([group]) => group)].map(group => `<button type="button" class="filter" data-filter="${mode}:${esc(group)}" aria-pressed="${filters[mode] === group}">${esc(group)}</button>`).join('');
+ setMarkup($('filters-' + mode), ['All', ...groupedEvents().map(([group]) => group)].map(group => `<button type="button" class="filter" data-filter="${mode}:${esc(group)}" aria-pressed="${filters[mode] === group}">${esc(group)}</button>`).join(''));
 }
 function renderEvents(container, mode, pack) {
  const events = catalog(mode, pack);
  if (!Object.keys(events).length) {
-  container.innerHTML = '<p class="empty">This pack is intentionally silent. Agents make no effect sounds while it is in use.</p>';
+  setMarkup(container, '<p class="empty">This pack is intentionally silent. Agents make no effect sounds while it is in use.</p>');
   return;
  }
  const groups = filters[mode] === 'All' ? groupedEvents() : groupedEvents().filter(([group]) => group === filters[mode]);
- container.innerHTML = `<div class="ev-grid">${groups.map(([group, names]) => (filters[mode] === 'All' ? `<p class="group-label">${esc(group)}</p>` : '') + names.map(event => {
+ setMarkup(container, `<div class="ev-grid">${groups.map(([group, names]) => (filters[mode] === 'All' ? `<p class="group-label">${esc(group)}</p>` : '') + names.map(event => {
   const samples = events[event];
   if (!samples?.length) return `<div class="ev-tile silent"><span class="ev-ico">–</span><span class="ev-body"><span class="ev-name">${esc(eventLabel(event))}</span><span class="ev-sound">Silent</span></span></div>`;
   const key = mode + ':' + pack + ':' + event, index = (cursors[key] || 0) % samples.length;
   return `<button type="button" class="ev-tile" data-preview="${mode}" data-event="${esc(event)}" ${mode === 'effects' ? `data-pack="${esc(pack)}"` : ''}><span class="ev-ico">${icon('play')}</span><span class="ev-body"><span class="ev-name">${esc(eventLabel(event))}</span><span class="ev-sound">${esc(samples[index])}</span></span>${samples.length > 1 ? `<span class="ev-count" title="${samples.length} alternatives">×${samples.length}</span>` : ''}</button>`;
- }).join('')).join('')}</div>`;
+ }).join('')).join('')}</div>`);
 }
 function renderPacks() {
  $('packCount').textContent = packIds().length;
- $('packList').innerHTML = packIds().map(id => {
+ setMarkup($('packList'), packIds().map(id => {
   const meta = PACK_META[id] || {kind:'Custom'}, effect = setup.effects?.[id] || {}, count = Object.keys(catalog('effects', id)).length;
   const selected = state.pack === id, inUse = modeInUse('effects') && saved.effects_profile === id;
   const sample = catalog('effects', id).edit ? 'edit' : Object.keys(catalog('effects', id))[0];
   return `<div class="list-row ${selected ? 'selected' : ''}"><label><input type="radio" name="pack" value="${esc(id)}" ${selected ? 'checked' : ''}><span class="row-main"><span class="row-title">${esc(packName(id))}${inUse ? '<span class="pill success sm">In use</span>' : ''}</span><span class="row-meta">${esc(meta.kind)} · ${count ? count + ' events' : 'silent'}${effect.sox ? ' · SoX' : ''}</span></span></label>${sample ? `<button class="play-btn" type="button" data-preview="effects" data-pack="${esc(id)}" data-event="${esc(sample)}" data-variant="0" aria-label="Play a ${esc(packName(id))} sample">${icon('play')}</button>` : ''}</div>`;
- }).join('');
+ }).join(''));
 }
 function renderEffectsDetail() {
  const meta = PACK_META[state.pack] || {desc:'Custom sound pack.', kind:'Audio'}, effect = setup.effects?.[state.pack] || {};
@@ -481,11 +500,11 @@ function renderClips() {
 function renderEventList() {
  const list = $('evList'), scroll = list.scrollTop;
  $('eventCount').textContent = saved.events.length;
- list.innerHTML = groupedEvents().map(([group, events]) => `<p class="group-label">${esc(group)}</p>` + events.map(event => {
+ setMarkup(list, groupedEvents().map(([group, events]) => `<p class="group-label">${esc(group)}</p>` + events.map(event => {
   const changed = !same(state.phrases[event], saved.phrases[event]);
   const empty = state.phrases[event].flat().some(text => !String(text).trim());
   return `<button type="button" class="ev-item" data-phrase-event="${esc(event)}" aria-current="${event === state.phraseEvent}"><span>${esc(eventLabel(event))}</span><span class="ev-meta">${empty ? icon('warn') : ''}${changed ? '<i class="dirty-dot" title="Unsaved"></i>' : ''}${state.phrases[event].length}</span></button>`;
- }).join('')).join('');
+ }).join('')).join(''));
  list.scrollTop = scroll;
 }
 function renderPhraseRows() {
@@ -494,10 +513,10 @@ function renderPhraseRows() {
  $('editorHint').textContent = roles ? (event === 'subagent_start' ? 'The main agent speaks first, then the subagent replies.' : 'The subagent reports back, then the main agent responds.') : 'Spoken by the main agent. One alternative plays at random.';
  $('addLabel').textContent = roles ? 'Add exchange' : 'Add phrase';
  const head = roles && items.length ? `<div class="row row-head"><span></span><div class="inputs pair"><span>${esc(roleName(roles[0]))}</span><span>${esc(roleName(roles[1]))}</span></div><span></span><span></span></div>` : '';
- $('phraseRows').innerHTML = items.length ? head + items.map((item, index) => {
+ setMarkup($('phraseRows'), items.length ? head + items.map((item, index) => {
   const texts = [item].flat(), playable = texts.every(text => String(text).trim());
   return `<div class="row"><span class="row-num">${index + 1}</span><div class="inputs ${roles ? 'pair' : ''}">${texts.map((text, part) => `<input type="text" value="${esc(text)}" data-index="${index}" data-part="${part}" class="${String(text).trim() ? '' : 'invalid'}" placeholder="${part ? 'Reply…' : 'Write a phrase…'}" aria-label="${esc(roles ? roleName(roles[part]) : 'Phrase')} ${index + 1}">`).join('')}</div><button class="play-btn" type="button" data-preview="phrases" data-event="${esc(event)}" data-variant="${index}" aria-label="Preview alternative ${index + 1}" ${playable ? '' : 'disabled'}>${icon('play')}</button><button class="icon-sm" type="button" data-remove="${index}" aria-label="Remove ${index + 1}">${icon('x')}</button></div>`;
- }).join('') : '<p class="empty">No phrases yet, so this event stays silent. Add one below.</p>';
+ }).join('') : '<p class="empty">No phrases yet, so this event stays silent. Add one below.</p>');
  if (demo) $('phraseRows').querySelectorAll('input').forEach(input => { input.readOnly = true; });
 }
 function roleName(role) { return (role === 'main' ? 'Main agent · ' : 'Subagent · ') + voiceLabel(state.phraseEngine, state.phraseVoices[state.phraseEngine][role]); }
@@ -524,10 +543,10 @@ function renderVoices() {
 }
 function renderStyles() {
  $('styleCount').textContent = Object.keys(styleNames).length;
- $('styleList').innerHTML = Object.entries(styleNames).map(([id, name]) => {
+ setMarkup($('styleList'), Object.entries(styleNames).map(([id, name]) => {
   const selected = state.style === id, inUse = modeInUse('ai') && saved.narrator_style === id;
   return `<label class="list-row ${selected ? 'selected' : ''}"><input type="radio" name="style" value="${esc(id)}" ${selected ? 'checked' : ''}><span class="row-main"><span class="row-title">${esc(name)}${inUse ? '<span class="pill success sm">In use</span>' : ''}</span></span></label>`;
- }).join('');
+ }).join(''));
  $('styleTitle').textContent = styleNames[state.style] || state.style;
 }
 function renderSample() {
@@ -538,7 +557,7 @@ function renderSample() {
  const name = saved.narrator_providers[state.provider]?.name || state.provider;
  $('sampleNote').textContent = demo ? 'Prerecorded sample · Kokoro. Example commentary written for this demo. Install to generate fresh lines and edit phrases.' : current ? 'Replay uses this line and does not ask the provider again.' : `The first play writes one line with ${name}${needsKey() ? ', which may be billed' : ''}. A successful sample also verifies the provider.`;
  if (demo) document.querySelector('.sample-context').textContent = 'Example event · ' + (current?.event ? eventLabel(current.event) : 'Edit src/app.ts');
- if (!mediaBusy) $('sampleLabel').textContent = current ? 'Replay' : 'Play sample';
+ renderSampleLabel();
  $('sampleBtn').disabled = mediaBusy;
 }
 function renderSpeech() {
@@ -755,9 +774,19 @@ function variantFor(button, mode) {
  return variant;
 }
 function previewKey(button) {
- return JSON.stringify([button.id, ...['preview','pack','event','variant','role'].map(key => button.dataset[key] || '')]);
+ const {preview:mode, event, variant, role} = button.dataset;
+ const content = mode === 'phrases' && !role ? state.phrases[event]?.[Number(variant)] : null;
+ const speech = ['phrases','ai'].includes(mode) ? speechIdentity(mode) : null;
+ return JSON.stringify([button.id, ...['preview','pack','event','variant','role'].map(key => button.dataset[key] || ''),
+  content, speech, mode === 'ai' && !role ? sampleIdentity() : null]);
+}
+function renderSampleLabel() {
+ const active = activePreview?.key === previewKey($('sampleBtn'));
+ $('sampleLabel').textContent = active ? activePreview.phase === 'playing' ? 'Playing…' : 'Generating…'
+  : generatedSample?.identity === sampleIdentity() ? 'Replay' : 'Play sample';
 }
 function renderPreviewState() {
+ renderSampleLabel();
  document.querySelectorAll('[data-preview]').forEach(button => {
   const active = activePreview?.key === previewKey(button);
   const playing = active && activePreview.phase === 'playing';
@@ -772,7 +801,7 @@ function renderPreviewState() {
    const blocked = speechEngine(mode) === 'kokoro' && !speechReadiness(mode).ready;
    button.disabled = mediaBusy || empty || blocked;
    button.title = blocked ? speechReadiness(mode).message : '';
-  } else if (mediaBusy) button.disabled = true;
+  } else button.disabled = mediaBusy;
  });
 }
 async function mediaAction(button, work, phase='playing') {
@@ -814,7 +843,6 @@ async function playCommentarySample(button) {
  const config = draftConfig('ai'), identity = sampleIdentity();
  await mediaAction(button, async () => {
   if (!generatedSample || generatedSample.identity !== identity) {
-   $('sampleLabel').textContent = 'Generating…';
    const result = await api('/api/draft-preview', {mode:'ai', action:'generate', config});
    if (identity !== sampleIdentity()) return;
    generatedSample = {identity, text:result.text};
@@ -822,7 +850,6 @@ async function playCommentarySample(button) {
    setupChecks.ai = {identity:checkedAI, status:'checked'};
    renderSample();
   }
-  $('sampleLabel').textContent = 'Playing…';
   activePreview.phase = 'playing';
   renderPreviewState();
   await api('/api/draft-preview', {mode:'ai', action:'play', config, text:generatedSample.text});

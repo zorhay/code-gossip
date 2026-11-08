@@ -30,9 +30,10 @@ The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.
 
 ## Playback and asynchronous feedback
 
-- Change the clicked preview button's icon while audio plays, then restore the play icon on completion or failure. Use a separate loading indication while AI text is being generated. Preserve the active indication through rerenders and tab changes.
+- Change the clicked preview button's icon while audio plays, then restore the play icon on completion or failure. Use a separate loading indication while AI text is being generated. Preserve the active indication through rerenders and tab changes, tied to the requested content and voices. Browsing another style, changing a voice, or editing/removing a phrase must not mark different content as playing.
 - Keep the latest engine, voice, or provider selection visible while earlier saves finish. Apply responses in order without allowing an older response to overwrite a newer edit; failed requests must also respect newer edits.
-- Preserve phrase input focus, text selection, caret position, and draft text when background saves or setup checks finish. Refresh labels and status without rebuilding the active editor unnecessarily.
+- Preserve keyboard focus across every section during background saves and readiness polling, including lists, filters, and action buttons. Keep unchanged controls mounted; restore focus to the same logical control when its markup changes.
+- Preserve phrase input focus, text selection, caret position, and draft text when background saves, previews, or setup checks finish. Refresh labels and status without rebuilding the active editor unnecessarily.
 - Preserve unrelated drafts when shared speech settings change. A setting that saves immediately must not silently save phrase content or activate a mode.
 
 ## Installation progress

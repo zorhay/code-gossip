@@ -87,6 +87,7 @@ const server = http.createServer((req,res)=>{
   const beforeHelp = {writes:writes.length, previews:previews.length, checks:checks.length, models:modelRequests.length};
   await page.locator('#helpButton').click();
   assert.equal(await page.locator('#helpPopover').isVisible(), true);
+  assert.equal(await page.locator('[data-guide=events] small').innerText(), 'Preview any sound. Use applies your selection.');
   await page.locator('[data-guide=events]').click();
   assert.equal(await page.locator('#helpPopover').isVisible(), false);
   assert.deepEqual({writes:writes.length, previews:previews.length, checks:checks.length, models:modelRequests.length}, beforeHelp, 'Getting started does not save, play, or check');
@@ -733,6 +734,118 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Ready');
   assert.equal(checks.at(-1).scope, 'speech');
   await page.locator('#closeDrawer').click();
+
+  // Playback belongs to the requested content, not whichever control occupies its place.
+  Object.assign(state, {tts_engine:'say',voice_main:'Tara',voice_sub:'Aman',narrator_provider:'claude_cli',narrator_model:'',narrator_api_key:'',narrator_style:'pair_programmer',effects_profile:'default',soundbar_mode:'effects',effects_on:true,voice_on:false});
+  await page.reload();
+  await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Ready');
+  const finishPreview = async () => {
+   releasePreview(); previewGate=null;
+   await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
+   assert.equal(await page.locator('[data-preview].is-playing,[data-preview].is-generating').count(),0);
+  };
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  await page.locator('#effectsEvents [data-preview]').first().click();
+  await page.locator('#packList label', {hasText:'Paper'}).click();
+  assert.equal(await page.locator('#effectsEvents .is-playing').count(),0);
+  await page.locator('#packList label', {hasText:'System sounds'}).click();
+  assert.equal(await page.locator('#effectsEvents .is-playing').count(),1,'Returning to the playing pack restores its waveform');
+  await finishPreview();
+  assert(await page.locator('#effectsEvents [data-preview]').first().isEnabled(),'Rebuilt controls recover after playback');
+
+  await page.locator('#tab-clips').click();
+  await page.waitForFunction(() => document.getElementById('checkStatus-clips').textContent === 'Ready');
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  await page.locator('#clipsEvents [data-preview]').first().click();
+  await page.locator('#filters-clips [data-filter="clips:Work"]').click();
+  assert.equal(await page.locator('#clipsEvents .is-playing').count(),0);
+  await page.locator('#filters-clips [data-filter="clips:All"]').click();
+  assert.equal(await page.locator('#clipsEvents .is-playing').count(),1,'Filtering preserves the original clip identity');
+  await finishPreview();
+  assert(await page.locator('#clipsEvents [data-preview]').first().isEnabled());
+
+  await page.locator('#tab-phrases').click();
+  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Ready');
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  await page.locator('#phraseRows [data-preview]').first().click();
+  await page.locator('#phraseRows [data-remove]').first().click();
+  assert.equal(await page.locator('#phraseRows .is-playing').count(),0,'Removing a playing row must not transfer its waveform to the next row');
+  const typing = page.locator('#phraseRows input').first();
+  await typing.fill('Keep typing while audio finishes');
+  await typing.evaluate(input => { input.focus(); input.setSelectionRange(5,11); });
+  await finishPreview();
+  assert(await typing.evaluate(input => document.activeElement === input));
+  assert.deepEqual(await typing.evaluate(input => [input.selectionStart,input.selectionEnd]),[5,11]);
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  await page.locator('#previewMainAgent').click();
+  await page.selectOption('#mainAgentVoice','Samantha');
+  assert.equal(await page.locator('#previewMainAgent use').getAttribute('href'),'#i-play','A different selected voice is not marked as playing');
+  await page.selectOption('#mainAgentVoice','Tara');
+  assert.equal(await page.locator('#previewMainAgent use').getAttribute('href'),'#i-wave');
+  await finishPreview();
+
+  await page.locator('#tab-ai').click();
+  await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Ready');
+  generationGate=Promise.resolve();
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  await page.locator('#sampleBtn').click();
+  await page.waitForFunction(() => document.getElementById('sampleLabel').textContent === 'Playing…');
+  assert.equal(previews.at(-1).config.narrator_style,'pair_programmer');
+  await page.locator('#styleList label').nth(1).click();
+  assert.equal(await page.locator('#sampleLabel').innerText(),'Play sample');
+  assert.equal(await page.locator('#sampleBtn use').getAttribute('href'),'#i-play');
+  assert.equal(await page.locator('#sampleBtn').getAttribute('aria-busy'),'false');
+  assert(await page.locator('#sampleBtn').isDisabled(),'Another selection cannot start concurrent playback');
+  await page.locator('#styleList input[value="pair_programmer"]').locator('..').click();
+  assert.equal(await page.locator('#sampleLabel').innerText(),'Playing…');
+  assert.equal(await page.locator('#sampleBtn use').getAttribute('href'),'#i-wave');
+  await finishPreview();
+  generationGate=null;
+  generationGate=new Promise(resolve=>{releaseGeneration=resolve;});
+  const beforeChangedGeneration=previews.length;
+  await page.locator('#sampleBtn').click();
+  await page.waitForFunction(() => document.getElementById('sampleLabel').textContent === 'Generating…');
+  await page.locator('#styleList label').nth(1).click();
+  assert.equal(await page.locator('#sampleLabel').innerText(),'Play sample');
+  assert.equal(await page.locator('#sampleBtn use').getAttribute('href'),'#i-play');
+  releaseGeneration();generationGate=null;
+  await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
+  assert.deepEqual(previews.slice(beforeChangedGeneration).map(request=>request.action),['generate'],'A stale generated sample never starts playback');
+
+  // Background readiness updates preserve keyboard navigation across every section.
+  Object.assign(state,{tts_engine:'kokoro'});
+  await page.reload();
+  await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Ready');
+  for (const [theme,width] of [['amber',1280],['mint',390]]) {
+   await page.setViewportSize({width,height:900});
+   await page.locator('#settingsButton').click();
+   await page.locator(`[data-theme-choice=${theme}]`).click();
+   await page.keyboard.press('Escape');
+   for (const [mode,key,selector] of [
+    ['effects','effects','#packList input[value="paper"]'],
+    ['clips','clips','#filters-clips button'],
+    ['phrases','phrases','#evList button'],
+    ['ai','aiSpeech','#styleList input[value="sports"]'],
+   ]) {
+    await page.locator('#tab-'+mode).click();
+    await page.waitForFunction(key => !setupChecks[key]?.requesting, key);
+    const control=page.locator(selector).first();
+    await control.focus();
+    await control.evaluate(node => { window.focusedControl=node; });
+    await page.evaluate(key => checkSetup(key,{automatic:true}),key);
+    assert(await page.evaluate(() => document.activeElement===window.focusedControl),`${mode} preserves the mounted focused control in ${theme}`);
+    if (mode==='effects'||mode==='ai') {
+     await page.keyboard.press('ArrowDown');
+     assert(await page.evaluate(() => document.activeElement.matches('input[type=radio]')),'Keyboard selection retains focus when selected markup changes');
+    }
+   }
+  }
+  await page.setViewportSize({width:1280,height:900});
+  await page.locator('#styleList input').nth(1).focus();
+  await page.locator('#styleList input').nth(1).evaluate(node => { window.focusedControl=node; });
+  await page.waitForResponse(response => response.url().endsWith('/api/draft-check') && response.request().postDataJSON().scope==='speech');
+  await page.waitForFunction(() => !setupChecks.aiSpeech.requesting);
+  assert(await page.evaluate(() => document.activeElement===window.focusedControl),'A scheduled Kokoro poll preserves focus too');
 
   Object.assign(versionState, {available:true, release:{version:'0.9.0', notes_url:'https://github.com/zorhay/code-gossip/releases/tag/0.9.0'}});
   await page.evaluate(() => refreshVersions());
