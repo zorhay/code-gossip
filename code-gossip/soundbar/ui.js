@@ -73,8 +73,10 @@ function toast(message) {
  clearTimeout(toastTimer);
  toastTimer = setTimeout(() => $('toast').classList.remove('show'), 2400);
 }
-function showError(message) { $('errorBanner').textContent = message || ''; }
-function clearError() { if ($('errorBanner')) $('errorBanner').textContent = ''; }
+function showError(message) {
+ setMarkup($('errorBanner'), message ? `<span id="errorMessage" class="error-message" tabindex="0">${esc(message)}</span><button type="button" class="icon-sm" data-dismiss-error aria-label="Dismiss error">${icon('x')}</button>` : '');
+}
+function clearError() { if ($('errorBanner')) setMarkup($('errorBanner'), ''); }
 
 function packIds() {
  return Object.keys(saved.effects_profiles).sort((a, b) => {
@@ -427,22 +429,23 @@ function renderPanelState(mode) {
  const readiness = setupReadiness(mode), blocked = !readiness.ready, drawer = blockerDrawer(mode);
  const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume || savingAISettings;
  const link = drawer === 'speech' ? '' : `<button type="button" class="link" data-drawer="${drawer}">${drawer === 'provider' ? 'Configure' : 'Details'}</button>`;
- let actions = '', html = '';
+ let actions = '', activation = '';
  if (dirty) {
-  actions += '<span class="unsaved"><i class="dirty-dot"></i>Unsaved changes</span>';
+  actions += `<div id="draftNotice-${mode}" class="draft-notice"${issue || !saveReady.ready ? ' tabindex="0"' : ''}><span class="unsaved"><i class="dirty-dot"></i>Unsaved changes</span>`;
   if (issue) actions += `<span class="state-issue">${icon('warn')}${esc(issue)}</span>`;
   else if (!saveReady.ready && saveReady.message !== readiness.message) actions += `<span class="state-issue">${icon('warn')}${esc(saveReady.message)}</span>`;
-  actions += `<button type="button" class="btn ghost" data-act="discard" ${saving ? 'disabled' : ''}>Discard</button>`;
+  actions += `</div><button type="button" class="btn ghost" data-act="discard" ${saving ? 'disabled' : ''}>Discard</button>`;
   actions += `<button type="button" class="btn primary" data-act="save" ${saving || !!issue || !saveReady.ready ? 'disabled' : ''}${busy ? ' aria-busy="true"' : ''}>Save changes</button>`;
  }
- if (inUse) html += `<span class="pill success">${icon('check')}In use</span>`;
- if (blocked) html += `<span class="state-issue">${icon('warn')}<span>${esc(readiness.message)}${link ? ' · ' + link : ''}</span></span>`;
+ if (inUse) activation += `<span class="pill success">${icon('check')}In use</span>`;
  if (!exclusive) {
-  html += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
+  activation += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
  }
+ const notice = blocked ? `<span class="state-issue">${icon('warn')}<span>${esc(readiness.message)}${link ? ' · ' + link : ''}</span></span>` : '';
+ const html = `<div id="activationNotice-${mode}" class="activation-notice" role="status"${blocked ? ' tabindex="0"' : ''}>${notice}</div><div class="activation-actions">${activation}</div>`;
  setMarkup(document.querySelector(`[data-state="${mode}"]`), html);
  const footer = document.querySelector(`[data-draft-actions="${mode}"]`);
- if (footer) { setMarkup(footer, actions); footer.hidden = !dirty; }
+ if (footer) { setMarkup(footer, actions); footer.hidden = false; footer.style.visibility = dirty ? '' : 'hidden'; footer.setAttribute('aria-hidden', String(!dirty)); }
 }
 function renderChrome() {
  if (!demo) for (const id of ['provider','model','sampleKey','phraseEngine','speaker']) $(id).disabled = busy;
@@ -560,7 +563,11 @@ function renderStyles() {
 function renderSample() {
  const current = generatedSample?.identity === sampleIdentity() ? generatedSample : null;
  if (!current) generatedSample = null;
- $('commentarySample').textContent = current ? current.text : 'Play a sample to hear ' + (styleNames[state.style] || state.style) + '.';
+ const text = current ? current.text : 'Play a sample to hear ' + (styleNames[state.style] || state.style) + '.';
+ if ($('commentarySample').textContent !== text) {
+  $('commentarySample').textContent = text;
+  $('commentarySample').closest('.pane-body').scrollTop = 0;
+ }
  $('commentarySample').classList.toggle('placeholder', !current);
  const name = saved.narrator_providers[state.provider]?.name || state.provider;
  $('sampleNote').textContent = demo ? 'Prerecorded sample · Kokoro. Example commentary written for this demo. Install to generate fresh lines and edit phrases.' : current ? 'Replay uses this line and does not ask the provider again.' : `The first play writes one line with ${name}${needsKey() ? ', which may be billed' : ''}. A successful sample also verifies the provider.`;
@@ -960,6 +967,9 @@ function renderVersions() {
  $('installedVersion').textContent = 'Installed: ' + versions.installed;
  $('versionNotice').hidden = !versions.available && !running && !needsAttention;
  $('versionNotice').textContent = running ? 'Updating Code Gossip…' : needsAttention ? 'Update needs attention' : versions.available ? `Update available: ${versions.installed} → ${versions.release.version}` : 'Code Gossip updates';
+ const settingsLabel = $('versionNotice').hidden ? 'Settings' : 'Settings · ' + $('versionNotice').textContent;
+ $('settingsButton').setAttribute('aria-label', settingsLabel);
+ $('settingsButton').title = settingsLabel;
  $('availableVersion').textContent = versions.development ? 'Updates come from your checkout.' : versions.available ? 'Available: ' + versions.release.version : versions.checked_at ? 'You have the latest stable release.' : 'Updates are checked automatically while Soundbar runs.';
  $('releaseNotes').hidden = !versions.release;
  if (versions.release) $('releaseNotes').href = versions.release.notes_url;
@@ -1047,6 +1057,7 @@ function wire() {
  $('helpButton').onclick = event => { event.stopPropagation(); toggleHelp(); };
  document.addEventListener('click', event => {
   const target = event.target;
+  if (target.closest('[data-dismiss-error]')) { clearError(); return; }
   const tab = target.closest('[data-mode]');
   if (tab?.closest('#tabs')) { selectTab(tab.dataset.mode); return; }
   const act = target.closest('[data-act]');
@@ -1136,7 +1147,7 @@ function wire() {
  $('drawer').addEventListener('click', event => { if (event.target === $('drawer')) $('drawer').close(); });
  $('settingsButton').onclick = () => $('settingsDialog').showModal();
  $('closeSettings').onclick = () => $('settingsDialog').close();
- $('versionNotice').onclick = () => { $('settingsDialog').showModal(); $('versionPreferences').scrollIntoView({block:'nearest'}); };
+ $('versionNotice').onclick = event => { event.stopPropagation(); $('settingsDialog').showModal(); $('versionPreferences').scrollIntoView({block:'nearest'}); };
  $('checkUpdates').onclick = checkUpdates;
  $('applyUpdate').onclick = applyUpdate;
  $('closeSoundbar').onclick = closeSoundbar;

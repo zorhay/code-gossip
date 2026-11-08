@@ -875,7 +875,36 @@ const server = http.createServer((req,res)=>{
       assert.deepEqual(await geometry(stripSelector),stripBefore,`${mode} status ${message} keeps strip controls stationary in ${theme}/${width}`);
      }
      await page.evaluate(()=>renderChecks());
+     const key={effects:'effects',clips:'clips',phrases:'phrases',ai:'aiSpeech'}[mode];
+     const frameSelector=`#panel-${mode} .panel-head,#panel-${mode} .activation-actions,#panel-${mode} .workspace,#panel-${mode} .strip`;
+     const frameBefore=await geometry(frameSelector);
+     checkGate=new Promise(resolve=>{releaseCheck=resolve;});
+     await page.evaluate(key=>{checkSetup(key);},key);
+     assert.deepEqual(await geometry(frameSelector),frameBefore,`Pending ${mode} checks do not move the workspace in ${theme}/${width}`);
+     releaseCheck();checkGate=null;
+     await page.waitForFunction(key=>!setupChecks[key].requesting,key);
+     assert.deepEqual(await geometry(frameSelector),frameBefore);
+     failCheck=true;
+     checkError='The selected engine could not finish its readiness check. Check the connection and selected voices, then retry. '.repeat(3);
+     await page.evaluate(key=>checkSetup(key),key);
+     assert.deepEqual(await geometry(frameSelector),frameBefore,`Long ${mode} errors do not reflow the section in ${theme}/${width}`);
+     assert.equal((await page.locator('#errorMessage').innerText()).trim(),checkError.trim());
+     await page.locator('[data-dismiss-error]').click();
+     assert.equal(await page.locator('#errorBanner').innerText(),'');
+     assert.deepEqual(await geometry(frameSelector),frameBefore);
+     failCheck=false;
+     await page.evaluate(key=>checkSetup(key),key);
+     assert.deepEqual(await geometry(frameSelector),frameBefore);
     }
+    const notificationGeometry=headerGeometry+',#tabs,.panel:not([hidden]) .workspace';
+    const beforeNotification=await geometry(notificationGeometry);
+    Object.assign(versionState,{available:true,release:{version:'0.9.0',notes_url:'https://github.com/zorhay/code-gossip/releases/tag/0.9.0'}});
+    await page.evaluate(()=>refreshVersions());
+    assert.deepEqual(await geometry(notificationGeometry),beforeNotification,`Discovering an update does not move the page in ${theme}/${width}`);
+    assert((await page.locator('#settingsButton').getAttribute('aria-label')).includes('Update available'));
+    Object.assign(versionState,{available:false,release:null});
+    await page.evaluate(()=>refreshVersions());
+    assert.deepEqual(await geometry(notificationGeometry),beforeNotification);
     const headerBefore=await geometry(headerGeometry);
     const tabBefore=await geometry('#tabs,.tab,.tab > .i,.tab > span:not(.tab-badges)');
     await page.evaluate(()=>{window.layoutSelection=activeSelection;window.layoutContext=state.context;window.layoutChecked=checkedAI;});
@@ -891,6 +920,30 @@ const server = http.createServer((req,res)=>{
      assert.deepEqual(await geometry('#sampleBtn,#styleTitle'),sampleBefore,`Sample label ${label} stays stationary in ${theme}/${width}`);
     }
     await page.evaluate(()=>renderSample());
+    const aiEditor='#panel-ai .workspace,#panel-ai .pane-body.pad,#panel-ai .sample-settings,#speaker,#sessionContext,#panel-ai .strip';
+    const aiBefore=await geometry(aiEditor);
+    await page.locator('#sessionContext').evaluate(input=>{input.checked=!input.checked;input.dispatchEvent(new Event('change'));});
+    assert(await page.locator('#panel-ai [data-act=save]').isVisible());
+    assert.deepEqual(await geometry(aiEditor),aiBefore,`AI edit actions retain their space in ${theme}/${width}`);
+    await page.locator('#panel-ai [data-act=discard]').evaluate(button=>button.click());
+    assert.deepEqual(await geometry(aiEditor),aiBefore);
+    await page.evaluate(()=>{window.layoutSample=generatedSample;generatedSample={identity:sampleIdentity(),text:'A detailed generated sample with enough text to fill several lines. '.repeat(40)};renderSample();});
+    assert.deepEqual(await geometry(aiEditor),aiBefore,`Generated text does not displace AI settings in ${theme}/${width}`);
+    assert(await page.locator('#panel-ai .pane-body.pad').evaluate(node=>{node.scrollTop=node.scrollHeight;return node.scrollTop>0;}),'Long samples remain scrollable');
+    const sampleScroll=await page.locator('#panel-ai .pane-body.pad').evaluate(node=>node.scrollTop);
+    await page.evaluate(()=>renderSample());
+    assert.equal(await page.locator('#panel-ai .pane-body.pad').evaluate(node=>node.scrollTop),sampleScroll,'Background rendering preserves the sample reading position');
+    await page.evaluate(()=>{generatedSample=window.layoutSample;renderSample();});
+    assert.equal(await page.locator('#panel-ai .pane-body.pad').evaluate(node=>node.scrollTop),0,'A different sample starts at its beginning');
+    await page.locator('#tab-phrases').click();
+    const phraseEditor='#phrasesWorkspace,#phrasesWorkspace .pane-body,#addPhrase,#panel-phrases .strip';
+    const phrasesBefore=await geometry(phraseEditor);
+    for (const text of ['A new phrase','']) {
+     await page.locator('#phraseRows input').first().evaluate((input,text)=>{input.value=text;input.dispatchEvent(new Event('input',{bubbles:true}));},text);
+     assert.deepEqual(await geometry(phraseEditor),phrasesBefore,`Phrase edits and validation keep the editor stable in ${theme}/${width}`);
+    }
+    await page.locator('#panel-phrases [data-act=discard]').evaluate(button=>button.click());
+    assert.deepEqual(await geometry(phraseEditor),phrasesBefore);
    }
   }
   await page.setViewportSize({width:1280,height:900});

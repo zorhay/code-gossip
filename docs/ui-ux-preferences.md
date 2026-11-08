@@ -34,6 +34,7 @@ The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.
 - Keep the latest engine, voice, or provider selection visible while earlier saves finish. Apply responses in order without allowing an older response to overwrite a newer edit; failed requests must also respect newer edits.
 - Preserve keyboard focus across every section during background saves and readiness polling, including lists, filters, and action buttons. Keep unchanged controls mounted; restore focus to the same logical control when its markup changes.
 - Preserve phrase input focus, text selection, caret position, and draft text when background saves, previews, or setup checks finish. Refresh labels and status without rebuilding the active editor unnecessarily.
+- Keep section readiness notices and editor action rows in stable layout slots. Long notices and generated samples must remain fully readable by scrolling, without displacing controls. Keep AI speaker settings outside the scrolling sample area. Show dismissible request errors without pushing the page down.
 - Preserve unrelated drafts when shared speech settings change. A setting that saves immediately must not silently save phrase content or activate a mode.
 
 ## Installation progress
