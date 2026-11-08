@@ -15,6 +15,7 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Fixed
 
+- Soundbar starts without reverse DNS lookup, avoiding startup timeouts when the system resolver is slow.
 - Phrases and AI commentary share Kokoro readiness per voice. Loaded voices switch immediately, missing voices prepare automatically with progress, and failed voices no longer block other voices or get retried when another voice is selected.
 - Model-only edits preserve saved API keys after a page reload; only explicit key edits replace or clear credentials.
 - Concurrent speech checks and hooks share one Kokoro startup. Duplicate daemons cannot replace a live socket, and shutdown removes only the socket owned by that daemon.

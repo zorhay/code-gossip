@@ -470,6 +470,18 @@ def test_repair_installation_bypasses_cached_install_and_starts_once(isolated_pr
         assert server.kokoro.progress['status'] == 'running'
 
 
+def test_loopback_server_starts_without_reverse_dns(monkeypatch):
+    import socket
+    import server
+    lookup = Mock(side_effect=AssertionError('Loopback startup must not wait for DNS'))
+    monkeypatch.setattr(socket, 'getfqdn', lookup)
+    with server.ReuseHTTPServer(('127.0.0.1', 0), server.Handler) as http:
+        assert http.server_address == ('127.0.0.1', http.server_port)
+        assert http.server_port > 0
+        assert http.server_name == '127.0.0.1'
+    lookup.assert_not_called()
+
+
 def test_slow_check_does_not_block_controls_or_status(isolated_preferences, monkeypatch):
     import threading
     import urllib.request

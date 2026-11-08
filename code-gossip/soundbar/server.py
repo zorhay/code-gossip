@@ -27,6 +27,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from contextlib import nullcontext
 import sys
 from pathlib import Path
+from socketserver import TCPServer
 
 
 from urllib.parse import urlparse
@@ -629,6 +630,12 @@ def draft_request(body, check=False):
 
 class ReuseHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
+
+    def server_bind(self):
+        # HTTPServer reverse-resolves the address before listening. Soundbar is
+        # loopback-only; a slow DNS resolver must not delay local startup.
+        TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class Handler(SimpleHTTPRequestHandler):
