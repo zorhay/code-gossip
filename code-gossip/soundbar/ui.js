@@ -36,11 +36,11 @@ const GUIDE = [
 ];
 
 let saved, state, activeSelection, setup, voiceChoices, styleNames;
-let checkedAI = null, busy = false, savingSound = false, savingVolume = false, mediaBusy = false, installPoll = null;
+let busy = false, savingSound = false, savingVolume = false, mediaBusy = false, installPoll = null;
 let activePreview = null, modelPoll = null;
 let savingAISettings = 0, aiSettingsQueue = Promise.resolve();
-const setupChecks = {}, filters = {effects:'All', clips:'All'}, cursors = {}, guideDone = new Set();
-let setupChecksReady = false, setupCheckTimer = null, enabledLayers, generatedSample = null, modelList = null;
+const setupChecks = new Map(), filters = {effects:'All', clips:'All'}, cursors = {}, guideDone = new Set();
+let enabledLayers, generatedSample = null, modelList = null;
 let versions = null, versionPoll = null, versionChecking = false, versionStarting = false, versionError = '', loadedVersion = null;
 let toastTimer;
 
@@ -213,9 +213,9 @@ function speechReadiness(mode) {
  const voices = mode === 'phrases' ? Object.values(state.phraseVoices[engine]) : [state.voices[engine]];
  if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) return {ready:false, message:'Choose installed voices'};
  const key = mode === 'phrases' ? 'phrases' : 'aiSpeech';
- const check = setupChecks[key], current = check?.identity === speechIdentity(mode);
+ const check = cachedCheck(key), current = check?.identity === speechIdentity(mode);
  if (engine === 'kokoro' && !demo && (!current || check.status !== 'checked' || !check.model?.ready)) {
-  return {ready:false, message:current && check.message || 'Preparing Kokoro model…'};
+  return {ready:false, message:current ? check.message || 'Preparing speech…' : 'Check the speech engine'};
  }
  if (current && check.status === 'failed') return {ready:false, message:(engine === 'kokoro' ? 'Kokoro: ' : '') + (check.message || 'Speech check failed')};
  if (current && check.status === 'checking') return {ready:false, message:'Checking speech…'};
@@ -225,14 +225,14 @@ function setupReadiness(mode, pack=state.pack) {
  if (mode === 'effects' || mode === 'clips') {
   const available = mode === 'effects' ? setup.effects?.[pack] : setup.clips?.generals;
   if (!available?.ready) return available || {ready:false, message:'Audio unavailable'};
-  const check = setupChecks[mode], current = check?.identity === checkIdentity(mode, pack);
+  const check = cachedCheck(mode, checkIdentity(mode, pack)), current = check?.identity === checkIdentity(mode, pack);
   if (current && check.status === 'failed') return {ready:false, message:'Check failed'};
   if (current && check.status === 'checking') return {ready:false, message:'Checking…'};
   return {ready:true, message:current && check.status === 'checked' ? 'Audio available' : 'Not checked'};
  }
  const speech = speechReadiness(mode);
  if (!speech.ready) return speech;
- if (mode === 'ai' && checkedAI !== aiIdentity()) return {ready:false, message:'Check the provider first'};
+ if (mode === 'ai' && cachedCheck('ai')?.status !== 'checked') return {ready:false, message:'Check the provider first'};
  return speech;
 }
 function saveReadiness(mode) {
@@ -263,7 +263,7 @@ function checkButton(key) {
  return $('checkEffects');
 }
 function checkPresentation(key) {
- const check = setupChecks[key], current = check?.identity === checkIdentity(key), status = current ? check.status : 'unchecked';
+ const check = cachedCheck(key), current = check?.identity === checkIdentity(key), status = current ? check.status : 'unchecked';
  const provider = key === 'ai', cli = provider && ['claude_cli', 'codex_cli'].includes(state.provider);
  const action = provider ? (cli ? 'Check CLI' : state.provider === 'ollama' ? 'Check server' : 'Check connection') : 'Check';
  const pending = provider && !cli ? 'Connecting…' : 'Checking…';
@@ -283,13 +283,13 @@ function checkPresentation(key) {
    if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) prerequisite = {message:'Choose voices', tone:'warning'};
   }
  }
- const result = {message:status === 'checked' ? success : status === 'failed' ? 'Check failed' : status === 'checking' ? pending : provider && !cli ? 'Not checked' : 'Not checked', tone:status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning'};
+ const result = {message:status === 'checked' ? success : status === 'failed' ? 'Check failed' : status === 'checking' ? pending : status === 'loading' ? 'Loading…' : 'Not checked', tone:status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning'};
  if (current && check.model) {
   result.message = status === 'failed' ? 'Load failed' : status === 'checking' ? pending :
    ({ready:'Ready', downloading:'Downloading…', loading:'Loading…'}[check.model.state] || 'Preparing…');
   result.tone = status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning';
  }
- return {action:current && check.model?.state === 'error' ? 'Retry model loading' : action, pending, status, checking:check?.status === 'checking', prerequisite, ...(prerequisite || result)};
+ return {action:current && check.model?.state === 'error' ? 'Retry model loading' : action, pending, status, checking:status === 'checking', requesting:!!check?.requesting, prerequisite, ...(prerequisite || result)};
 }
 function paintStatus(node, view) {
  const tone = {success:'ok', warning:'warn', error:'err'}[view.tone] || '';
@@ -304,59 +304,63 @@ function paintStatus(node, view) {
 function setSizedText(node, text, widthLabel, alternate='') {
  setMarkup(node, `<span class="label-slot" data-width-label="${esc(widthLabel)}" data-alternate-label="${esc(alternate)}"><span>${esc(text)}</span></span>`);
 }
-function modeCheckKeys() {
- if (state.viewMode === 'ai') return needsKey() ? ['aiSpeech'] : ['aiSpeech', 'ai'];
- return [state.viewMode === 'phrases' ? 'phrases' : state.viewMode];
+// Results belong to a configuration for this page's lifetime, not to the last
+// visited section. Reload creates a fresh cache; explicit Check replaces one entry.
+function cachedCheck(key, identity=checkIdentity(key)) {
+ return setupChecks.get(JSON.stringify([key, identity]));
 }
-function scheduleSetupChecks(delay=150) {
- if (demo || !setupChecksReady) return;
- clearTimeout(setupCheckTimer);
- const run = () => {
-  clearTimeout(modelPoll);
-  for (const key of modeCheckKeys()) {
-   const check = setupChecks[key];
-   if (check?.requesting || check?.status === 'checking' || check?.identity === checkIdentity(key) || checkPresentation(key).prerequisite) continue;
-   checkSetup(key, {automatic:true});
-  }
-  scheduleModelPoll();
- };
- if (delay) setupCheckTimer = setTimeout(run, delay); else run();
+function rememberCheck(key, check) {
+ check.key = key;
+ setupChecks.set(JSON.stringify([key, check.identity]), check);
+ return check;
 }
+function cacheAudioSetup() {
+ for (const [pack, resource] of Object.entries(setup.effects || {})) {
+  rememberCheck('effects', {identity:checkIdentity('effects', pack), status:resource.ready ? 'checked' : 'failed', message:resource.message});
+ }
+ const resource = setup.clips?.generals;
+ if (resource) rememberCheck('clips', {identity:checkIdentity('clips'), status:resource.ready ? 'checked' : 'failed', message:resource.message});
+}
+function checkInitialSpeech() {
+ if (demo) return;
+ for (const key of ['phrases', 'aiSpeech']) checkSetup(key, {automatic:true});
+}
+
 async function refreshSetup() { setup = {...setup, ...await api('/api/setup')}; }
 function scheduleModelPoll() {
  clearTimeout(modelPoll);
- if (demo || !['phrases','ai'].includes(state.viewMode) || speechEngine() !== 'kokoro' || !speechInstallation().available) return;
- const key = state.viewMode === 'ai' ? 'aiSpeech' : 'phrases';
- const check = setupChecks[key];
- if (check?.identity === checkIdentity(key) && check.status === 'failed') return;
- modelPoll = setTimeout(() => checkSetup(key, {automatic:true}), check?.status === 'checked' ? 5000 : 2000);
+ // Continue only unfinished model preparation, including while browsing elsewhere.
+ const pending = [...setupChecks.values()].filter(check => check.status === 'loading' && !check.requesting);
+ if (demo || !pending.length) return;
+ modelPoll = setTimeout(() => {
+  for (const check of pending) checkSetup(check.key, {automatic:true, pending:check});
+ }, 2000);
 }
-async function checkSetup(key, {automatic=false}={}) {
- if (setupChecks[key]?.requesting || (checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips')) return;
- const mode = checkModes[key], config = draftConfig(mode), identity = checkIdentity(key);
- const previous = setupChecks[key]?.identity === identity ? setupChecks[key] : null;
- const check = setupChecks[key] = {identity, requesting:true,
-  status:automatic && previous?.model ? previous.status : 'checking',
-  model:previous?.model, message:previous?.message};
- if (key === 'ai') checkedAI = null;
+async function checkSetup(key, {automatic=false, pending=null}={}) {
+ const mode = checkModes[key], config = pending?.config || draftConfig(mode), identity = pending?.identity || checkIdentity(key);
+ const previous = cachedCheck(key, identity);
+ if (previous?.requesting || automatic && previous && previous.status !== 'loading') return;
+ if (!pending && checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips') return;
+ const check = rememberCheck(key, {identity, config, requesting:true,
+  status:automatic ? previous?.status || 'loading' : 'checking',
+  model:previous?.model, message:previous?.message});
  if (!automatic) clearError();
  renderChecks();
  try {
-  await refreshSetup();
+  if (!automatic) await refreshSetup();
   const result = await api('/api/draft-check', {mode, config, scope:key === 'ai' ? 'provider' : 'speech', retry:!automatic}, true);
   check.model = result.model;
   check.message = result.message || result.error || 'Check failed';
   check.status = result.ok ? 'checked' : result.pending ? 'loading' : 'failed';
-  if (!result.ok && !result.pending && identity === checkIdentity(key)) showError(result.message || result.error || 'Check failed');
-  if (result.ok && identity === checkIdentity(key) && key === 'ai') { checkedAI = identity; refreshModels(); }
+  if (!result.ok && !result.pending && identity === checkIdentity(key) && mode === state.viewMode) showError(check.message);
+  if (result.ok && identity === checkIdentity(key) && key === 'ai') refreshModels();
  } catch (error) {
   check.status = 'failed';
   check.message = error.message;
-  if (identity === checkIdentity(key)) showError(error.message);
+  if (identity === checkIdentity(key) && mode === state.viewMode) showError(error.message);
  } finally {
   check.requesting = false;
   render({preservePhraseEditor:true});
-  if (identity !== checkIdentity(key)) scheduleSetupChecks();
   scheduleModelPoll();
  }
 }
@@ -407,7 +411,7 @@ function renderTabs() {
   let badges = '';
   if (modeInUse(id)) badges += '<span class="tab-inuse"><i class="live-dot"></i>In use</span>';
   if (isDirty(id)) badges += '<span class="dirty-dot" title="Unsaved changes"></span>';
-  if (!demo && id === 'ai' && checkedAI !== aiIdentity()) badges += `<span title="Provider not checked">${icon('warn','tab-warn')}</span>`;
+  if (!demo && id === 'ai' && cachedCheck('ai')?.status !== 'checked') badges += `<span title="Provider not checked">${icon('warn','tab-warn')}</span>`;
   $('badges-' + id).innerHTML = badges;
  }
 }
@@ -592,12 +596,12 @@ function renderSpeech() {
  const activity = $('installActivity'), output = (setup.installOutput || []).join('\n');
  activity.hidden = !showInstall || !output;
  if (activity.textContent !== output) { activity.textContent = output; activity.scrollTop = activity.scrollHeight; }
- const modelCheck = setupChecks[state.viewMode === 'ai' ? 'aiSpeech' : 'phrases'];
+ const modelCheck = cachedCheck(state.viewMode === 'ai' ? 'aiSpeech' : 'phrases');
  const modelCurrent = modelCheck?.identity === speechIdentity(state.viewMode);
  const progress = modelCurrent ? modelCheck.model : null;
  $('modelPreparation').hidden = !kokoro || !installation.available || !!demo;
  paintStatus($('modelPreparationStatus'), {
-  message:progress?.ready ? 'Ready' : modelCurrent && modelCheck.message || 'Preparing…',
+  message:progress?.ready ? 'Ready' : modelCurrent ? modelCheck.message || 'Preparing…' : 'Not checked',
   tone:modelCurrent && modelCheck.status === 'failed' ? 'error' : progress?.ready ? 'success' : 'warning',
  });
  const bytes = value => (value / 1000000).toFixed(1) + ' MB';
@@ -613,7 +617,7 @@ function renderSpeech() {
  else bar.removeAttribute('value');
  $('kokoroInfo').hidden = !kokoro;
  $('verificationRow').hidden = !installation.available;
- const repair = ['phrases','aiSpeech'].some(key => setupChecks[key]?.status === 'failed' && !setupChecks[key]?.model && setupChecks[key]?.identity === checkIdentity(key));
+ const repair = ['phrases','aiSpeech'].some(key => cachedCheck(key)?.status === 'failed' && !cachedCheck(key)?.model && cachedCheck(key)?.identity === checkIdentity(key));
  $('installKokoro').hidden = !kokoro || (setup.kokoro && !repair) || !!setup.installing;
  $('installKokoro').disabled = !!setup.installing;
  setSizedText($('installKokoro'), setup.installStatus === 'error' ? 'Retry installation' : repair ? 'Repair installation' : 'Install Kokoro', 'Repair installation');
@@ -626,8 +630,8 @@ function renderChecks() {
   if ((key === 'phrases' || key === 'aiSpeech') && key !== speechKey()) continue;
   setSizedText(button, view.checking ? view.pending : view.action,
    key === 'ai' ? 'Check connection' : ['phrases','aiSpeech'].includes(key) ? 'Retry model loading' : 'Checking…');
-  button.disabled = !!(view.checking || view.prerequisite && key !== 'effects' && key !== 'clips');
-  button.setAttribute('aria-busy', String(!!view.checking));
+  button.disabled = !!(view.requesting || view.prerequisite && key !== 'effects' && key !== 'clips');
+  button.setAttribute('aria-busy', String(view.requesting));
   button.dataset.status = view.checking ? 'checking' : view.status;
   if (key === 'phrases' || key === 'aiSpeech') button.dataset.checkSetup = key;
  }
@@ -671,7 +675,6 @@ function selectTab(mode) {
  if (demo) demo.stop();
  state.viewMode = mode;
  render();
- scheduleSetupChecks();
  if (mode === 'phrases') requestAnimationFrame(scrollEventIntoView);
 }
 function scrollEventIntoView() {
@@ -863,8 +866,7 @@ async function playCommentarySample(button) {
    const result = await api('/api/draft-preview', {mode:'ai', action:'generate', config});
    if (identity !== sampleIdentity()) return;
    generatedSample = {identity, text:result.text};
-   checkedAI = aiIdentity();
-   setupChecks.ai = {identity:checkedAI, status:'checked'};
+   rememberCheck('ai', {identity:aiIdentity(), status:'checked'});
    renderSample();
   }
   activePreview.phase = 'playing';
@@ -875,8 +877,9 @@ async function playCommentarySample(button) {
 
 async function installKokoro() {
  if (setup.installing) return;
- const repair = !!setup.kokoro || ['phrases','aiSpeech'].some(key => setupChecks[key]?.status === 'failed' && setupChecks[key]?.identity === checkIdentity(key));
- for (const key of ['phrases','aiSpeech']) delete setupChecks[key];
+ const repair = !!setup.kokoro || ['phrases','aiSpeech'].some(key => cachedCheck(key)?.status === 'failed' && cachedCheck(key)?.identity === checkIdentity(key));
+ for (const [id, check] of setupChecks) if (check.config?.tts_engine === 'kokoro') setupChecks.delete(id);
+ clearTimeout(modelPoll);
  clearError();
  setup.installing = true; setup.installStatus = 'running'; setup.installMessage = '';
  setup.installElapsed = setup.installQuiet = 0; setup.installOutput = [];
@@ -896,7 +899,7 @@ async function pollInstall() {
   await refreshSetup();
   render();
   if (setup.installing) installPoll = setTimeout(pollInstall, 2000);
-  else scheduleSetupChecks(0);
+  else checkInitialSpeech();
  } catch (error) {
   showError(error.message);
   installPoll = setTimeout(pollInstall, 5000);
@@ -936,7 +939,7 @@ function persistAISettings(kind) {
    showError(error.message);
   } finally {
    savingAISettings--;
-   render({preservePhraseEditor:true}); scheduleSetupChecks();
+   render({preservePhraseEditor:true});
   }
  });
  return aiSettingsQueue;
@@ -1015,7 +1018,7 @@ async function closeSoundbar() {
   const response = await fetch('/api/shutdown', {method:'POST', headers:{'X-Soundbar-Request':'ui'}});
   const data = await response.json();
   if (!response.ok || !data.ok) throw new Error('Could not stop Soundbar');
-  clearTimeout(installPoll); clearTimeout(setupCheckTimer); clearTimeout(versionPoll);
+  clearTimeout(installPoll); clearTimeout(modelPoll); clearTimeout(versionPoll);
   $('settingsDialog').close();
   $('closedDialog').showModal();
   $('closedTitle').focus();
@@ -1046,9 +1049,7 @@ function gotoGuide(target) {
  requestAnimationFrame(() => flash(element));
 }
 function invalidateProvider(options={}) {
- checkedAI = null;
  generatedSample = null;
- if (setupChecks.ai) setupChecks.ai.identity = '';
  if (options.clearModels) modelList = null;
 }
 
@@ -1100,12 +1101,12 @@ function wire() {
   catch (error) { showError(error.message); }
   finally { savingVolume = false; $('volume').value = state.volume; $('volumeValue').textContent = state.volume + '%'; renderChrome(); }
  };
- $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; state.pack = event.target.value; render(); scheduleSetupChecks(); });
+ $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; state.pack = event.target.value; render(); });
  $('styleList').addEventListener('change', event => { if (event.target.name !== 'style') return; state.style = event.target.value; generatedSample = null; renderStyles(); renderSample(); renderChrome(); });
- $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); if (state.viewMode === 'ai') persistAISettings('speech'); scheduleSetupChecks(); };
- $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
- $('subagentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].sub = $('subagentVoice').value; renderPhraseRows(); renderChrome(); scheduleSetupChecks(); };
- $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; persistAISettings('speech'); scheduleSetupChecks(); };
+ $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); if (state.viewMode === 'ai') persistAISettings('speech'); };
+ $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; render(); };
+ $('subagentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].sub = $('subagentVoice').value; render(); };
+ $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; render(); persistAISettings('speech'); };
  $('phraseRows').addEventListener('input', event => {
   const input = event.target;
   if (input.tagName !== 'INPUT') return;
@@ -1129,12 +1130,11 @@ function wire() {
   state.provider = $('provider').value; state.model = ''; state.apiKey = ''; state.keyEdited = true;
   $('model').value = ''; $('sampleKey').value = '';
   invalidateProvider({clearModels:true});
-  delete setupChecks.ai;
   showProvider(); renderSample(); renderChecks();
   persistAISettings('provider');
-  if (!needsKey()) { refreshModels(); scheduleSetupChecks(0); }
+  if (!needsKey()) { refreshModels(); }
  };
- $('model').oninput = () => { state.model = $('model').value; invalidateProvider(); showProvider(); renderChrome(); if (!needsKey()) scheduleSetupChecks(); };
+ $('model').oninput = () => { state.model = $('model').value; invalidateProvider(); showProvider(); renderChecks(); };
  $('sampleKey').oninput = () => { state.apiKey = $('sampleKey').value; state.keyEdited = true; invalidateProvider({clearModels:true}); renderModelList(); renderChecks(); };
  $('model').onchange = () => persistAISettings('provider');
  $('sampleKey').onchange = () => { persistAISettings('provider'); refreshModels(); };
@@ -1198,6 +1198,7 @@ async function load() {
   $(id).disabled = !saved.sound_spacing_on;
   $(id + 'Value').textContent = (saved[key] / 1000) + 's';
  }
+ if (!demo) cacheAudioSetup();
  applyTheme(currentTheme());
  buildTabs();
  render();
@@ -1216,8 +1217,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (mode === 'ai') { generatedSample = {identity:sampleIdentity(), text, event}; renderSample(); }
    });
   }), selectTab);
-  setupChecksReady = true;
-  scheduleSetupChecks(0);
+  if (!demo) {
+   checkInitialSpeech();
+   if (!needsKey()) checkSetup('ai', {automatic:true});
+  }
   refreshVersions();
  } catch (error) {
   $('loadError').hidden = false;

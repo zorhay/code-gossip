@@ -13,6 +13,8 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Fixed
 
+- Soundbar caches readiness by configuration until page reload, eliminating repeated checks and brief Checking flashes when browsing sections or profiles. Explicit Check/Retry refreshes a result; Kokoro polling stops when model preparation finishes.
+
 - Readiness notices, edit actions, and AI sample text no longer move section workspaces or speaker controls. Long messages remain scrollable; request errors can be dismissed without shifting the page. Update availability appears as a Settings badge instead of inserting a header row.
 
 - Soundbar keeps playback indicators attached to the previewed content and voices when browsing or editing, preserves keyboard focus across background refreshes in every section, and explains Use correctly in preview help.

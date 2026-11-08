@@ -31,17 +31,18 @@ const server = http.createServer((req,res)=>{
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[],writes=[],previews=[],checks=[],modelRequests=[];let saveGate=null,releaseSave;let modelGate=null,releaseModels,failModels=false;let failGeneration=false,failSave=false,failShutdown=true,installations=0,checkGate=null,releaseCheck,failCheck=false;
   let configGate=null,releaseConfig,checkError='Check failed',modelState={ok:true,message:'Kokoro model and selected voices are ready.',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
+  let setupRequests=0, statusRequests=0, checkStarted=null;
   let previewGate=null,releasePreview,generationGate=null,releaseGeneration,failPreview=false;
   let versionState={installed:'0.8.0',available:false,release:null,checked_at:1,development:false,running:false,phase:'idle',message:''},updateChecks=0,updateStarts=0,failUpdateCheck=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});
   await page.route('**/api/**',async route=>{
    const req=route.request(),endpoint=new URL(req.url()).pathname;
    let reply={ok:true};
-   if(endpoint==='/api/status')reply=state;
+   if(endpoint==='/api/status'){statusRequests++;reply=state;}
    else if(endpoint==='/api/updates')reply=versionState;
    else if(endpoint==='/api/update-check'){assert.equal(req.headers()['x-soundbar-request'],'ui');updateChecks++;reply=failUpdateCheck?{ok:false,error:'GitHub is unavailable'}:versionState;}
    else if(endpoint==='/api/update'){assert.equal(req.headers()['x-soundbar-request'],'ui');updateStarts++;Object.assign(versionState,{running:true,phase:'downloading',message:'Downloading Code Gossip 0.9.0…'});reply=versionState;}
-   else if(endpoint==='/api/setup')reply=state.setup;
+   else if(endpoint==='/api/setup'){setupRequests++;reply=state.setup;}
    else if(endpoint==='/api/activate'||endpoint==='/api/save'){
     const body=req.postDataJSON();writes.push({endpoint,...body});if(saveGate)await saveGate;
     if(failSave)reply={ok:false,error:'Save failed'};
@@ -53,7 +54,7 @@ const server = http.createServer((req,res)=>{
    }else if(endpoint==='/api/config') {const body=req.postDataJSON();writes.push(body);if(configGate)await configGate;if(failSave)reply={ok:false,error:'Save failed'};else Object.assign(state,body);}
    else if(endpoint==='/api/draft-preview'){const body=req.postDataJSON();previews.push(body);if(body.action==='generate'&&generationGate)await generationGate;else if(previewGate)await previewGate;reply=failPreview?{ok:false,message:'Playback failed'}:failGeneration&&body.action==='generate'?{ok:false,message:'Generation failed'}:{ok:true,text:'Preview result'};}
    else if(endpoint==='/api/narrator-models'){const body=req.postDataJSON();modelRequests.push(body);if(modelGate)await modelGate;reply=failModels?{ok:false,message:'Could not load models'}:['claude_cli','codex_cli'].includes(body.config.narrator_provider)?{ok:true,models:[],supported:false,message:(body.config.narrator_provider==='codex_cli'?'Codex CLI':'Claude CLI')+' has no live model list.'}:{ok:true,models:['live-model-a','live-model-b'],supported:true};}
-   else if(endpoint==='/api/draft-check'){const body=req.postDataJSON();checks.push(body);if(checkGate)await checkGate;reply=failCheck?{ok:false,message:checkError}:body.scope==='speech' && body.config.tts_engine==='kokoro'?modelState:{ok:true,message:'Ready'};}
+   else if(endpoint==='/api/draft-check'){const body=req.postDataJSON();checks.push(body);checkStarted?.();if(checkGate)await checkGate;reply=failCheck?{ok:false,message:checkError}:body.scope==='speech' && body.config.tts_engine==='kokoro'?modelState:{ok:true,message:'Ready'};}
    else if(endpoint==='/api/kokoro-install'){installations++;state.setup.kokoro=true;state.setup.installing=false;state.setup.installStatus='done';reply={ok:true,status:'done'};}
    else if(endpoint==='/api/kokoro-status')reply={ok:true,status:'done',installed:state.setup.kokoro};
    else if(endpoint==='/api/shutdown'){assert.equal(req.headers()['x-soundbar-request'],'ui');reply={ok:!failShutdown};}
@@ -65,8 +66,9 @@ const server = http.createServer((req,res)=>{
   const ready = text => page.waitForFunction(value => document.getElementById('statusText').textContent === value, text);
   await page.waitForFunction(() => document.getElementById('statusText').textContent === 'In use · Effects · System sounds');
   await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Ready');
-  assert.equal(checks.length, 1, 'Only the visible Effects pack is checked on load');
-  assert.equal(checks[0].mode, 'effects');
+  await page.waitForFunction(() => ['phrases','aiSpeech','ai'].every(key => cachedCheck(key)?.status === 'checked'));
+  assert.equal(checks.length, 3, 'Load checks both speech configurations and the local provider once');
+  assert(checks.every(check => ['phrases','ai'].includes(check.mode)), 'Audio uses the readiness snapshot already included in status');
   assert.equal(await page.locator('#checkStatus-effects').evaluate(el => getComputedStyle(el).color), 'rgb(127, 211, 154)');
   assert.equal(await page.locator('#topicTips,.topic-tip').count(), 0);
   assert.equal(await page.locator('[role=tab]').count(), 4);
@@ -78,11 +80,77 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.evaluate(() => localStorage.getItem('code-gossip.soundbar-theme')), 'mint');
   await page.keyboard.press('Escape');
   await page.reload();
-  await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Ready');
+  await page.waitForFunction(() => ['phrases','aiSpeech','ai'].every(key => cachedCheck(key)?.status === 'checked'));
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'mint');
   await page.locator('#settingsButton').click();
   await page.locator('[data-theme-choice=amber]').click();
   await page.keyboard.press('Escape');
+
+  // Readiness belongs to this page, including sections and packs not visited yet.
+  assert.equal(statusRequests,2,'Reload fetches a fresh setup snapshot');
+  assert.equal(checks.length,6,'Reload repeats initial speech/local-provider checks exactly once');
+  await page.clock.install();
+  await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now()+1000)));
+  const cachedRequests={checks:checks.length,setup:setupRequests};
+  await page.evaluate(() => {
+   window.readinessFlashes=[];
+   window.readinessObserver=new MutationObserver(() => {
+    for(const node of document.querySelectorAll('[data-status-for],.activation-notice')) {
+     if (/Checking|Connecting/.test(node.textContent)) readinessFlashes.push(node.textContent);
+    }
+   });
+   readinessObserver.observe(document.querySelector('main'),{subtree:true,childList:true,characterData:true});
+  });
+  for (const theme of ['mint','amber']) for (const width of [390,1280]) {
+   await page.setViewportSize({width,height:900});
+   await page.locator('#settingsButton').click();
+   await page.locator(`[data-theme-choice=${theme}]`).click();
+   await page.keyboard.press('Escape');
+   for(const mode of ['effects','clips','phrases','ai','effects']) {
+    await page.locator('#tab-'+mode).click();
+    const selector={effects:'#packList input',clips:'#filters-clips button',phrases:'#evList button',ai:'#styleList input'}[mode];
+    for(const control of await page.locator(selector).all()) {
+     await control.evaluate(node=>node.click());
+     await page.clock.runFor(250);
+    }
+   }
+  }
+  await page.clock.runFor(30000);
+  assert.deepEqual({checks:checks.length,setup:setupRequests},cachedRequests,'Browsing every section and profile never rechecks cached readiness');
+  assert.deepEqual(await page.evaluate(()=>{readinessObserver.disconnect();return readinessFlashes;}),[],'Browsing produces no transient Checking status');
+  await page.locator('#packList input[value="default"]').evaluate(node=>node.click());
+  await page.evaluate(()=>{state.phraseEvent='subagent_start';state.style=saved.narrator_style;render();});
+  await page.clock.resume();
+
+  await page.locator('#tab-phrases').click();
+  const originalVoice=await page.locator('#mainAgentVoice').inputValue();
+  await page.selectOption('#mainAgentVoice','Samantha');
+  assert.equal(await page.locator('#checkStatus-phrases').innerText(),'Not checked','New voice settings do not inherit a different configuration’s readiness');
+  const beforeVoiceCheck=checks.length;
+  checkGate=new Promise(resolve=>{releaseCheck=resolve;});
+  const voiceRequest=new Promise(resolve=>{checkStarted=resolve;});
+  const pendingVoiceIdentity=await page.evaluate(()=>{const id=checkIdentity('phrases');checkSetup('phrases');checkSetup('phrases');return id;});
+  await voiceRequest;checkStarted=null;
+  assert.equal(checks.length,beforeVoiceCheck+1,'Concurrent checks for the same configuration share one request');
+  await page.selectOption('#mainAgentVoice',originalVoice);
+  assert.equal(await page.locator('#checkStatus-phrases').innerText(),'Ready','Returning to a checked configuration restores its cached result immediately');
+  failCheck=true;
+  releaseCheck();checkGate=null;
+  await page.waitForFunction(identity=>cachedCheck('phrases',identity)?.status==='failed',pendingVoiceIdentity);
+  failCheck=false;
+  assert.equal(await page.locator('#checkStatus-phrases').innerText(),'Ready','A late failure cannot overwrite the current configuration');
+  assert.equal(await page.locator('#errorBanner').innerText(),'','A late failure from another selection does not show a current error');
+  await page.selectOption('#mainAgentVoice','Samantha');
+  assert.equal(await page.locator('#checkStatus-phrases').innerText(),'Check failed','Failures are cached too');
+  await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now()+1000)));
+  await page.clock.runFor(30000);
+  assert.equal(checks.length,beforeVoiceCheck+1,'Returning to a failed configuration does not retry automatically');
+  await page.clock.resume();
+  await page.evaluate(()=>checkSetup('phrases'));
+  assert.equal(checks.length,beforeVoiceCheck+2,'Explicit Check retries a cached failure');
+  await page.locator('#panel-phrases [data-act=discard]').click();
+  assert.equal(await page.locator('#checkStatus-phrases').innerText(),'Ready');
+  await page.locator('#tab-effects').click();
 
   const beforeHelp = {writes:writes.length, previews:previews.length, checks:checks.length, models:modelRequests.length};
   await page.locator('#helpButton').click();
@@ -179,6 +247,7 @@ const server = http.createServer((req,res)=>{
    checkGate=new Promise(resolve=>{releaseCheck=resolve;});
    const pendingCheck=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/draft-check' && req.postDataJSON().mode==='phrases');
    await page.selectOption('#mainAgentVoice', saveFails ? 'Aman' : 'Samantha');
+   await page.evaluate(() => { checkSetup('phrases'); });
    await pendingCheck;
    const phraseInput=page.locator('#phraseRows input').first();
    await phraseInput.fill('Draft phrase');
@@ -231,9 +300,8 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#provider').inputValue(), 'claude_cli', 'Immediate provider settings survive reload');
   assert.equal(await page.locator('#phraseEngine').inputValue(), 'say', 'Immediate speech settings survive reload');
 
-  // Hold the automatic setup check until a save error is visible, then let it run.
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  // Browsing cached audio must not start a check or erase an activation error.
+  await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now()+1000)));
   await page.locator('#packList label', {hasText:'Paper'}).click();
   assert.equal(writes.filter(item => item.endpoint).length, 0, 'Browsing a pack does not apply it');
   assert.equal(await page.locator('#panel-effects .panel-head .pill.success').count(),0,'The newly selected pack is not marked In use');
@@ -246,7 +314,7 @@ const server = http.createServer((req,res)=>{
   await page.getByText('Save failed', {exact:true}).waitFor();
   await page.clock.runFor(200);
   await page.locator('#checkStatus-effects').getByText('Ready', {exact:true}).waitFor();
-  assert.equal(await page.locator('#errorBanner').innerText(), 'Save failed', 'An automatic setup check must preserve a save error');
+  assert.equal(await page.locator('#errorBanner').innerText(), 'Save failed', 'Cached readiness preserves a save error');
   await page.clock.resume();
   assert((await page.locator('#statusText').innerText()).includes('System sounds'));
   failSave = false;
@@ -375,12 +443,12 @@ const server = http.createServer((req,res)=>{
   const beforeAI = checks.length;
   await page.getByRole('tab', {name:/^AI commentary/}).click();
   await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'Detected');
-  assert(checks.slice(beforeAI).some(check => check.scope === 'provider'), 'A free CLI check can run when AI commentary is opened');
+  assert.equal(checks.length, beforeAI, 'Opening AI commentary uses the provider result from page load');
   await page.locator('#panel-ai .strip [data-drawer=provider]').click();
   await page.selectOption('#provider', 'openai');
   await settingsIdle();
   assert.equal(await page.locator('#checkConnection').innerText(), 'Check connection');
-  assert.equal(checks.at(-1).config.narrator_provider, 'claude_cli', 'Switching to a cloud provider does not check it');
+  assert.equal(checks.length, beforeAI, 'Switching to a cloud provider does not check it');
   await page.locator('#sampleKey').fill('dummy-test-key');
   await page.locator('#model').fill('test-model');
   checkGate = new Promise(resolve => { releaseCheck = resolve; });
@@ -393,6 +461,12 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => document.querySelectorAll('#modelChoices option').length === 2);
   assert.equal(await page.locator('#model').inputValue(), 'test-model');
   assert.equal(modelRequests.at(-1).config.narrator_api_key, 'dummy-test-key');
+  const checkedProviderRequests=checks.length;
+  await page.locator('#model').fill('another-model');
+  assert.equal(await page.locator('#checkStatus-ai').innerText(),'Not checked');
+  await page.locator('#model').fill('test-model');
+  assert.equal(await page.locator('#checkStatus-ai').innerText(),'Connected','Returning to the checked provider/model/key restores its cached result');
+  assert.equal(checks.length,checkedProviderRequests);
   failModels = true;
   await page.locator('#refreshModels').click();
   await page.waitForFunction(() => document.getElementById('modelStatus').dataset.status === 'failed');
@@ -412,6 +486,8 @@ const server = http.createServer((req,res)=>{
   await page.selectOption('#provider', 'codex_cli');
   await settingsIdle();
   await page.waitForFunction(() => document.getElementById('modelStatus').textContent.includes('Codex CLI'));
+  assert.equal(await page.locator('#checkStatus-ai').innerText(), 'Not checked');
+  await page.locator('#checkConnection').click();
   await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'Detected');
   assert.equal(await page.locator('#checkConnection').textContent(), 'Check CLI');
   assert.equal(state.narrator_provider, 'codex_cli');
@@ -457,6 +533,14 @@ const server = http.createServer((req,res)=>{
   assert(await page.locator('#sampleBtn').isDisabled(), 'AI previews wait for the model');
   assert(await page.locator('#previewAIVoice').isDisabled());
   assert.equal(await page.locator('#modelDownloadProgress').getAttribute('value'), '0', 'Received Xet bytes are not treated as reconstructed model bytes');
+  checkGate=new Promise(resolve=>{releaseCheck=resolve;});
+  await new Promise(resolve=>{checkStarted=resolve;});
+  checkStarted=null;
+  assert.equal(await page.locator('#checkStatus-aiSpeech').innerText(),'Downloading…','Progress polling retains its current status while the request runs');
+  assert(await page.locator('#checkStatus-aiSpeech').isVisible());
+  assert.equal(await page.locator('#speechCheck').innerText(),'Check','Automatic progress polling never flashes Checking');
+  releaseCheck();checkGate=null;
+  await page.waitForFunction(()=>[...setupChecks.values()].every(check=>!check.requesting));
   const beforeModelPreview=previews.length;
   await page.reload();
   await page.locator('#tab-phrases').click();
@@ -487,10 +571,17 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => !document.getElementById('previewMainAgent').disabled);
   assert(await page.locator('#modelDownloadProgress').isHidden());
   assert(await page.locator('#phraseRows [data-preview]').first().isEnabled());
+  await page.waitForFunction(()=>[...setupChecks.values()].every(check=>!check.requesting && check.status!=='loading'));
+  const afterModelReady=checks.length;
+  await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now()+1000)));
+  await page.clock.runFor(30000);
+  assert.equal(checks.length,afterModelReady,'Kokoro stops polling after readiness or failure');
+  await page.clock.resume();
   await page.locator('#closeDrawer').click();
   await loadingPhrase.fill(originalPhrase);
   await page.locator('#tab-ai').click();
   await page.locator('#panel-ai .strip [data-drawer=speech]').click();
+  await page.locator('#speechCheck').click();
   await page.waitForFunction(() => !document.getElementById('previewAIVoice').disabled);
   await page.selectOption('#speaker', 'af_bella');
   await page.locator('#closeDrawer').click();
@@ -828,11 +919,11 @@ const server = http.createServer((req,res)=>{
     ['ai','aiSpeech','#styleList input[value="sports"]'],
    ]) {
     await page.locator('#tab-'+mode).click();
-    await page.waitForFunction(key => !setupChecks[key]?.requesting, key);
+    await page.waitForFunction(key => !cachedCheck(key)?.requesting, key);
     const control=page.locator(selector).first();
     await control.focus();
     await control.evaluate(node => { window.focusedControl=node; });
-    await page.evaluate(key => checkSetup(key,{automatic:true}),key);
+    await page.evaluate(key => checkSetup(key),key);
     assert(await page.evaluate(() => document.activeElement===window.focusedControl),`${mode} preserves the mounted focused control in ${theme}`);
     if (mode==='effects'||mode==='ai') {
      await page.keyboard.press('ArrowDown');
@@ -843,9 +934,8 @@ const server = http.createServer((req,res)=>{
   await page.setViewportSize({width:1280,height:900});
   await page.locator('#styleList input').nth(1).focus();
   await page.locator('#styleList input').nth(1).evaluate(node => { window.focusedControl=node; });
-  await page.waitForResponse(response => response.url().endsWith('/api/draft-check') && response.request().postDataJSON().scope==='speech');
-  await page.waitForFunction(() => !setupChecks.aiSpeech.requesting);
-  assert(await page.evaluate(() => document.activeElement===window.focusedControl),'A scheduled Kokoro poll preserves focus too');
+  await page.evaluate(() => checkSetup('aiSpeech'));
+  assert(await page.evaluate(() => document.activeElement===window.focusedControl),'An explicit Kokoro refresh preserves focus too');
 
   // Transient labels must not resize controls or move the surrounding layout.
   const geometry = selector => page.locator(selector).evaluateAll(nodes => nodes.map(node => {
@@ -860,7 +950,7 @@ const server = http.createServer((req,res)=>{
     await page.setViewportSize({width,height:900});
     for (const mode of ['effects','clips','phrases','ai']) {
      await page.locator('#tab-'+mode).click();
-     await page.evaluate(() => Promise.all(modeCheckKeys().map(key => checkSetup(key,{automatic:true}))));
+     await page.evaluate(mode => checkSetup({effects:'effects',clips:'clips',phrases:'phrases',ai:'aiSpeech'}[mode],{automatic:true}),mode);
      const before=await geometry(stableGeometry);
      for (const volume of [0,9,10,99,100,99]) {
       await page.locator('#volume').evaluate((input,value)=>{input.value=value;input.dispatchEvent(new Event('input'));},String(volume));
@@ -882,7 +972,7 @@ const server = http.createServer((req,res)=>{
      await page.evaluate(key=>{checkSetup(key);},key);
      assert.deepEqual(await geometry(frameSelector),frameBefore,`Pending ${mode} checks do not move the workspace in ${theme}/${width}`);
      releaseCheck();checkGate=null;
-     await page.waitForFunction(key=>!setupChecks[key].requesting,key);
+     await page.waitForFunction(key=>!cachedCheck(key).requesting,key);
      assert.deepEqual(await geometry(frameSelector),frameBefore);
      failCheck=true;
      checkError='The selected engine could not finish its readiness check. Check the connection and selected voices, then retry. '.repeat(3);
@@ -907,13 +997,13 @@ const server = http.createServer((req,res)=>{
     assert.deepEqual(await geometry(notificationGeometry),beforeNotification);
     const headerBefore=await geometry(headerGeometry);
     const tabBefore=await geometry('#tabs,.tab,.tab > .i,.tab > span:not(.tab-badges)');
-    await page.evaluate(()=>{window.layoutSelection=activeSelection;window.layoutContext=state.context;window.layoutChecked=checkedAI;});
+    await page.evaluate(()=>{window.layoutSelection=activeSelection;window.layoutContext=state.context;window.layoutChecked=cachedCheck('ai');});
     for (const selection of [{mode:'effects',pack:'default'},{mode:'clips'},{mode:'phrases'},{mode:'ai',style:'sports'},{mode:'ai',style:'A long custom commentary style name'}]) {
-     await page.evaluate(selection=>{activeSelection=selection;state.context=!state.context;checkedAI=null;renderChrome();},selection);
+     await page.evaluate(selection=>{activeSelection=selection;state.context=!state.context;rememberCheck('ai',{identity:aiIdentity(),status:'failed'});renderChrome();},selection);
      assert.deepEqual(await geometry(headerGeometry),headerBefore,`Active selection does not move header controls in ${theme}/${width}`);
      assert.deepEqual(await geometry('#tabs,.tab,.tab > .i,.tab > span:not(.tab-badges)'),tabBefore,`Badges do not move tabs or their labels in ${theme}/${width}`);
     }
-    await page.evaluate(()=>{activeSelection=window.layoutSelection;state.context=window.layoutContext;checkedAI=window.layoutChecked;renderChrome();});
+    await page.evaluate(()=>{activeSelection=window.layoutSelection;state.context=window.layoutContext;if(window.layoutChecked) rememberCheck('ai',window.layoutChecked);renderChrome();});
     const sampleBefore=await geometry('#sampleBtn,#styleTitle');
     for (const label of ['Play sample','Generating…','Playing…','Replay']) {
      await page.locator('#sampleLabel').evaluate((node,label)=>{node.textContent=label;},label);
