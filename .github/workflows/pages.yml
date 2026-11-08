@@ -1,4 +1,4 @@
-name: Deploy Code Gossip marketing page
+name: Deploy website
 
 on:
   workflow_call:
@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   deploy:
+    name: GitHub Pages
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -24,11 +25,13 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - name: Download the tested website
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
-          name: tested-website
+          name: website-candidate
           path: dist/pages
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - name: Download the tested installer
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: installation-package
           path: dist
@@ -53,12 +56,12 @@ jobs:
       - name: Configure Pages
         if: steps.latest.outputs.deploy == 'true'
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-      - name: Upload marketing page
+      - name: Upload website to Pages
         if: steps.latest.outputs.deploy == 'true'
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: dist/pages
-      - name: Deploy marketing page
+      - name: Deploy website
         if: steps.latest.outputs.deploy == 'true'
         id: deployment
         uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

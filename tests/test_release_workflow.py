@@ -26,26 +26,59 @@ def test_only_release_publication_triggers_upload_and_deployment(workflow, repo_
 
 def test_website_is_tested_with_package_then_deployed_without_rebuilding(workflow, repo_root):
     pages = yaml.load((repo_root / ".github/workflows/pages.yml").read_text(), Loader=yaml.BaseLoader)
-    steps = workflow["jobs"]["test"]["steps"]
+    steps = workflow["jobs"]["build"]["steps"]
     build = next(step for step in steps if step.get("name") == "Build matching website")
     assert build["env"]["PACKAGE_TAG"] == "${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}"
     assert '--tag "$PACKAGE_TAG" --package dist/code-gossip.zip' in build["run"]
-    tests = next(step for step in steps if step.get("name") == "Test Pages demo")
-    assert tests["run"] == "node tests/test_pages.cjs"
-    upload = next(step for step in steps if step.get("with", {}).get("name") == "tested-website")
-    assert steps.index(build) < steps.index(tests) < steps.index(upload)
+    upload = next(step for step in steps if step.get("with", {}).get("name") == "website-candidate")
+    assert steps.index(build) < steps.index(upload)
     assert upload["with"]["include-hidden-files"] == "true"
+    browser = workflow["jobs"]["browser"]
+    assert browser["needs"] == "build"
+    assert browser["strategy"]["fail-fast"] == "false"
+    suites = {suite["suite"]: suite for suite in browser["strategy"]["matrix"]["include"]}
+    assert {name: suite["command"] for name, suite in suites.items()} == {
+        "soundbar": "node tests/test_soundbar_ui.cjs",
+        "pages": "node tests/test_pages.cjs",
+        "installation": 'E2E_RELEASE_PACKAGE="$PWD/dist/code-gossip.zip" node tests/test_soundbar_e2e.cjs',
+    }
+    assert browser["steps"][-1]["run"] == "${{ matrix.command }}"
+    downloads = {step.get("with", {}).get("name"): step for step in browser["steps"] if "download-artifact@" in step.get("uses", "")}
+    assert downloads["website-candidate"]["with"]["path"] == "dist/pages"
+    assert downloads["website-candidate"]["if"] == "matrix.suite == 'pages'"
+    assert downloads["installation-package"]["with"]["path"] == "dist"
+    assert downloads["installation-package"]["if"] == "matrix.suite != 'soundbar'"
+    assert not any('build_pages.py' in step.get('run', '') or 'package_release.py' in step.get('run', '') for step in browser["steps"])
     deploy_steps = pages["jobs"]["deploy"]["steps"]
-    assert any(step.get("with", {}).get("name") == "tested-website" for step in deploy_steps)
+    assert any(step.get("with", {}).get("name") == "website-candidate" for step in deploy_steps)
     verification = next(step for step in deploy_steps if step.get("name") == "Verify the tested website and installer")
     assert verification["env"]["RELEASE_TAG"] == "${{ github.event.release.tag_name }}"
     assert verification["env"]["RELEASE_COMMIT"] == "${{ github.sha }}"
     assert 'scripts/verify_pages.py' in verification["run"]
     assert not any('build_pages.py' in step.get('run', '') for step in deploy_steps)
-    upload_pages = next(step for step in deploy_steps if step.get("name") == "Upload marketing page")
+    upload_pages = next(step for step in deploy_steps if step.get("name") == "Upload website to Pages")
     assert upload_pages["with"]["path"] == "dist/pages"
-    for name in ("Configure Pages", "Upload marketing page", "Deploy marketing page"):
+    for name in ("Configure Pages", "Upload website to Pages", "Deploy website"):
         assert next(s for s in deploy_steps if s.get("name") == name)["if"] == "steps.latest.outputs.deploy == 'true'"
+
+
+@pytest.mark.parametrize("failed_job,result", [(None, "success")] + [
+    (job, result) for job in ("build", "runtime", "browser")
+    for result in ("failure", "cancelled", "skipped")
+])
+def test_parallel_checks_gate_publication(workflow, failed_job, result):
+    jobs = workflow["jobs"]
+    gate = jobs["test"]
+    assert gate["if"] == "always()", "A skipped suite must not hide a failed check"
+    assert set(gate["needs"]) == {"build", "runtime", "browser"}
+    assert jobs["publish"]["needs"] == "test"
+    assert "needs" not in jobs["runtime"], "Python tests run alongside the build"
+    step = gate["steps"][0]
+    expected = {"BUILD_RESULT": "build", "PYTHON_RESULT": "runtime", "BROWSER_RESULT": "browser"}
+    assert step["env"] == {key: "${{ needs." + job + ".result }}" for key, job in expected.items()}
+    env = {**os.environ, **{key: result if job == failed_job else "success" for key, job in expected.items()}}
+    completed = subprocess.run(["bash", "-eo", "pipefail", "-c", step["run"]], env=env)
+    assert (completed.returncode == 0) == (failed_job is None)
 
 
 @pytest.mark.parametrize("assets,lookup_failure,upload_failure,published,uploads,success", [
