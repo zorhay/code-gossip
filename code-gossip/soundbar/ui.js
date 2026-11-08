@@ -240,7 +240,7 @@ function checkPresentation(key) {
  const provider = key === 'ai', cli = provider && ['claude_cli', 'codex_cli'].includes(state.provider);
  const action = provider ? (cli ? 'Check CLI' : state.provider === 'ollama' ? 'Check server' : 'Check connection') : 'Check';
  const pending = provider && !cli ? 'Connecting…' : 'Checking…';
- const success = provider ? (cli ? 'CLI found' : state.provider === 'ollama' ? 'Server reachable' : 'Connection verified') : key === 'effects' || key === 'clips' ? 'Audio available' : 'Engine available';
+ const success = provider ? (cli ? 'Detected' : 'Connected') : 'Ready';
  let prerequisite = null;
  if (provider && !hasProviderKey()) prerequisite = {message:'API key required', tone:'warning'};
  if (key === 'effects' || key === 'clips') {
@@ -258,7 +258,8 @@ function checkPresentation(key) {
  }
  const result = {message:status === 'checked' ? success : status === 'failed' ? 'Check failed' : status === 'checking' ? pending : provider && !cli ? 'Not checked' : 'Not checked', tone:status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning'};
  if (current && check.model) {
-  result.message = check.message;
+  result.message = status === 'failed' ? 'Load failed' : status === 'checking' ? pending :
+   ({ready:'Ready', downloading:'Downloading…', loading:'Loading…'}[check.model.state] || 'Preparing…');
   result.tone = status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning';
  }
  return {action:current && check.model?.state === 'error' ? 'Retry model loading' : action, pending, status, checking:check?.status === 'checking', prerequisite, ...(prerequisite || result)};
@@ -555,7 +556,7 @@ function renderSpeech() {
  const progress = modelCurrent ? modelCheck.model : null;
  $('modelPreparation').hidden = !kokoro || !installation.available || !!demo;
  paintStatus($('modelPreparationStatus'), {
-  message:modelCurrent && modelCheck.message || 'Preparing Kokoro model…',
+  message:progress?.ready ? 'Ready' : modelCurrent && modelCheck.message || 'Preparing…',
   tone:modelCurrent && modelCheck.status === 'failed' ? 'error' : progress?.ready ? 'success' : 'warning',
  });
  const bytes = value => (value / 1000000).toFixed(1) + ' MB';

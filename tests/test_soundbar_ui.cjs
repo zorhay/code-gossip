@@ -30,7 +30,7 @@ const server = http.createServer((req,res)=>{
  try{
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[],writes=[],previews=[],checks=[],modelRequests=[];let saveGate=null,releaseSave;let modelGate=null,releaseModels,failModels=false;let failGeneration=false,failSave=false,failShutdown=true,installations=0,checkGate=null,releaseCheck,failCheck=false;
-  let configGate=null,releaseConfig,checkError='Check failed',modelState={ok:true,message:'Engine available',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
+  let configGate=null,releaseConfig,checkError='Check failed',modelState={ok:true,message:'Kokoro model and selected voices are ready.',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
   let previewGate=null,releasePreview,generationGate=null,releaseGeneration,failPreview=false;
   let versionState={installed:'0.8.0',available:false,release:null,checked_at:1,development:false,running:false,phase:'idle',message:''},updateChecks=0,updateStarts=0,failUpdateCheck=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});
@@ -64,7 +64,7 @@ const server = http.createServer((req,res)=>{
   const settingsIdle = () => page.waitForFunction(() => document.getElementById('activationProgress').textContent !== 'Saving settings…');
   const ready = text => page.waitForFunction(value => document.getElementById('statusText').textContent === value, text);
   await page.waitForFunction(() => document.getElementById('statusText').textContent === 'In use · Effects · System sounds');
-  await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Audio available');
+  await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Ready');
   assert.equal(checks.length, 1, 'Only the visible Effects pack is checked on load');
   assert.equal(checks[0].mode, 'effects');
   assert.equal(await page.locator('#checkStatus-effects').evaluate(el => getComputedStyle(el).color), 'rgb(127, 211, 154)');
@@ -78,7 +78,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.evaluate(() => localStorage.getItem('code-gossip.soundbar-theme')), 'mint');
   await page.keyboard.press('Escape');
   await page.reload();
-  await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Audio available');
+  await page.waitForFunction(() => document.getElementById('checkStatus-effects').textContent === 'Ready');
   assert.equal(await page.locator('html').getAttribute('data-theme'), 'mint');
   await page.locator('#settingsButton').click();
   await page.locator('[data-theme-choice=amber]').click();
@@ -173,7 +173,7 @@ const server = http.createServer((req,res)=>{
    await pendingRequest;
    await page.locator('#closeDrawer').click();
    await page.locator('#tab-phrases').click();
-   await page.waitForFunction(()=>document.getElementById('checkStatus-phrases').textContent==='Engine available');
+   await page.waitForFunction(()=>document.getElementById('checkStatus-phrases').textContent==='Ready');
    checkGate=new Promise(resolve=>{releaseCheck=resolve;});
    const pendingCheck=page.waitForRequest(req=>new URL(req.url()).pathname==='/api/draft-check' && req.postDataJSON().mode==='phrases');
    await page.selectOption('#mainAgentVoice', saveFails ? 'Aman' : 'Samantha');
@@ -188,7 +188,7 @@ const server = http.createServer((req,res)=>{
    assert.deepEqual(await phraseInput.evaluate(input=>({focused:document.activeElement===input,start:input.selectionStart,end:input.selectionEnd})),
     {focused:true,start:0,end:5}, 'A completed or failed autosave preserves phrase focus and selection');
    releaseCheck(); checkGate=null;
-   await page.waitForFunction(()=>document.getElementById('checkStatus-phrases').textContent==='Engine available');
+   await page.waitForFunction(()=>document.getElementById('checkStatus-phrases').textContent==='Ready');
    assert.deepEqual(await phraseInput.evaluate(input=>({focused:document.activeElement===input,start:input.selectionStart,end:input.selectionEnd})),
     {focused:true,start:0,end:5}, 'The follow-up setup check also preserves phrase focus and selection');
    await page.keyboard.type('New');
@@ -239,7 +239,7 @@ const server = http.createServer((req,res)=>{
   await page.locator('#activateSelection').click();
   await page.getByText('Save failed', {exact:true}).waitFor();
   await page.clock.runFor(200);
-  await page.locator('#checkStatus-effects').getByText('Audio available', {exact:true}).waitFor();
+  await page.locator('#checkStatus-effects').getByText('Ready', {exact:true}).waitFor();
   assert.equal(await page.locator('#errorBanner').innerText(), 'Save failed', 'An automatic setup check must preserve a save error');
   await page.clock.resume();
   assert((await page.locator('#statusText').innerText()).includes('System sounds'));
@@ -270,7 +270,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#statusText').textContent(), 'In use · Effects · Paper');
 
   await page.getByRole('tab', {name:'Phrases', exact:true}).click();
-  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Engine available');
+  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Ready');
   await page.selectOption('#mainAgentVoice', 'Samantha');
   await page.selectOption('#subagentVoice', 'Aman');
   await page.locator('#phraseRows input').first().fill('Please investigate');
@@ -295,7 +295,7 @@ const server = http.createServer((req,res)=>{
   await page.locator('#panel-phrases .strip [data-drawer=speech]').click();
   failCheck = false;
   await page.locator('#speechCheck').click();
-  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Engine available');
+  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Ready');
   await page.locator('#closeDrawer').click();
   previewGate=new Promise(resolve=>{releasePreview=resolve;});
   await page.getByRole('button', {name:'Preview alternative 1', exact:true}).click();
@@ -332,12 +332,12 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#badges-ai .dirty-dot').count(), 0, 'Saving a shared voice must not manufacture an AI draft');
   await page.reload();
   await page.locator('#tab-phrases[aria-selected=true]').waitFor();
-  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Engine available');
+  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Ready');
   assert.equal(await page.locator('#mainAgentVoice').inputValue(), 'Samantha');
 
   const beforeAI = checks.length;
   await page.getByRole('tab', {name:/^AI commentary/}).click();
-  await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'CLI found');
+  await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'Detected');
   assert(checks.slice(beforeAI).some(check => check.scope === 'provider'), 'A free CLI check can run when AI commentary is opened');
   await page.locator('#panel-ai .strip [data-drawer=provider]').click();
   await page.selectOption('#provider', 'openai');
@@ -375,7 +375,7 @@ const server = http.createServer((req,res)=>{
   await page.selectOption('#provider', 'codex_cli');
   await settingsIdle();
   await page.waitForFunction(() => document.getElementById('modelStatus').textContent.includes('Codex CLI'));
-  await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'CLI found');
+  await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'Detected');
   assert.equal(await page.locator('#checkConnection').textContent(), 'Check CLI');
   assert.equal(state.narrator_provider, 'codex_cli');
   assert.equal(state.narrator_api_key, '');
@@ -393,7 +393,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#modelChoices option').count(), 0);
   await page.locator('#sampleKey').fill('dummy-test-key');
   await page.locator('#checkConnection').click();
-  await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'Connection verified');
+  await page.waitForFunction(() => document.getElementById('checkStatus-ai').textContent === 'Connected');
   assert.equal(checks.at(-1).scope, 'provider');
   assert.equal(checks.at(-1).config.narrator_api_key, 'dummy-test-key');
   await settingsIdle();
@@ -423,7 +423,7 @@ const server = http.createServer((req,res)=>{
   const beforeModelPreview=previews.length;
   await page.reload();
   await page.locator('#tab-phrases').click();
-  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent==='Downloading Kokoro model');
+  await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent==='Downloading…');
   assert(await page.locator('#previewMainAgent').isDisabled());
   assert(await page.locator('#previewSubagent').isDisabled());
   assert(await page.locator('#phraseRows [data-preview]').first().isDisabled());
@@ -446,7 +446,7 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => document.getElementById('modelDownloadDetails').textContent.includes('voices/am_adam.pt'));
   assert.equal(checks.at(-1).retry,true,'Model retry is explicit');
   assert.equal(await page.locator('#modelDownloadProgress').getAttribute('value'),null,'Unknown size uses indeterminate progress');
-  modelState={ok:true,message:'Engine available',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
+  modelState={ok:true,message:'Kokoro model and selected voices are ready.',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
   await page.waitForFunction(() => !document.getElementById('previewMainAgent').disabled);
   assert(await page.locator('#modelDownloadProgress').isHidden());
   assert(await page.locator('#phraseRows [data-preview]').first().isEnabled());
@@ -465,7 +465,7 @@ const server = http.createServer((req,res)=>{
   failCheck = true; checkError='Kokoro daemon could not load the voice model.';
   await page.locator('#speechCheck').click();
   await page.waitForFunction(() => document.getElementById('speechCheck').dataset.status === 'failed');
-  assert.equal(await page.locator('#checkStatus-ai').innerText(), 'Connection verified');
+  assert.equal(await page.locator('#checkStatus-ai').innerText(), 'Connected');
   assert.equal(await page.locator('#installKokoro').innerText(), 'Repair installation');
   assert((await page.locator('#panel-ai .panel-head .state-issue').innerText()).includes(checkError));
   assert.equal(await page.locator('#panel-ai .panel-head [data-drawer=speech]').count(),0,'Speech errors show information instead of a duplicate Details button');
@@ -474,7 +474,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(checks.at(-1).scope, 'speech');
   failCheck = false;
   await page.locator('#speechCheck').click();
-  await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Engine available');
+  await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Ready');
   await page.locator('#closeDrawer').click();
 
   failGeneration = true;
@@ -542,13 +542,13 @@ const server = http.createServer((req,res)=>{
   assert.equal(state.narrator_provider, 'openai');
   assert.equal(await page.locator('#sampleKey').inputValue(), '', 'A saved API key is no longer an unsaved edit');
   assert.equal(await page.locator('#badges-ai .dirty-dot').count(), 0);
-  assert.equal(await page.locator('#checkStatus-ai').innerText(), 'Connection verified');
+  assert.equal(await page.locator('#checkStatus-ai').innerText(), 'Connected');
   assert.equal(await page.locator('#sampleLabel').innerText(), 'Replay', 'Saving a key preserves the generated sample');
   assert(await page.locator('#previewAIVoice').isEnabled());
   const beforeReload = checks.length;
   await page.reload();
   await page.locator('#tab-ai[aria-selected=true]').waitFor();
-  await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Engine available');
+  await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Ready');
   assert.equal(checks.slice(beforeReload).some(check => check.scope === 'provider'), false, 'Reload does not repeat a cloud provider check');
   assert.equal(await page.locator('#soundOn').isChecked(), false);
   const beforeStyle = checks.length;
@@ -645,7 +645,7 @@ const server = http.createServer((req,res)=>{
   assert(await page.locator('#installTiming').isHidden());
   assert(await page.locator('#installActivity').isHidden());
   assert.equal(installations, installsBeforeRetry + 1);
-  await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Engine available');
+  await page.waitForFunction(() => document.getElementById('checkStatus-aiSpeech').textContent === 'Ready');
   assert.equal(checks.at(-1).scope, 'speech');
   await page.locator('#closeDrawer').click();
 

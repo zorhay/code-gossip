@@ -16,6 +16,7 @@ This file holds design intent and acceptance criteria. [Using Code Gossip](usage
 | Master volume | Size the speaker icon to balance the neighboring controls. Center the contents with equal top and bottom padding, and balance the outer horizontal insets. |
 | Stable layout | Reserve space for alternate labels such as **Sound on/off** and **In use/Muted**. State changes must not shift the control group or neighboring panels horizontally. |
 | Themes | Use the existing theme tokens for surfaces, text, and accents. Preserve the same hierarchy in Amber and Mint. |
+| Status text | Keep status strips and badges to one or two words: **Ready**, **Detected**, **Connected**, **Loading…**, or **Load failed**. Let nearby labels identify the provider or engine; avoid repeating those names in full sentences. Keep detailed progress and explanations in the relevant drawer, with actionable errors beside blocked controls. |
 
 The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.7 px** for feature icons, **22 px** for the volume icon, and **10.2 px** for dropdown arrows. Arrows use `#9e9e9e` at `0.8` opacity. Select insets are **11 px**, or **9 px** for compact voice selectors; the master control group uses **6 px** outer padding. These are the final sizes from the session, not instructions to apply the earlier percentage increases again. Keep shared styles consistent when deliberately changing these values.
 
