@@ -2,6 +2,13 @@ name: Deploy website
 
 on:
   workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+      release_commit:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -23,7 +30,7 @@ jobs:
       - name: Check out the released commit
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ inputs.release_commit }}
           persist-credentials: false
       - name: Download the tested website
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
@@ -37,15 +44,15 @@ jobs:
           path: dist
       - name: Verify the tested website and installer
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-          RELEASE_COMMIT: ${{ github.sha }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_COMMIT: ${{ inputs.release_commit }}
         run: python3 -B scripts/verify_pages.py --site dist/pages --package dist/code-gossip.zip --tag "$RELEASE_TAG" --commit "$RELEASE_COMMIT"
       - name: Only deploy the latest release
         id: latest
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
           latest=$(gh release view --json tagName --jq .tagName)
           if [ "$latest" = "$RELEASE_TAG" ]; then
