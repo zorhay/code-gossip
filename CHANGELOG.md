@@ -6,6 +6,7 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
+- The Pages demo now follows Soundbar’s control styling, responsive layout, and status strips. Profile Play handles example sessions; the separate demo toolbar is removed and installation stays outside the panel.
 - Sound-pack Play buttons run a short example session and highlight each playing event using the existing controls. Event previews remain single cues.
 - AI commentary adds Codex CLI using existing Codex sign-in, optional model selection, ephemeral requests, and protection against narrating its own hooks.
 - Kokoro installation shows recent package activity and elapsed time in Soundbar, retains output after failures, and allows 20 minutes for package setup on slower connections.

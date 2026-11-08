@@ -49,11 +49,18 @@ const server = http.createServer((req,res) => {
    await locator.click();
    await page.waitForFunction(n => audioLog.filter(x=>x.event==='playing').length > n, count);
    if (expectedFile) assert((await page.evaluate(() => lastAudio.src)).endsWith('/' + expectedFile));
-   if (await page.locator('#demoStop').isEnabled()) await page.locator('#demoStop').click();
+   const tab=await page.locator('[role=tab][aria-selected=true]').getAttribute('id');
+   await page.locator(tab==='tab-effects' ? '#tab-clips' : '#tab-effects').click();
    await idle();
+   await page.locator('#'+tab).click();
    assert.equal(await page.locator('#errorBanner').textContent(), '');
   }
   assert.equal(await page.locator('video').count(),0);
+  assert.equal(await page.locator('#demoSession,#demoStop,#demoProgress,.demo-bar').count(),0,'The demo uses Soundbar controls without a separate playback toolbar');
+  assert(await page.locator('.brand-sub').isVisible(),'The Soundbar header keeps its app label');
+  assert.equal(await page.locator('#checkStatus-effects').innerText(),'Recorded');
+  assert(await page.locator('#panel-effects .strip').isVisible());
+  assert.equal(await page.locator('#install .shell,.shell .installation').count(),0,'Installation stays outside the panel');
   assert.equal(await page.locator('[role=tab]').count(),4);
   assert.equal(await page.locator('[data-act]:visible').count(),0);
   assert.equal(await page.locator('[data-drawer]:visible').count(),0);
@@ -84,7 +91,7 @@ const server = http.createServer((req,res) => {
    const event = await button.getAttribute('data-event');
    await playAndStop(button, pack === 'wood-thrush' ? melodyFile(event) : data.sounds[`effects/${pack}/${event}/0`]);
   }
-  // Consecutive cues, Stop, and pack changes retain the composer's recent-note history.
+  // Consecutive cues, cancellation, and pack changes retain the composer's recent-note history.
   await page.locator('input[name=pack][value="wood-thrush"]').locator('..').click();
   const woodFiles = [];
   for (const event of ['edit','edit','read','permission','error','stop']) {
@@ -99,8 +106,7 @@ const server = http.createServer((req,res) => {
   await playAndStop(page.locator('#effectsEvents [data-event=edit]'), melodyFile('edit'));
   const woodStart = await page.evaluate(() => audioLog.length);
   const woodSession = data.commentary.events.map(melodyFile);
-  await page.locator('#demoSession').click();
-  await page.waitForFunction(() => document.getElementById('demoProgress').textContent.startsWith('Session complete'));
+  await page.locator('#packList [data-pack="wood-thrush"]').click();
   await idle();
   assert.deepEqual(await page.evaluate(n => audioLog.slice(n).filter(x=>x.event==='playing').map(x=>x.src.split('/').at(-1)), woodStart),
    woodSession, 'The example session composes all five Wood Thrush events with shared history');
@@ -134,8 +140,9 @@ const server = http.createServer((req,res) => {
   }
   assert((await page.locator('#sampleNote').textContent()).includes('Prerecorded sample'));
 
-  // Stop cancels a sequence; selection changes stop audio; volume/mute act during playback.
-  await page.locator('#demoSession').click();
+  // Browsing cancels a profile session; volume/mute act during playback.
+  await page.locator('#tab-effects').click();
+  await page.locator('#packList [data-pack=default]').click();
   await page.waitForFunction(() => window.lastAudio && !lastAudio.paused);
   await page.locator('#volume').evaluate(input => {
    input.value = '27';
@@ -146,12 +153,13 @@ const server = http.createServer((req,res) => {
   await page.locator('#soundOn').uncheck();
   assert.equal(await page.evaluate(() => lastAudio.muted),true);
   await page.locator('#soundOn').check();
-  await page.locator('#demoStop').click();
+  await page.locator('input[name=pack][value=paper]').locator('..').click();
   await idle();
   const stopped = await page.evaluate(() => audioLog.filter(x=>x.event==='playing').length);
   await page.waitForTimeout(700);
   assert.equal(await page.evaluate(() => audioLog.filter(x=>x.event==='playing').length),stopped);
-  assert.equal(await page.locator('.demo-event').count(),0);
+  assert.equal(await page.locator('.ev-tile.is-playing').count(),0);
+  await page.locator('#tab-ai').click();
   await page.locator('#sampleBtn').click();
   await page.waitForFunction(() => !lastAudio.paused);
   await page.locator('#tab-effects').click();
@@ -161,22 +169,10 @@ const server = http.createServer((req,res) => {
   // Run all five events in order with the selected effects pack.
   await page.locator('input[name=pack][value=minimal]').locator('..').click();
   const sessionStart = await page.evaluate(() => audioLog.length);
-  await page.locator('#demoSession').click();
-  await page.waitForFunction(() => document.getElementById('demoProgress').textContent.startsWith('Session complete'));
+  await page.locator('#packList [data-pack=minimal]').click();
   await idle();
   const sessionFiles = await page.evaluate(n=>audioLog.slice(n).filter(x=>x.event==='playing').map(x=>x.src.split('/').at(-1)),sessionStart);
   assert.deepEqual(sessionFiles,data.commentary.events.map(e=>data.sounds[`effects/minimal/${e}/0`]));
-  for (const mode of ['clips','phrases','ai']) {
-   await page.locator('#tab-'+mode).click();
-   const start = await page.evaluate(() => audioLog.length);
-   await page.locator('#demoSession').click();
-   await page.waitForFunction(() => document.getElementById('demoProgress').textContent.startsWith('Session complete'));
-   await idle();
-   const files = await page.evaluate(n=>audioLog.slice(n).filter(x=>x.event==='playing').map(x=>x.src.split('/').at(-1)),start);
-   const expected = data.commentary.events.map((event,index) => mode === 'clips' ? data.sounds[`voice/generals/${event}/0`] :
-    mode === 'phrases' ? data.speech.af_heart[data.status.phrases[event][0]] : data.speech.bf_emma[data.commentary.styles.zen_master[index]]);
-   assert.deepEqual(files,expected,`${mode} session follows the selected voices and style`);
-  }
   await page.locator('#tab-effects').click();
 
   // Missing audio is an actionable error and does not leave the controls stuck.
@@ -213,14 +209,37 @@ const server = http.createServer((req,res) => {
   // Shared layout remains usable at desktop and narrow/mobile widths, in both themes.
   const screenshotDir = process.env.PAGES_SCREENSHOTS;
   if (screenshotDir) fs.mkdirSync(screenshotDir,{recursive:true});
-  for (const width of [1440,768,390,320]) {
+  for (const theme of ['amber','mint']) for (const width of [1440,901,900,768,561,560,390,320]) {
+   await page.evaluate(theme=>applyTheme(theme),theme);
    await page.setViewportSize({width,height:1000});
    for (const mode of ['effects','clips','phrases','ai']) {
     await page.locator('#tab-'+mode).click();
-    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`No horizontal page overflow: ${width}/${mode}`);
-    const pane = page.locator('#panel-'+mode+' .workspace');
-    assert(await pane.isVisible());
-    if(screenshotDir && [1440,390].includes(width)) await page.screenshot({path:path.join(screenshotDir,`${width}-${mode}.png`),fullPage:true});
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`No horizontal page overflow: ${theme}/${width}/${mode}`);
+    assert(await page.locator('#panel-'+mode+' .workspace').isVisible());
+    assert(await page.locator('#panel-'+mode+' .strip').isVisible());
+    const sharedStyles=await page.evaluate(() => {
+     const specs={'.brand-mark':['fontSize','letterSpacing'],'.brand-sub':['fontSize'],'.controls':['padding','gap'],'.volume input':['width'],'.volume > .i':['width','height'],'.panel:not([hidden]) h1':['fontSize']};
+     const read=()=>Object.fromEntries(Object.entries(specs).map(([selector,properties])=>[selector,properties.map(property=>getComputedStyle(document.querySelector(selector))[property])]));
+     const stylesheet=document.querySelector('link[href="player.css"]').sheet;
+     const demoStyles=read();stylesheet.disabled=true;const appStyles=read();stylesheet.disabled=false;read();
+     return {demoStyles,appStyles};
+    });
+    assert.deepEqual(sharedStyles.demoStyles,sharedStyles.appStyles,`Shared controls retain app styling: ${theme}/${width}/${mode}`);
+    const layout=()=>page.locator('.topbar,.controls,#tabs,.panel:not([hidden]) .workspace,.panel:not([hidden]) .strip').evaluateAll(nodes=>nodes.map(node=>{
+     const {x,y,width,height}=node.getBoundingClientRect();return {x:x+scrollX,y:y+scrollY,width,height};
+    }));
+    const before=await layout();
+    for(const value of [0,9,10,99,100]) {
+     await page.locator('#volume').evaluate((input,value)=>{input.value=value;input.dispatchEvent(new Event('input'));},String(value));
+     assert.deepEqual(await layout(),before,`Volume ${value} retains demo layout: ${theme}/${width}/${mode}`);
+    }
+    await page.locator('#soundOn').uncheck();
+    await page.waitForFunction(()=>!savingSound);
+    assert.deepEqual(await layout(),before,`Mute retains demo layout: ${theme}/${width}/${mode}`);
+    await page.locator('#soundOn').check();
+    await page.waitForFunction(()=>!savingSound);
+    assert.deepEqual(await layout(),before);
+    if(screenshotDir && [1440,390].includes(width)) await page.screenshot({path:path.join(screenshotDir,`${theme}-${width}-${mode}.png`),fullPage:true});
    }
   }
   await page.locator('#settingsButton').click();

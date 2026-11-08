@@ -22,6 +22,7 @@ The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.
 
 ## Actions and settings
 
+- Keep the GitHub Pages demo close to Soundbar: reuse its control typography, spacing, responsive behavior, playback icons, and status strips. Use existing profile Play controls for sessions, with no separate demo playback toolbar. Keep install information outside the panel and identify prerecorded audio honestly; omit unsupported installation and editing actions.
 - Apply interaction and visual decisions across all Soundbar sections. Use shared behavior for equivalent controls; validate Effects, Clips, Phrases, and AI commentary when changing a common pattern.
 - Keep **Use** beside the section heading. Place **Save** and **Discard** with the edited content, below the editor; in Phrases, put them below the phrase rows. Do not regroup them beside Use.
 - Keep saving and activation distinct. Save persists content edits; Use applies a selection. Browsing and previewing must preserve the active selection. Choosing another pack or commentary style shows **Use**, even when that mode is already active. Show **In use** in the panel header only when the browsed selection matches the active selection. Browsing packs, styles, or phrase events has no Save/Discard controls or unsaved-edits indicator. Saving or discarding edits must preserve the browsed selection and must not activate it. Use can save pending edits while explicitly activating a selection.

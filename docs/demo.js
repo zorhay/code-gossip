@@ -4,12 +4,10 @@ window.soundbarDemo = (() => {
  let data, melodyHistory, active = null, cancelAudio = null, generation = 0, volume = 1, enabled = true;
  const $ = id => document.getElementById(id);
  const aborted = () => new DOMException('Playback stopped', 'AbortError');
- function clearHighlight() { document.querySelectorAll('.demo-event').forEach(node => node.classList.remove('demo-event')); }
  function stop() {
   generation++;
   if (active) active.pause();
   cancelAudio?.();
-  clearHighlight();
  }
  function playFile(file, token) {
   if (token !== generation) return Promise.reject(aborted());
@@ -83,27 +81,8 @@ window.soundbarDemo = (() => {
   }
   throw new Error('This setting is available in the installed Soundbar.');
  }
- async function session(mode, config, onEvent) {
-  const token = generation;
-  try {
-   for (const [index, event] of data.commentary.events.entries()) {
-    if (token !== generation) throw aborted();
-    clearHighlight();
-    onEvent(event, data.commentary.styles[config.narrator_style]?.[index]);
-    const node = document.querySelector(`[data-preview="${mode}"][data-event="${event}"]`) || document.querySelector(`[data-phrase-event="${event}"]`);
-    node?.classList.add('demo-event');
-    $('demoProgress').textContent = `${index + 1}/${data.commentary.events.length} · ${data.commentary.labels[index]}`;
-    await preview({mode, config, event, variant:0, action:'play'}, token);
-    if (token !== generation) throw aborted();
-    await new Promise(resolve => setTimeout(resolve, 400));
-   }
-   $('demoProgress').textContent = 'Session complete. Try another sound pack, voice, or style.';
-  } finally { clearHighlight(); }
- }
- function ready(startSession, selectMode) {
-  document.querySelector('#panel-phrases .panel-head p').textContent = 'Prerecorded Kokoro phrases. Install to edit the lines for your agents.';
-  $('demoSession').onclick = startSession;
-  $('demoStop').onclick = () => { stop(); $('demoProgress').textContent = 'Playback stopped.'; };
+ function ready(selectMode) {
+  document.querySelector('#panel-ai .strip .strip-label').textContent = 'Commentary';
   $('copy-install').onclick = async () => {
    try {
     await navigator.clipboard.writeText($('install-command').textContent);
@@ -122,5 +101,5 @@ window.soundbarDemo = (() => {
   window.addEventListener('pagehide', stop);
   document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
  }
- return {request, stop, session, ready, playbackToken:() => generation};
+ return {request, stop, ready, playbackToken:() => generation};
 })();

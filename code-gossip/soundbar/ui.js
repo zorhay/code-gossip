@@ -264,6 +264,7 @@ function checkButton(key) {
  return $('checkEffects');
 }
 function checkPresentation(key) {
+ if (demo) return {status:'checked', checking:false, requesting:false, message:'Recorded', tone:'success', action:'Check'};
  const check = cachedCheck(key), current = check?.identity === checkIdentity(key), status = current ? check.status : 'unchecked';
  const provider = key === 'ai', cli = provider && ['claude_cli', 'codex_cli'].includes(state.provider);
  const action = provider ? (cli ? 'Check CLI' : state.provider === 'ollama' ? 'Check server' : 'Check connection') : 'Check';
@@ -425,7 +426,6 @@ function renderNow() {
  $('soundOn').checked = state.enabled;
  $('soundOn').disabled = busy || !demo && mediaBusy || savingSound;
  $('volume').disabled = busy || !demo && mediaBusy || savingVolume;
- if (demo) { $('demoSession').disabled = mediaBusy; $('demoStop').disabled = !mediaBusy; }
 }
 function renderPanelState(mode) {
  if (demo) return;
@@ -575,8 +575,7 @@ function renderSample() {
  }
  $('commentarySample').classList.toggle('placeholder', !current);
  const name = saved.narrator_providers[state.provider]?.name || state.provider;
- $('sampleNote').textContent = demo ? 'Prerecorded sample · Kokoro. Example commentary written for this demo. Install to generate fresh lines and edit phrases.' : current ? 'Replay uses this line and does not ask the provider again.' : `The first play writes one line with ${name}${needsKey() ? ', which may be billed' : ''}. A successful sample also verifies the provider.`;
- if (demo) document.querySelector('.sample-context').textContent = 'Example event · ' + (current?.event ? eventLabel(current.event) : 'Edit src/app.ts');
+ $('sampleNote').textContent = demo ? 'Prerecorded sample · Kokoro.' : current ? 'Replay uses this line and does not ask the provider again.' : `The first play writes one line with ${name}${needsKey() ? ', which may be billed' : ''}. A successful sample also verifies the provider.`;
  renderSampleLabel();
  $('sampleBtn').disabled = mediaBusy;
 }
@@ -657,7 +656,7 @@ function showProvider() {
  $('sampleKey').placeholder = state.provider === saved.narrator_provider && saved.narrator_api_key ? 'Key saved — enter a new one to replace' : 'Paste your API key';
  $('providerHint').textContent = providerNote();
  const name = saved.narrator_providers[state.provider]?.name || state.provider;
- $('stripProvider').textContent = name + (state.model ? ' · ' + state.model : '');
+ $('stripProvider').textContent = demo ? 'Prerecorded' : name + (state.model ? ' · ' + state.model : '');
  $('stripProvider').title = $('stripProvider').textContent;
  renderModelList();
 }
@@ -1249,13 +1248,7 @@ window.addEventListener('DOMContentLoaded', async () => {
  try {
   await load();
   wire();
-  if (demo) demo.ready(() => mediaAction($('demoSession'), async () => {
-   const mode = state.viewMode, config = clone(draftConfig(mode));
-   await demo.session(mode, config, (event, text) => {
-    if (mode === 'phrases') { state.phraseEvent = event; renderPhraseRows(); renderEventList(); }
-    if (mode === 'ai') { generatedSample = {identity:sampleIdentity(), text, event}; renderSample(); }
-   });
-  }), selectTab);
+  if (demo) demo.ready(selectTab);
   if (!demo) {
    checkInitialSpeech();
    if (!needsKey()) checkSetup('ai', {automatic:true});
