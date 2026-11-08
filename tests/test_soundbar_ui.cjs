@@ -354,7 +354,7 @@ const server = http.createServer((req,res)=>{
   await page.locator('#packList label', {hasText:'Paper'}).click();
   assert.equal(writes.filter(item => item.endpoint).length, 0, 'Browsing a pack does not apply it');
   assert.equal(await page.locator('#panel-effects .panel-head .pill.success').count(),0,'The newly selected pack is not marked In use');
-  assert.equal(await page.locator('#panel-effects .panel-head [data-act=use]').textContent(),'Use Effects');
+  assert.equal(await page.locator('#panel-effects .panel-head [data-act=use]').textContent(),'Use profile');
   assert.equal(await page.locator('#panel-effects [data-act=save],#panel-effects [data-act=discard],#badges-effects .dirty-dot').count(),0);
   assert((await page.locator('#packList .list-row').filter({hasText:'System sounds'}).innerText()).includes('In use'));
   assert((await page.locator('#statusText').innerText()).includes('System sounds'));
@@ -408,7 +408,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('.panel-head [data-act=save],.panel-head [data-act=discard]').count(), 0, 'Draft actions stay outside the activation header');
   assert(await page.locator('[data-draft-actions=phrases] [data-act=save]').isVisible());
   assert(await page.locator('[data-draft-actions=phrases] [data-act=discard]').isVisible());
-  assert.equal(await page.locator('#panel-phrases .panel-head [data-act=use]').innerText(), 'Use Phrases');
+  assert.equal(await page.locator('#panel-phrases .panel-head [data-act=use]').innerText(), 'Use profile');
   const editorBottom = await page.locator('#phraseRows').evaluate(el => el.closest('.pane-body').getBoundingClientRect().bottom);
   const actionsTop = await page.locator('[data-draft-actions=phrases]').evaluate(el => el.getBoundingClientRect().top);
   assert(actionsTop >= editorBottom, 'Phrase draft actions appear below the editor');
@@ -481,12 +481,12 @@ const server = http.createServer((req,res)=>{
   await page.locator('#tab-clips').click();
   await page.waitForFunction(() => document.getElementById('checkStatus-clips').textContent === 'Ready');
   assert.equal(await page.locator('#panel-clips [data-act=save],#panel-clips [data-act=discard]').count(), 0);
-  await page.getByRole('button', {name:'Use Clips', exact:true}).click();
+  await page.getByRole('button', {name:'Use profile', exact:true}).click();
   await ready('In use · Clips · Generals');
   assert.equal(writes.at(-1).endpoint, '/api/activate');
   assert.equal(await page.locator('#panel-clips .panel-head .pill.success').innerText(), 'In use');
   await page.locator('#tab-phrases').click();
-  await page.getByRole('button', {name:'Use Phrases', exact:true}).click();
+  await page.getByRole('button', {name:'Use profile', exact:true}).click();
   await ready('In use · Phrases · Senior');
 
   const beforeAI = checks.length;
@@ -734,7 +734,7 @@ const server = http.createServer((req,res)=>{
   const activeStyle = state.narrator_style, activeStatus = await page.locator('#statusText').innerText();
   const otherStyle = await page.locator('#styleList input').nth(1).getAttribute('value');
   await page.locator('#styleList label').nth(1).click();
-  assert.equal(await page.locator('#activateSelection').innerText(), 'Use AI commentary');
+  assert.equal(await page.locator('#activateSelection').innerText(), 'Use profile');
   assert(await page.locator('#activateSelection').isDisabled(), 'Applying a style requires provider readiness after reload');
   assert.equal(await page.locator('#panel-ai .panel-head .pill.success').count(), 0);
   assert.equal(await page.locator('#panel-ai [data-act=save],#panel-ai [data-act=discard],#badges-ai .dirty-dot').count(), 0);
@@ -776,7 +776,7 @@ const server = http.createServer((req,res)=>{
   assert.equal(state.narrator_style, activeStyle);
   assert.equal(await page.locator('#statusText').innerText(), activeStatus);
   assert.equal(await page.locator('#styleList input:checked').inputValue(), otherStyle);
-  assert.equal(await page.locator('#activateSelection').innerText(), 'Use AI commentary');
+  assert.equal(await page.locator('#activateSelection').innerText(), 'Use profile');
   failSave = true;
   await page.locator('#activateSelection').click();
   await page.getByText('Save failed', {exact:true}).waitFor();
@@ -825,7 +825,7 @@ const server = http.createServer((req,res)=>{
   await page.reload();
   await page.waitForFunction(() => document.getElementById('statusText').textContent.includes(' + Phrases'));
   await page.locator('#tab-effects').click();
-  await page.getByRole('button', {name:'Use Effects', exact:true}).click();
+  await page.getByRole('button', {name:'Use profile', exact:true}).click();
   await ready('In use · Effects · Paper');
   assert.equal(state.voice_on, false, 'Using an already-playing mode exits combined playback');
   assert.equal(writes.at(-1).endpoint, '/api/activate');

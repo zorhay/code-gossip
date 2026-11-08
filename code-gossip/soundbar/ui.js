@@ -444,7 +444,7 @@ function renderPanelState(mode) {
  }
  if (inUse) activation += `<span class="pill success">${icon('check')}In use</span>`;
  if (!exclusive) {
-  activation += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
+  activation += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use profile</button>`;
  }
  const notice = blocked ? `<span class="state-issue">${icon('warn')}<span>${esc(readiness.message)}${link ? ' · ' + link : ''}</span></span>` : '';
  const html = `<div id="activationNotice-${mode}" class="activation-notice" role="status"${blocked ? ' tabindex="0"' : ''}>${notice}</div><div class="activation-actions">${activation}</div>`;
