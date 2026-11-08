@@ -91,6 +91,16 @@ const server = http.createServer((req,res) => {
    const event = await button.getAttribute('data-event');
    await playAndStop(button, pack === 'wood-thrush' ? melodyFile(event) : data.sounds[`effects/${pack}/${event}/0`]);
   }
+  await page.locator('input[name=pack][value=paper]').locator('..').click();
+  const paperEdit=page.locator('#effectsEvents [data-event=edit]');
+  const shownSample=await paperEdit.locator('.ev-sound').innerText();
+  await paperEdit.click();
+  await page.waitForFunction(()=>window.lastAudio && !lastAudio.paused);
+  await page.evaluate(()=>render());
+  assert.equal(await paperEdit.locator('.ev-sound').innerText(),shownSample,'A rerender retains the playing sound alternative');
+  await idle();
+  assert.notEqual(await paperEdit.locator('.ev-sound').innerText(),shownSample);
+
   // Consecutive cues, cancellation, and pack changes retain the composer's recent-note history.
   await page.locator('input[name=pack][value="wood-thrush"]').locator('..').click();
   const woodFiles = [];
@@ -129,15 +139,32 @@ const server = http.createServer((req,res) => {
   const played = await page.evaluate(n => audioLog.slice(n).filter(x=>x.event==='playing').map(x=>x.src.split('/').at(-1)),before);
   assert.deepEqual(played,[data.speech.am_adam[dialogue[0]],data.speech.af_heart[dialogue[1]]],'Dialogue follows subagent/main voice order');
 
+  // Changing voices or tabs leaves the requested cue playing, as in Soundbar.
+  await page.selectOption('#mainAgentVoice','af_heart');
+  await page.locator('#previewMainAgent').click();
+  await page.waitForFunction(()=>window.lastAudio && !lastAudio.paused);
+  await page.selectOption('#mainAgentVoice','af_bella');
+  assert(await page.evaluate(()=>!lastAudio.paused),'Changing a voice does not cut off the current cue');
+  assert.equal(await page.locator('#previewMainAgent use').getAttribute('href'),'#i-play');
+  await page.selectOption('#mainAgentVoice','af_heart');
+  assert.equal(await page.locator('#previewMainAgent use').getAttribute('href'),'#i-wave');
+  await page.locator('#tab-clips').click();
+  assert(await page.evaluate(()=>!lastAudio.paused),'Tab navigation lets the current cue finish');
+  await page.locator('#tab-phrases').click();
+  assert.equal(await page.locator('#previewMainAgent use').getAttribute('href'),'#i-wave');
+  await idle();
+
   // Every style selects its own text and recording, with the chosen Kokoro voice.
   await page.locator('#tab-ai').click();
   await page.selectOption('#speaker','bf_emma');
+  await page.evaluate(()=>{window.sampleLabels=[];window.sampleObserver=new MutationObserver(()=>sampleLabels.push(document.getElementById('sampleLabel').textContent));sampleObserver.observe(document.getElementById('sampleLabel'),{subtree:true,childList:true,characterData:true});});
   for (const style of Object.keys(data.status.narrator_styles)) {
    await page.locator(`input[name=style][value="${style}"]`).locator('..').click();
    const text = data.commentary.styles[style][data.commentary.events.indexOf('edit')];
    await playAndStop(page.locator('#sampleBtn'),data.speech.bf_emma[text]);
    assert.equal(await page.locator('#commentarySample').textContent(),text);
   }
+  assert.equal(await page.evaluate(()=>{sampleObserver.disconnect();return sampleLabels.includes('Generating…');}),false,'Prerecorded samples never pretend to generate commentary');
   assert((await page.locator('#sampleNote').textContent()).includes('Prerecorded sample'));
 
   // Browsing cancels a profile session; volume/mute act during playback.

@@ -316,6 +316,35 @@ def test_effect_preview_uses_unsaved_pack(isolated_preferences):
     assert server.CONFIG_FILE.read_bytes() == before
 
 
+@pytest.mark.parametrize('mode', ['effects', 'clips', 'phrases', 'ai'])
+@pytest.mark.parametrize('channels', [(False, False), (True, False), (False, True), (True, True)])
+def test_previews_respect_master_mute_without_muting_inactive_auditions(isolated_preferences, mode, channels):
+    server = isolated_preferences
+    config = {**server.read_config(), 'effects_on': channels[0], 'voice_on': channels[1],
+              'effects_volume': 37, 'voice_volume': 62}
+    server.CONFIG_FILE.write_text(json.dumps(config))
+    before = server.CONFIG_FILE.read_bytes()
+    with patch.object(server, 'setup_status', return_value={
+            'effects': {'paper': {'ready': True}}, 'clips': {'generals': {'ready': True}}}), \
+            patch.object(server, 'play_profile_event') as play, \
+            patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok":true}')) as worker:
+        assert server.draft_request({'mode': mode, 'config': {'effects_profile': 'paper'}})['ok']
+    played = play.call_args.args[3] if mode in ('effects', 'clips') else json.loads(worker.call_args.kwargs['input'])['config']
+    assert played['effects_volume'] == (37 if any(channels) else 0)
+    assert played['voice_volume'] == (62 if any(channels) else 0)
+    assert server.CONFIG_FILE.read_bytes() == before
+
+
+def test_muted_readiness_check_retains_saved_volumes(isolated_preferences):
+    server = isolated_preferences
+    config = {**server.read_config(), 'effects_on': False, 'voice_on': False,
+              'effects_volume': 37, 'voice_volume': 62}
+    server.CONFIG_FILE.write_text(json.dumps(config))
+    with patch.object(server.subprocess, 'run', return_value=Mock(returncode=0, stdout='{"ok":true}')) as worker:
+        assert server.draft_request({'mode': 'phrases'}, check=True)['ok']
+    assert json.loads(worker.call_args.kwargs['input'])['config'] == config
+
+
 def test_setup_discovers_sox_from_manifest(isolated_preferences):
     server = isolated_preferences
     with patch.object(server, 'executable', side_effect=lambda name: None if name == 'play' else '/usr/bin/'+name), patch.object(server.kokoro, 'is_present', return_value=False):

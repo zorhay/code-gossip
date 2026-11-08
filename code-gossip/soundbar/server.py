@@ -590,6 +590,9 @@ def draft_request(body, check=False):
         raise ValueError("Unknown mode")
     scope = ("audio" if mode in ("effects", "clips") else body.get("scope", "speech")) if check else None
     config = draft_config(body, scope=scope)
+    if not check and not (config["effects_on"] or config["voice_on"]):
+        # Master mute applies to auditions without changing saved channel volumes.
+        config = {**config, "effects_volume": 0, "voice_volume": 0}
     if mode in ("effects", "clips"):
         layer, profile = ("effects", config["effects_profile"]) if mode == "effects" else ("voice", "generals")
         status = setup_status()["effects" if mode == "effects" else "clips"].get(profile, {})

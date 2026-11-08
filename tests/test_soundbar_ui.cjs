@@ -182,6 +182,7 @@ const server = http.createServer((req,res)=>{
 
   // Profile playback follows the Pages session, using only existing controls.
   const sessionEvents=read('../docs/demo-commentary.json').events;
+  await page.evaluate(()=>{cursors['effects:paper:session_start']=1;});
   const sessionStatus=await page.locator('#statusText').innerText(), sessionWrites=writes.length;
   for (const [theme,width] of [['amber',1280],['mint',390]]) {
    await page.evaluate(theme=>applyTheme(theme),theme);
@@ -197,6 +198,7 @@ const server = http.createServer((req,res)=>{
     finishCue=releasePreview;
     assert.equal(request.event,event);
     assert.equal(request.config.effects_profile,'paper');
+    assert.equal(await page.locator('#effectsEvents .is-playing .ev-sound').innerText(),state.preview_catalog.effects.paper[event][0],'Session labels describe the actual first alternative');
     assert.equal(await page.locator('#packList input:checked').inputValue(),'paper');
     assert.equal(await page.locator('#filters-effects [aria-pressed=true]').innerText(),'All');
     assert.deepEqual(await page.locator('#effectsEvents .is-playing').evaluateAll(nodes=>nodes.map(node=>node.dataset.event)),[event]);
@@ -675,8 +677,10 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#commentarySample').innerText(), 'Preview result');
   assert.deepEqual(previews.slice(firstSample).map(request => request.action), ['generate', 'play']);
   assert.equal(previews.at(-1).config.kokoro_voice, 'af_bella');
+  await page.evaluate(()=>{window.replayLabels=[];window.replayObserver=new MutationObserver(()=>replayLabels.push(document.getElementById('sampleLabel').textContent));replayObserver.observe(document.getElementById('sampleLabel'),{childList:true,subtree:true,characterData:true});});
   await page.locator('#sampleBtn').click();
   await page.waitForFunction(() => document.getElementById('sampleBtn').getAttribute('aria-busy') === 'false');
+  assert.equal(await page.evaluate(()=>{replayObserver.disconnect();return replayLabels.includes('Generating…');}),false,'Cached replay never flashes a generation status');
   assert.deepEqual(previews.slice(firstSample).map(request => request.action), ['generate', 'play', 'play']);
   assert.equal(await page.locator('#sampleBtn use').getAttribute('href'), '#i-play');
   previewGate=new Promise(resolve=>{releasePreview=resolve;});
@@ -873,6 +877,16 @@ const server = http.createServer((req,res)=>{
   assert.equal(checks.at(-1).scope, 'speech');
   await page.locator('#closeDrawer').click();
 
+  // A blocked profile preview must explain the requested pack, not the browsed one.
+  await page.locator('#tab-effects').click();
+  await page.locator('#packList input[value="paper"]').evaluate(node=>node.click());
+  const blockedPackPreviews=previews.length;
+  await page.getByRole('button',{name:'Play a Sci-fi sample',exact:true}).click();
+  assert.equal(await page.locator('#drawerPack').innerText(),'Sci-fi');
+  assert.equal(await page.locator('#packList input:checked').inputValue(),'sci-fi');
+  assert.equal(previews.length,blockedPackPreviews);
+  await page.locator('#closeDrawer').click();
+
   // Playback belongs to the requested content, not whichever control occupies its place.
   Object.assign(state, {tts_engine:'say',voice_main:'Tara',voice_sub:'Aman',narrator_provider:'claude_cli',narrator_model:'',narrator_api_key:'',narrator_style:'pair_programmer',effects_profile:'default',soundbar_mode:'effects',effects_on:true,voice_on:false});
   await page.reload();
@@ -891,6 +905,17 @@ const server = http.createServer((req,res)=>{
   await finishPreview();
   assert(await page.locator('#effectsEvents [data-preview]').first().isEnabled(),'Rebuilt controls recover after playback');
 
+  // The sounding alternative remains visible through rerenders and profile sessions.
+  await page.locator('#packList input[value="paper"]').evaluate(node=>node.click());
+  const paperEdit=page.locator('#effectsEvents [data-event=edit]');
+  const originalAlternative=await paperEdit.locator('.ev-sound').innerText();
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  await paperEdit.click();
+  await page.evaluate(()=>render());
+  assert.equal(await paperEdit.locator('.ev-sound').innerText(),originalAlternative);
+  await finishPreview();
+  const nextAlternative=await paperEdit.locator('.ev-sound').innerText();
+  assert.notEqual(nextAlternative,originalAlternative,'Completion advances the audition cursor');
   await page.locator('#tab-clips').click();
   await page.waitForFunction(() => document.getElementById('checkStatus-clips').textContent === 'Ready');
   previewGate=new Promise(resolve=>{releasePreview=resolve;});
@@ -901,6 +926,24 @@ const server = http.createServer((req,res)=>{
   assert.equal(await page.locator('#clipsEvents .is-playing').count(),1,'Filtering preserves the original clip identity');
   await finishPreview();
   assert(await page.locator('#clipsEvents [data-preview]').first().isEnabled());
+
+  await page.evaluate(()=>{window.originalClips=saved.preview_catalog.voice.generals.edit;saved.preview_catalog.voice.generals.edit=['First clip','Second clip'];render();});
+  const clipEdit=page.locator('#clipsEvents [data-event=edit]');
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  await clipEdit.click();
+  await page.evaluate(()=>render());
+  assert.equal(await clipEdit.locator('.ev-sound').innerText(),'First clip');
+  await finishPreview();
+  await page.locator('#tab-effects').click();
+  await page.locator('#packList input[value="default"]').evaluate(node=>node.click());
+  await page.locator('#tab-clips').click();
+  assert.equal(await clipEdit.locator('.ev-sound').innerText(),'Second clip','Effects browsing cannot reset the Clips audition cursor');
+  previewGate=new Promise(resolve=>{releasePreview=resolve;});
+  await clipEdit.click();
+  await page.evaluate(()=>render());
+  assert.equal(await clipEdit.locator('.ev-sound').innerText(),'Second clip');
+  await finishPreview();
+  await page.evaluate(()=>{saved.preview_catalog.voice.generals.edit=window.originalClips;render();});
 
   await page.locator('#tab-phrases').click();
   await page.waitForFunction(() => document.getElementById('checkStatus-phrases').textContent === 'Ready');

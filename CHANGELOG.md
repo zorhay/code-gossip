@@ -15,6 +15,8 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Fixed
 
+- Soundbar and the Pages demo let the current preview finish when browsing, keep event labels on the sounding alternative, and skip the generation indicator for cached or prerecorded commentary. Clips retain their alternative sequence when browsing effect packs; blocked pack previews show that pack's setup details. Soundbar previews now honor master mute without changing saved volumes.
+
 - Soundbar caches readiness by configuration until page reload, eliminating repeated checks and brief Checking flashes when browsing sections or profiles. Explicit Check/Retry refreshes a result; Kokoro polling stops when model preparation finishes.
 
 - Readiness notices, edit actions, and AI sample text no longer move section workspaces or speaker controls. Long messages remain scrollable; request errors can be dismissed without shifting the page. Update availability appears as a Settings badge instead of inserting a header row.

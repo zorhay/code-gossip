@@ -10,7 +10,7 @@ Installation opens Soundbar automatically. To open it again:
 ~/.code-gossip/soundbar/panel.sh
 ```
 
-At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phrases**, or **AI commentary**. Browsing sound packs, phrases, and commentary styles leaves the sounds agents play unchanged; previews audition the current selection. The header shows what is in use. **Sound on/off** and volume apply immediately. **Settings** holds appearance, pacing, Codex approval cues, and updates.
+At [localhost:8111](http://localhost:8111), browse **Effects**, **Clips**, **Phrases**, or **AI commentary**. Browsing sound packs, phrases, and commentary styles leaves the sounds agents play unchanged; previews audition the current selection. The header shows what is in use. **Sound on/off** and volume apply to agent audio and previews. **Settings** holds appearance, pacing, Codex approval cues, and updates.
 
 | Category | Controls | Setup |
 |---|---|---|

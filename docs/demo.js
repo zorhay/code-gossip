@@ -95,9 +95,6 @@ window.soundbarDemo = (() => {
   };
   window.addEventListener('hashchange', followHash);
   followHash();
-  document.addEventListener('change', event => {
-   if (event.target.matches('[name=pack],[name=style],#mainAgentVoice,#subagentVoice,#speaker')) stop();
-  }, true);
   window.addEventListener('pagehide', stop);
   document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
  }

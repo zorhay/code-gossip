@@ -479,7 +479,7 @@ function renderEvents(container, mode, pack) {
  setMarkup(container, `<div class="ev-grid">${groups.map(([group, names]) => (filters[mode] === 'All' ? `<p class="group-label">${esc(group)}</p>` : '') + names.map(event => {
   const samples = events[event];
   if (!samples?.length) return `<div class="ev-tile silent"><span class="ev-ico">–</span><span class="ev-body"><span class="ev-name">${esc(eventLabel(event))}</span><span class="ev-sound">Silent</span></span></div>`;
-  const key = mode + ':' + pack + ':' + event, index = (cursors[key] || 0) % samples.length;
+  const index = displayedVariant(mode, pack, event, samples.length);
   return `<button type="button" class="ev-tile" data-preview="${mode}" data-event="${esc(event)}" ${mode === 'effects' ? `data-pack="${esc(pack)}"` : ''}><span class="ev-ico">${icon('play')}</span><span class="ev-body"><span class="ev-name">${esc(eventLabel(event))}</span><span class="ev-sound">${esc(samples[index])}</span></span>${samples.length > 1 ? `<span class="ev-count" title="${samples.length} alternatives">×${samples.length}</span>` : ''}</button>`;
  }).join('')).join('')}</div>`);
 }
@@ -673,7 +673,6 @@ function openDrawer(kind) {
 function selectTab(mode) {
  if (!TABS[mode] || state.viewMode === mode) { if (TABS[mode]) renderTabs(); return; }
  cancelProfileSession();
- if (demo) demo.stop();
  state.viewMode = mode;
  render();
  if (mode === 'phrases') requestAnimationFrame(scrollEventIntoView);
@@ -790,7 +789,7 @@ function variantFor(button, mode) {
  if (button?.hasAttribute('data-variant')) return Number(button.dataset.variant);
  const event = button?.dataset.event || 'edit', pack = button?.dataset.pack || state.pack;
  const samples = (mode === 'effects' ? catalog('effects', pack) : catalog('clips'))[event] || [];
- const key = mode + ':' + pack + ':' + event, variant = cursors[key] || 0;
+ const key = soundCursorKey(mode, pack, event), variant = cursors[key] || 0;
  if (samples.length) cursors[key] = (variant + 1) % samples.length;
  return variant;
 }
@@ -801,6 +800,16 @@ function previewKey(button) {
  return JSON.stringify([button.id, ...['preview','pack','event','variant','role'].map(key => button.dataset[key] || ''),
   content, speech, mode === 'ai' && !role ? sampleIdentity() : null]);
 }
+function playingCue(mode, pack, event) {
+ const cue = activePreview?.cue;
+ return cue?.mode === mode && cue.event === event && (mode !== 'effects' || cue.pack === pack) ? cue : null;
+}
+function soundCursorKey(mode, pack, event) {
+ return mode + ':' + (mode === 'clips' ? 'generals' : pack) + ':' + event;
+}
+function displayedVariant(mode, pack, event, count) {
+ return (playingCue(mode, pack, event)?.variant ?? cursors[soundCursorKey(mode, pack, event)] ?? 0) % count;
+}
 function renderSampleLabel() {
  const active = activePreview?.key === previewKey($('sampleBtn'));
  $('sampleLabel').textContent = active ? activePreview.phase === 'playing' ? 'Playing…' : 'Generating…'
@@ -809,16 +818,18 @@ function renderSampleLabel() {
 function renderPreviewState() {
  renderSampleLabel();
  document.querySelectorAll('[data-preview]').forEach(button => {
-  const session = activePreview?.session;
-  const sessionEvent = !!session && !session.cancelled && button.matches('.ev-tile') &&
-   button.dataset.preview === session.mode && button.dataset.pack === session.pack && button.dataset.event === session.event;
-  const active = activePreview?.key === previewKey(button) || sessionEvent;
+  const {preview:mode, pack, event} = button.dataset;
+  const cue = button.matches('.ev-tile') ? playingCue(mode, pack, event) : null;
+  const active = activePreview?.key === previewKey(button) || !!cue;
   const playing = active && activePreview.phase === 'playing';
   button.classList.toggle('is-playing', playing);
   button.classList.toggle('is-generating', active && !playing);
   button.setAttribute('aria-busy', String(active));
   button.querySelector('svg use')?.setAttribute('href', active ? playing ? '#i-wave' : '#i-reset' : '#i-play');
-  const mode = button.dataset.preview;
+  if (button.matches('.ev-tile')) {
+   const samples = catalog(mode, pack)[event] || [];
+   button.querySelector('.ev-sound').textContent = samples[displayedVariant(mode, pack, event, samples.length)] || '';
+  }
   if (['phrases','ai'].includes(mode) && !demo) {
    const empty = mode === 'phrases' && !button.dataset.role &&
     [state.phrases[button.dataset.event]?.[Number(button.dataset.variant)]].flat().some(text => !String(text || '').trim());
@@ -828,11 +839,11 @@ function renderPreviewState() {
   } else button.disabled = mediaBusy;
  });
 }
-async function mediaAction(button, work, phase='playing') {
+async function mediaAction(button, work, phase='playing', cue=null) {
  if (mediaBusy) return;
  clearError();
  mediaBusy = true;
- activePreview = button?.matches('[data-preview]') ? {key:previewKey(button), phase} : null;
+ activePreview = button?.matches('[data-preview]') ? {key:previewKey(button), phase, cue} : null;
  button?.setAttribute('aria-busy', 'true');
  const controls = [...document.querySelectorAll('[data-preview]')].map(control => [control, control.disabled]);
  controls.forEach(([control]) => { control.disabled = true; });
@@ -852,6 +863,10 @@ async function preview(mode, button) {
  const role = button?.dataset.role || null;
  if (mode === 'ai' && !role) { await playCommentarySample(button); return; }
  const pack = button?.dataset.pack;
+ if (button?.hasAttribute('data-session')) {
+  // Browsing the requested pack is independent of readiness and activation.
+  state.pack = pack; filters[mode] = 'All'; render();
+ }
  const readiness = mode === 'phrases' || mode === 'ai' ? speechReadiness(mode) : setupReadiness(mode, pack);
  if (pack && !setup.effects?.[pack]?.ready) { openDrawer('effects'); showError(setup.effects?.[pack]?.message || 'Audio unavailable'); return; }
  if (!readiness.ready) { openDrawer(blockerDrawer(mode)); return; }
@@ -861,7 +876,8 @@ async function preview(mode, button) {
  const config = pack ? {effects_profile:pack} : draftConfig(mode);
  const body = {mode, config, role, event, variant};
  if (mode === 'phrases' && !role) body.phrases = {[event]: state.phrases[event]};
- await mediaAction(button, () => api('/api/draft-preview', body));
+ await mediaAction(button, () => api('/api/draft-preview', body), 'playing',
+  ['effects','clips'].includes(mode) ? {mode, pack, event, variant} : null);
 }
 function cancelProfileSession() {
  if (activePreview?.session) activePreview.session.cancelled = true;
@@ -870,16 +886,12 @@ async function playProfileSession(mode, pack, button) {
  const available = catalog(mode, pack);
  const sequence = PROFILE_SESSION_EVENTS.filter(event => available[event]?.length);
  const events = sequence.length ? sequence : Object.keys(available).slice(0, 5);
- // Show the auditioned pack, without changing the active profile or saved settings.
- state.pack = pack;
- filters[mode] = 'All';
- render();
  await mediaAction(button, async () => {
-  const session = activePreview.session = {mode, pack, event:null, cancelled:false};
+  const session = activePreview.session = {cancelled:false};
   const token = demo?.playbackToken();
   for (const [index, event] of events.entries()) {
    if (session.cancelled || demo && token !== demo.playbackToken()) break;
-   session.event = event;
+   activePreview.cue = {mode, pack, event, variant:0};
    renderPreviewState();
    const container = $('effectsEvents');
    const tile = [...container.querySelectorAll('.ev-tile')].find(node => node.dataset.event === event);
@@ -889,7 +901,7 @@ async function playProfileSession(mode, pack, button) {
     else if (cue.bottom > bounds.bottom) container.scrollTop += cue.bottom - bounds.bottom;
    }
    await api('/api/draft-preview', {mode, config:{effects_profile:pack}, event, variant:0});
-   session.event = null;
+   activePreview.cue = null;
    renderPreviewState();
    if (index < events.length - 1 && !session.cancelled) await new Promise(resolve => setTimeout(resolve, 400));
   }
@@ -899,8 +911,9 @@ async function playCommentarySample(button) {
  if (!speechReadiness('ai').ready) { openDrawer('speech'); return; }
  if ((!generatedSample || generatedSample.identity !== sampleIdentity()) && !hasProviderKey()) { openDrawer('provider'); showError('API key required'); return; }
  const config = draftConfig('ai'), identity = sampleIdentity();
+ const generate = generatedSample?.identity !== identity;
  await mediaAction(button, async () => {
-  if (!generatedSample || generatedSample.identity !== identity) {
+  if (generate) {
    const result = await api('/api/draft-preview', {mode:'ai', action:'generate', config});
    if (identity !== sampleIdentity()) return;
    generatedSample = {identity, text:result.text};
@@ -910,7 +923,7 @@ async function playCommentarySample(button) {
   activePreview.phase = 'playing';
   renderPreviewState();
   await api('/api/draft-preview', {mode:'ai', action:'play', config, text:generatedSample.text});
- }, 'generating');
+ }, generate && !demo ? 'generating' : 'playing');
 }
 
 async function installKokoro() {
