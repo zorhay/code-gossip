@@ -957,7 +957,12 @@ async function pollInstall() {
  }
 }
 function aiSettings(kind) {
- if (kind === 'provider') return {narrator_provider:state.provider, narrator_model:state.model, narrator_api_key:providerKey()};
+ if (kind === 'provider') {
+  const config = {narrator_provider:state.provider, narrator_model:state.model};
+  // Status exposes a masked saved key. Only send an explicitly edited credential.
+  if (state.keyEdited || state.apiKey || state.provider !== saved.narrator_provider) config.narrator_api_key = state.apiKey;
+  return config;
+ }
  return {tts_engine:state.engine, [state.engine === 'kokoro' ? 'kokoro_voice' : 'voice_main']:state.voices[state.engine]};
 }
 function persistAISettings(kind) {

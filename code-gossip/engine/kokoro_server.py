@@ -24,6 +24,7 @@ Run:
   ~/.code-gossip/state/.venv/bin/python kokoro_server.py
 """
 
+import fcntl
 import json
 import os
 import re
@@ -292,9 +293,12 @@ def idle_watcher(server):
             return
 
 
-def cleanup():
+def cleanup(identity):
+    """Remove only the socket this daemon bound, never a replacement's socket."""
     try:
-        os.unlink(SOCK_PATH)
+        current = os.stat(SOCK_PATH)
+        if (current.st_dev, current.st_ino) == identity:
+            os.unlink(SOCK_PATH)
     except OSError:
         pass
 
@@ -314,29 +318,31 @@ def main():
             }))
         return
 
-    # Clean up stale socket
-    cleanup()
+    # Also guard direct launches and children that outlive their startup caller.
+    # Keep this file in place: unlinking a lock file permits separate lock owners.
+    with (STATE / "kokoro.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        Path(SOCK_PATH).unlink(missing_ok=True)
+        with UnixServer(SOCK_PATH, Handler) as server:
+            bound = os.stat(SOCK_PATH)
+            identity = (bound.st_dev, bound.st_ino)
 
-    def _shutdown(signum, frame):
-        cleanup()
-        sys.exit(0)
+            def _shutdown(signum, frame):
+                sys.exit(0)
 
-    signal.signal(signal.SIGTERM, _shutdown)
-
-    # Model preparation continues independently of short-lived preview requests.
-    model.prepare()
-
-    server = UnixServer(SOCK_PATH, Handler)
-    os.chmod(SOCK_PATH, 0o600)
-
-    # Start idle watcher
-    threading.Thread(target=idle_watcher, args=(server,), daemon=True).start()
-
-    print(f"Kokoro daemon: {SOCK_PATH} (PID {os.getpid()})")
-    try:
-        server.serve_forever()
-    finally:
-        cleanup()
+            signal.signal(signal.SIGTERM, _shutdown)
+            try:
+                os.chmod(SOCK_PATH, 0o600)
+                # Preparation continues independently of short-lived requests.
+                model.prepare()
+                threading.Thread(target=idle_watcher, args=(server,), daemon=True).start()
+                print(f"Kokoro daemon: {SOCK_PATH} (PID {os.getpid()})")
+                server.serve_forever()
+            finally:
+                cleanup(identity)
     print("Kokoro daemon stopped.")
 
 

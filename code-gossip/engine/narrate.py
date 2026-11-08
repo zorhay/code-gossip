@@ -6,6 +6,7 @@ stdin, calls an LLM to generate a short narration line, speaks it via macOS TTS.
 Supports Claude CLI, Codex CLI, Anthropic, Gemini, OpenAI, and Ollama.
 """
 
+import fcntl
 import json
 import logging
 import os
@@ -626,6 +627,24 @@ def _kokoro_request(cmd, timeout=30, **kwargs):
 
 def _ensure_kokoro_daemon():
     """Start Kokoro daemon if not running. Returns True if daemon is available."""
+    # Preview helpers and hooks are separate processes. Recheck health under the
+    # lock so concurrent cold starts share one launch, including its socket wait.
+    with (STATE / "kokoro-start.lock").open("a") as lock:
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    _log.error("timed out waiting for Kokoro startup")
+                    return False
+                time.sleep(.05)
+        return _start_kokoro_daemon()
+
+
+def _start_kokoro_daemon():
+    """Called with the cross-process startup lock held."""
     _log.debug("ensure_kokoro_daemon: sock=%s exists=%s", KOKORO_SOCK, KOKORO_SOCK.exists())
 
     # Already running?
@@ -634,12 +653,8 @@ def _ensure_kokoro_daemon():
         if resp and resp.get("ok"):
             _log.debug("daemon already running")
             return True
-        # Stale socket
-        _log.debug("stale socket, removing")
-        try:
-            KOKORO_SOCK.unlink()
-        except OSError:
-            pass
+        # Only the daemon holding its lifetime lock may replace a stale socket.
+        # A temporarily unresponsive daemon must keep its listening address.
 
     # Venv must exist
     if not KOKORO_VENV.exists():
@@ -652,26 +667,25 @@ def _ensure_kokoro_daemon():
 
     # Capture daemon stderr to a log file for debugging
     daemon_log = STATE / "kokoro_daemon.log"
-    try:
-        daemon_err = open(daemon_log, "a")
-    except Exception:
-        daemon_err = subprocess.DEVNULL
-
-    subprocess.Popen(
-        daemon_cmd,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=daemon_err,
-        start_new_session=True,
-    )
+    with daemon_log.open("a") as daemon_err:
+        subprocess.Popen(
+            daemon_cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=daemon_err,
+            start_new_session=True,
+        )
 
     # Wait for socket — daemon creates it before model finishes loading
-    for i in range(50):
+    started = time.monotonic()
+    deadline = started + 5
+    while time.monotonic() < deadline:
         time.sleep(0.1)
-        if KOKORO_SOCK.exists():
-            resp = _kokoro_request("health", timeout=3)
+        remaining = deadline - time.monotonic()
+        if KOKORO_SOCK.exists() and remaining > 0:
+            resp = _kokoro_request("health", timeout=min(1, remaining))
             if resp and resp.get("ok"):
-                _log.info("daemon started after %.1fs", (i + 1) * 0.1)
+                _log.info("daemon started after %.1fs", time.monotonic() - started)
                 return True
     _log.error("daemon failed to start within 5s. Check %s", daemon_log)
     return False

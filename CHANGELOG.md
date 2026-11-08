@@ -15,6 +15,9 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Fixed
 
+- Model-only edits preserve saved API keys after a page reload; only explicit key edits replace or clear credentials.
+- Concurrent speech checks and hooks share one Kokoro startup. Duplicate daemons cannot replace a live socket, and shutdown removes only the socket owned by that daemon.
+
 - Soundbar and the Pages demo let the current preview finish when browsing, keep event labels on the sounding alternative, and skip the generation indicator for cached or prerecorded commentary. Clips retain their alternative sequence when browsing effect packs; blocked pack previews show that pack's setup details. Soundbar previews now honor master mute without changing saved volumes.
 
 - Soundbar caches readiness by configuration until page reload, eliminating repeated checks and brief Checking flashes when browsing sections or profiles. Explicit Check/Retry refreshes a result; Kokoro polling stops when model preparation finishes.
