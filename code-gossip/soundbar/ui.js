@@ -137,7 +137,13 @@ function savedDraft(mode) {
  }
  return {mode, style:saved.narrator_style, engine, voice:engine === 'kokoro' ? saved.kokoro_voice : saved.voice_main, provider:saved.narrator_provider, model:saved.narrator_model || '', context:!!saved.narrator_deep_context, apiKey:''};
 }
-function isDirty(mode) { return !demo && mode !== 'effects' && !same(selectionDraft(mode), savedDraft(mode)); }
+// Browsed presets are activation choices; only editor fields are saveable edits.
+function selectionIdentity({mode, pack, profile, style}) { return {mode, pack, profile, style}; }
+function editableDraft({mode, pack, profile, style, ...edits}) { return edits; }
+function isDirty(mode) { return !demo && !same(editableDraft(selectionDraft(mode)), editableDraft(savedDraft(mode))); }
+function selectionInUse(mode) {
+ return modeInUse(mode) && same(selectionIdentity(selectionDraft(mode)), selectionIdentity(savedDraft(mode)));
+}
 function modeInUse(mode) {
  if (demo) return false;
  if (activeSelection.mode === 'combined') return mode === 'effects' || mode === (profileModes[saved.voice_profile] || 'phrases');
@@ -390,7 +396,7 @@ function renderNow() {
 }
 function renderPanelState(mode) {
  if (demo) return;
- const inUse = modeInUse(mode) && (mode !== 'effects' || state.pack === saved.effects_profile);
+ const inUse = selectionInUse(mode);
  const exclusive = activeSelection.mode === mode && inUse, dirty = isDirty(mode), issue = dirty ? saveIssue(mode) : '';
  const readiness = setupReadiness(mode), blocked = !readiness.ready, drawer = blockerDrawer(mode);
  const saveReady = saveReadiness(mode), saving = busy || mediaBusy || savingSound || savingVolume || savingAISettings;
@@ -401,12 +407,12 @@ function renderPanelState(mode) {
   if (issue) actions += `<span class="state-issue">${icon('warn')}${esc(issue)}</span>`;
   else if (!saveReady.ready && saveReady.message !== readiness.message) actions += `<span class="state-issue">${icon('warn')}${esc(saveReady.message)}</span>`;
   actions += `<button type="button" class="btn ghost" data-act="discard" ${saving ? 'disabled' : ''}>Discard</button>`;
-  actions += `<button type="button" class="btn primary" data-act="save" ${saving || !!issue || !saveReady.ready ? 'disabled' : ''}${mode === state.viewMode && exclusive ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>${inUse ? 'Save changes' : 'Save'}</button>`;
+  actions += `<button type="button" class="btn primary" data-act="save" ${saving || !!issue || !saveReady.ready ? 'disabled' : ''}${busy ? ' aria-busy="true"' : ''}>Save changes</button>`;
  }
  if (inUse) html += `<span class="pill success">${icon('check')}In use</span>`;
  if (blocked) html += `<span class="state-issue">${icon('warn')}<span>${esc(readiness.message)}${link ? ' · ' + link : ''}</span></span>`;
  if (!exclusive) {
-  html += `<button type="button" class="btn primary" data-act="${dirty ? 'save-use' : 'use'}" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
+  html += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
  }
  document.querySelector(`[data-state="${mode}"]`).innerHTML = html;
  const footer = document.querySelector(`[data-draft-actions="${mode}"]`);
@@ -645,6 +651,10 @@ async function commit(mode, activate) {
  if (activate && !setupReadiness(mode).ready) { openDrawer(blockerDrawer(mode)); return; }
  if (!activate && !saveReadiness(mode).ready) { openDrawer(blockerDrawer(mode)); return; }
  const draft = selectionDraft(mode), config = draftConfig(mode);
+ if (!activate) {
+  delete config.effects_profile;
+  delete config.narrator_style;
+ }
  busy = true; clearError(); renderChrome();
  try {
   const body = {mode, config, ...(mode === 'phrases' ? {phrases:draft.phrases} : {})};
@@ -666,7 +676,7 @@ async function commit(mode, activate) {
    enabledLayers = {effects_on:mode === 'effects', voice_on:mode !== 'effects'};
    toast('Saved · now using ' + selectionLabel());
   } else {
-   if (activeSelection.mode === mode) activeSelection = draft;
+   if (activeSelection.mode === mode) activeSelection = savedDraft(mode);
    toast('Saved');
   }
  } catch (error) { showError(error.message); }
@@ -692,7 +702,6 @@ function syncSpeechDrafts(config, {syncAI=true}={}) {
  }
 }
 function discard(mode) {
- if (mode === 'effects') state.pack = saved.effects_profile;
  if (mode === 'phrases') {
   state.phraseEngine = saved.tts_engine;
   state.phraseVoices = {say:{main:saved.voice_main, sub:saved.voice_sub}, kokoro:{main:saved.kokoro_voice, sub:saved.kokoro_voice_sub || 'am_adam'}};
@@ -701,7 +710,6 @@ function discard(mode) {
  if (mode === 'ai') {
   state.engine = saved.tts_engine;
   state.voices = {say:saved.voice_main, kokoro:saved.kokoro_voice};
-  state.style = saved.narrator_style;
   state.provider = saved.narrator_provider;
   state.model = saved.narrator_model || '';
   state.apiKey = ''; state.keyEdited = false;
@@ -1005,7 +1013,7 @@ function wire() {
   const tab = target.closest('[data-mode]');
   if (tab?.closest('#tabs')) { selectTab(tab.dataset.mode); return; }
   const act = target.closest('[data-act]');
-  if (act) { ({save:() => commit(state.viewMode, false), use:() => commit(state.viewMode, true), 'save-use':() => commit(state.viewMode, true), discard:() => discard(state.viewMode)})[act.dataset.act](); return; }
+  if (act) { ({save:() => commit(state.viewMode, false), use:() => commit(state.viewMode, true), discard:() => discard(state.viewMode)})[act.dataset.act](); return; }
   const drawer = target.closest('[data-drawer]');
   if (drawer) { openDrawer(drawer.dataset.drawer); return; }
   const filter = target.closest('[data-filter]');

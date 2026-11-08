@@ -159,6 +159,16 @@ async function until(check, description) {
         assert.equal((await status()).voice_on, false);
         assert.equal(await page.locator('#panel-phrases .panel-head [data-act=save], #panel-phrases .panel-head [data-act=discard]').count(), 0);
         await page.locator('#tab-ai').click();
+        const beforeStyle = await status();
+        const otherStyle = Object.keys(beforeStyle.narrator_styles).find(style => style !== beforeStyle.narrator_style);
+        await page.locator(`#styleList input[value="${otherStyle}"]`).locator('..').click();
+        assert.equal(await page.locator('#panel-ai [data-act=save],#panel-ai [data-act=discard]').count(), 0);
+        await page.locator('#sessionContext').setChecked(!beforeStyle.narrator_deep_context);
+        await page.locator('#panel-ai [data-act=save]').click();
+        await until(async () => (await status()).narrator_deep_context !== beforeStyle.narrator_deep_context, 'saved commentary setting');
+        assert.equal((await status()).narrator_style, beforeStyle.narrator_style, 'Saving settings does not apply a browsed style');
+        assert.equal((await status()).soundbar_mode, 'effects');
+        assert.equal(await page.locator('#styleList input:checked').inputValue(), otherStyle);
         await page.locator('#panel-ai .strip [data-drawer=provider]').click();
         await page.selectOption('#provider', 'openai');
         await until(async () => (await status()).narrator_provider === 'openai', 'immediately saved provider');

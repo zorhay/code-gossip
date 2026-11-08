@@ -22,9 +22,10 @@ The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.
 
 ## Actions and settings
 
+- Apply interaction and visual decisions across all Soundbar sections. Use shared behavior for equivalent controls; validate Effects, Clips, Phrases, and AI commentary when changing a common pattern.
 - Keep **Use** beside the section heading. Place **Save** and **Discard** with the edited content, below the editor; in Phrases, put them below the phrase rows. Do not regroup them beside Use.
-- Keep saving and activation distinct. Save persists content edits; Use applies a selection. Browsing and previewing must preserve the active selection. Choosing another effect pack shows **Use Effects**, even when Effects is already active. Show **In use** in the panel header only for the selected active pack. Pack browsing has no Save/Discard controls or unsaved-edits indicator.
-- In AI commentary, apply engine, speaker, and provider selections immediately. Save model and API-key edits on field change. Keep phrase edits, phrase engine/voices, commentary style, and session context under their existing draft/save behavior.
+- Keep saving and activation distinct. Save persists content edits; Use applies a selection. Browsing and previewing must preserve the active selection. Choosing another pack or commentary style shows **Use**, even when that mode is already active. Show **In use** in the panel header only when the browsed selection matches the active selection. Browsing packs, styles, or phrase events has no Save/Discard controls or unsaved-edits indicator. Saving or discarding edits must preserve the browsed selection and must not activate it. Use can save pending edits while explicitly activating a selection.
+- In AI commentary, apply engine, speaker, and provider selections immediately. Save model and API-key edits on field change. Keep phrase edits, phrase engine/voices, and session context under draft/save behavior. Commentary styles follow the same browse/Use behavior as effect packs.
 - Show the relevant speech or Kokoro error beside **Use** or **In use**. Keep one speech **Details** entry point in the bottom setup strip; avoid duplicating that button in the header. Describe the error where the blocked action is visible.
 
 ## Playback and asynchronous feedback
