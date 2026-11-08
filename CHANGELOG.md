@@ -4,10 +4,6 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
-### Changed
-
-- Pushing a stable version tag now validates the version, runs the release checks, publishes the GitHub release and tested installer, and deploys the matching Pages demo automatically.
-
 ## [0.14.0] - 2026-11-09
 
 ### Changed
