@@ -1,4 +1,4 @@
-name: Test and package release
+name: Build, test, and release
 
 on:
   pull_request:
@@ -10,19 +10,25 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  # Superseded PR checks can stop; published release packaging must finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
-    runs-on: macos-14
+  build:
+    name: Build installer and demo
+    # Follow the supported stable image instead of retaining a retired macOS pin.
+    runs-on: macos-latest
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.11'
-      - name: Build installation package
+      - name: Build installer
         env:
           PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
         run: python3 -B scripts/package_release.py "$PACKAGE_TAG"
@@ -30,38 +36,130 @@ jobs:
         env:
           PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
         run: python3 -B scripts/build_pages.py --tag "$PACKAGE_TAG" --package dist/code-gossip.zip
-      - name: Test installers, updates, and development mode
-        run: |
-          python3 -m pip install pytest pytest-subtests PyYAML
-          python3 -m pytest -q
-          npm install --prefix "$RUNNER_TEMP/browser" playwright
-          "$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium
-          export NODE_PATH="$RUNNER_TEMP/browser/node_modules"
-          node tests/test_soundbar_ui.cjs
-          node tests/test_pages.cjs
-          E2E_RELEASE_PACKAGE="$PWD/dist/code-gossip.zip" node tests/test_soundbar_e2e.cjs
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: github.event_name == 'release'
+      - name: Share installer with test jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: installation-package
           path: dist/code-gossip.zip
           if-no-files-found: error
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        if: github.event_name == 'release'
+          compression-level: 0
+          overwrite: true
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 90 }}
+      - name: Share website with test jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: tested-website
+          name: website-candidate
           path: dist/pages
           include-hidden-files: true
           if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: ${{ github.event_name == 'pull_request' && 1 || 90 }}
+
+  runtime:
+    name: Python tests
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.11
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install Python test tools
+        run: python3 -m pip install pytest pytest-subtests PyYAML
+      - name: Test runtime, hooks, and installer logic
+        run: python3 -m pytest -q
+
+  browser:
+    name: ${{ matrix.name }}
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 7
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: soundbar
+            name: Soundbar interface
+            step: Test controls, layout, and voice readiness
+            command: node tests/test_soundbar_ui.cjs
+          - suite: pages
+            name: GitHub Pages demo
+            step: Test website playback and responsive layout
+            command: node tests/test_pages.cjs
+          - suite: installation
+            name: Install and update
+            step: Test normal and development installations
+            command: E2E_RELEASE_PACKAGE="$PWD/dist/code-gossip.zip" node tests/test_soundbar_e2e.cjs
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.11
+        if: matrix.suite != 'soundbar'
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Download the built installer
+        if: matrix.suite != 'soundbar'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: installation-package
+          path: dist
+      - name: Download the built website
+        if: matrix.suite == 'pages'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: website-candidate
+          path: dist/pages
+      - name: Verify website and installer match
+        if: matrix.suite == 'pages'
+        env:
+          PACKAGE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || '1.2.3' }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: python3 -B scripts/verify_pages.py --site dist/pages --package dist/code-gossip.zip --tag "$PACKAGE_TAG" --commit "$SOURCE_COMMIT"
+      - name: Install Playwright
+        run: |
+          npm install --prefix "$RUNNER_TEMP/browser" playwright
+          echo "NODE_PATH=$RUNNER_TEMP/browser/node_modules" >> "$GITHUB_ENV"
+      - name: Install Chromium
+        run: '"$RUNNER_TEMP/browser/node_modules/.bin/playwright" install chromium'
+      - name: ${{ matrix.step }}
+        timeout-minutes: 5
+        run: ${{ matrix.command }}
+
+  test:
+    name: All checks
+    if: always()
+    needs: [build, runtime, browser]
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - name: Require every test suite to pass
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          PYTHON_RESULT: ${{ needs.runtime.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        run: |
+          test "$BUILD_RESULT" = success
+          test "$PYTHON_RESULT" = success
+          test "$BROWSER_RESULT" = success
 
   publish:
+    name: Publish installer
     if: github.event_name == 'release'
     needs: test
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+      - name: Download the tested installer
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
         with:
           name: installation-package
           path: dist
@@ -82,6 +180,7 @@ jobs:
           fi
 
   pages:
+    name: Publish website
     needs: publish
     permissions:
       contents: read

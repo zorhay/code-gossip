@@ -41,6 +41,8 @@ let busy = false, savingSound = false, savingVolume = false, mediaBusy = false, 
 let activePreview = null, modelPoll = null;
 let savingAISettings = 0, aiSettingsQueue = Promise.resolve();
 const setupChecks = new Map(), filters = {effects:'All', clips:'All'}, cursors = {}, guideDone = new Set();
+const kokoroChecks = new Map();
+let kokoroCheckSerial = 0;
 let enabledLayers, generatedSample = null, modelList = null;
 let versions = null, versionPoll = null, versionChecking = false, versionStarting = false, versionError = '', loadedVersion = null;
 let toastTimer;
@@ -309,6 +311,17 @@ function setSizedText(node, text, widthLabel, alternate='') {
 // Results belong to a configuration for this page's lifetime, not to the last
 // visited section. Reload creates a fresh cache; explicit Check replaces one entry.
 function cachedCheck(key, identity=checkIdentity(key)) {
+ if (key === 'phrases' || key === 'aiSpeech') {
+  const [engine, selection] = JSON.parse(identity);
+  if (engine === 'kokoro') {
+   const checks = [...new Set(Object.values(selection))].map(voice => kokoroChecks.get(voice));
+   if (checks.some(check => !check)) return;
+   const check = checks.find(check => check.status === 'failed') || checks.find(check => check.status !== 'checked') || checks[0];
+   const ready = checks.every(check => check.status === 'checked');
+   return {...check, identity, requesting:checks.some(check => check.requesting),
+    model:ready ? {state:'ready', ready:true} : check.model};
+  }
+ }
  return setupChecks.get(JSON.stringify([key, identity]));
 }
 function rememberCheck(key, check) {
@@ -327,22 +340,79 @@ function checkInitialSpeech() {
  if (demo) return;
  for (const key of ['phrases', 'aiSpeech']) checkSetup(key, {automatic:true});
 }
+function prepareKokoroSpeech() {
+ if (demo) return;
+ for (const key of ['phrases', 'aiSpeech']) if (speechEngine(checkModes[key]) === 'kokoro') checkSetup(key, {automatic:true});
+}
+async function checkKokoroVoice(voice, {automatic=false, refresh=null}={}) {
+ const previous = kokoroChecks.get(voice);
+ if (previous?.requesting || automatic && previous && previous.status !== 'loading') return;
+ const check = {voice, serial:++kokoroCheckSerial, requesting:true,
+  status:automatic ? previous?.status || 'loading' : 'checking', model:previous?.model, message:previous?.message};
+ kokoroChecks.set(voice, check);
+ renderChecks();
+ const isCurrent = () => ['phrases','ai'].includes(state.viewMode) && speechEngine() === 'kokoro' &&
+  Object.values(JSON.parse(speechIdentity(state.viewMode))[1]).includes(voice);
+ try {
+  if (refresh) await refresh;
+  if (kokoroChecks.get(voice) !== check) return;
+  // A single voice can be prepared through the existing speech-only API. Both
+  // sections join this entry, independent of role, provider, or commentary style.
+  const result = await api('/api/draft-check', {mode:'ai', scope:'speech',
+   config:{tts_engine:'kokoro', kokoro_voice:voice}, retry:!automatic}, true);
+  if (kokoroChecks.get(voice) !== check) return;
+  check.model = result.model;
+  check.message = result.message || result.error || 'Speech check failed';
+  check.status = result.ok && result.model?.ready ? 'checked' : result.pending ? 'loading' : 'failed';
+  // The daemon also reports other loaded voices. Reuse them, but never let an
+  // older request replace a newer explicit check or an installation reset.
+  for (const loaded of result.model?.voices || []) {
+   if (loaded !== voice && (!kokoroChecks.has(loaded) || kokoroChecks.get(loaded).serial <= check.serial)) {
+    kokoroChecks.set(loaded, {voice:loaded, serial:check.serial, status:'checked',
+     model:{state:'ready', ready:true}, message:'Kokoro model and selected voices are ready.'});
+   }
+  }
+  if (check.status === 'failed' && isCurrent()) showError(check.message);
+ } catch (error) {
+  if (kokoroChecks.get(voice) !== check) return;
+  check.status = 'failed'; check.model = undefined; check.message = error.message;
+  if (isCurrent()) showError(error.message);
+ } finally {
+  check.requesting = false;
+  render({preservePhraseEditor:true});
+  scheduleModelPoll();
+ }
+}
 
 async function refreshSetup() { setup = {...setup, ...await api('/api/setup')}; }
 function scheduleModelPoll() {
  clearTimeout(modelPoll);
  // Continue only unfinished model preparation, including while browsing elsewhere.
- const pending = [...setupChecks.values()].filter(check => check.status === 'loading' && !check.requesting);
+ const pending = [...kokoroChecks.values()].filter(check => check.status === 'loading' && !check.requesting);
  if (demo || !pending.length) return;
  modelPoll = setTimeout(() => {
-  for (const check of pending) checkSetup(check.key, {automatic:true, pending:check});
+  for (const check of pending) if (kokoroChecks.get(check.voice) === check) checkKokoroVoice(check.voice, {automatic:true});
  }, 2000);
 }
-async function checkSetup(key, {automatic=false, pending=null}={}) {
- const mode = checkModes[key], config = pending?.config || draftConfig(mode), identity = pending?.identity || checkIdentity(key);
+async function checkSetup(key, {automatic=false}={}) {
+ if (['phrases','aiSpeech'].includes(key) && speechEngine(checkModes[key]) === 'kokoro') {
+  if (demo || checkPresentation(key).prerequisite) return;
+  let voices = [...new Set(Object.values(JSON.parse(speechIdentity(checkModes[key]))[1]))];
+  const failed = voices.filter(voice => kokoroChecks.get(voice)?.status === 'failed');
+  if (!automatic && failed.length) voices = failed;
+  voices = voices.filter(voice => {
+   const check = kokoroChecks.get(voice);
+   return !check?.requesting && (!automatic || !check || check.status === 'loading');
+  });
+  if (!voices.length) return;
+  if (!automatic) clearError();
+  const refresh = automatic ? null : refreshSetup();
+  return Promise.all(voices.map(voice => checkKokoroVoice(voice, {automatic, refresh})));
+ }
+ const mode = checkModes[key], config = draftConfig(mode), identity = checkIdentity(key);
  const previous = cachedCheck(key, identity);
  if (previous?.requesting || automatic && previous && previous.status !== 'loading') return;
- if (!pending && checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips') return;
+ if (checkPresentation(key).prerequisite && key !== 'effects' && key !== 'clips') return;
  const check = rememberCheck(key, {identity, config, requesting:true,
   status:automatic ? previous?.status || 'loading' : 'checking',
   model:previous?.model, message:previous?.message});
@@ -444,7 +514,7 @@ function renderPanelState(mode) {
  }
  if (inUse) activation += `<span class="pill success">${icon('check')}In use</span>`;
  if (!exclusive) {
-  activation += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use ${esc(modeNames[mode])}</button>`;
+  activation += `<button type="button" class="btn primary" data-act="use" ${saving || blocked || !!issue ? 'disabled' : ''}${mode === state.viewMode ? ' id="activateSelection"' : ''}${busy ? ' aria-busy="true"' : ''}>Use profile</button>`;
  }
  const notice = blocked ? `<span class="state-issue">${icon('warn')}<span>${esc(readiness.message)}${link ? ' · ' + link : ''}</span></span>` : '';
  const html = `<div id="activationNotice-${mode}" class="activation-notice" role="status"${blocked ? ' tabindex="0"' : ''}>${notice}</div><div class="activation-actions">${activation}</div>`;
@@ -759,6 +829,7 @@ function discard(mode) {
   generatedSample = null;
  }
  clearError();
+ if (['phrases','ai'].includes(mode)) prepareKokoroSpeech();
  render();
  toast('Changes discarded');
 }
@@ -929,7 +1000,7 @@ async function playCommentarySample(button) {
 async function installKokoro() {
  if (setup.installing) return;
  const repair = !!setup.kokoro || ['phrases','aiSpeech'].some(key => cachedCheck(key)?.status === 'failed' && cachedCheck(key)?.identity === checkIdentity(key));
- for (const [id, check] of setupChecks) if (check.config?.tts_engine === 'kokoro') setupChecks.delete(id);
+ kokoroChecks.clear();
  clearTimeout(modelPoll);
  clearError();
  setup.installing = true; setup.installStatus = 'running'; setup.installMessage = '';
@@ -995,6 +1066,7 @@ function persistAISettings(kind) {
    showError(error.message);
   } finally {
    savingAISettings--;
+   if (kind === 'speech') prepareKokoroSpeech();
    render({preservePhraseEditor:true});
   }
  });
@@ -1108,6 +1180,11 @@ function invalidateProvider(options={}) {
  generatedSample = null;
  if (options.clearModels) modelList = null;
 }
+function speechChanged() {
+ prepareKokoroSpeech();
+ render();
+ if (state.viewMode === 'ai') persistAISettings('speech');
+}
 
 function wire() {
  document.querySelectorAll('[data-theme-choice]').forEach(button => button.onclick = () => applyTheme(button.dataset.themeChoice));
@@ -1159,10 +1236,10 @@ function wire() {
  };
  $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; cancelProfileSession(); state.pack = event.target.value; render(); });
  $('styleList').addEventListener('change', event => { if (event.target.name !== 'style') return; state.style = event.target.value; generatedSample = null; renderStyles(); renderSample(); renderChrome(); });
- $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); if (state.viewMode === 'ai') persistAISettings('speech'); };
- $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; render(); };
- $('subagentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].sub = $('subagentVoice').value; render(); };
- $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; render(); persistAISettings('speech'); };
+ $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; speechChanged(); };
+ $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; speechChanged(); };
+ $('subagentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].sub = $('subagentVoice').value; speechChanged(); };
+ $('speaker').onchange = () => { state.voices[state.engine] = $('speaker').value; speechChanged(); };
  $('phraseRows').addEventListener('input', event => {
   const input = event.target;
   if (input.tagName !== 'INPUT') return;

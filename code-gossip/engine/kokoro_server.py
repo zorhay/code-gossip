@@ -45,6 +45,7 @@ from paths import STATE
 
 SOCK_PATH = str(STATE / "kokoro.sock")
 IDLE_TIMEOUT = 600  # 10 minutes
+PREPARATION_ERROR = "Kokoro model or voice could not load. Check your connection and retry model loading."
 
 
 def download_progress(report):
@@ -92,15 +93,23 @@ class ModelManager:
         self.requested = set()
         self.lock = threading.RLock()
         self.loading = False
+        # Model failures affect every voice; voice failures affect only that ID.
         self.error = False
+        self.voice_errors = set()
         self.progress = {"state": "idle", "message": "Kokoro model has not loaded yet."}
         self.last_activity = time.time()
 
     def status(self, voices=()):
         with self.lock:
             ready = self.weights is not None and set(voices).issubset(self.voices)
-            progress = ({"state": "ready", "message": "Kokoro model and selected voices are ready."}
-                        if ready else dict(self.progress))
+            if ready:
+                progress = {"state": "ready", "message": "Kokoro model and selected voices are ready."}
+            elif self.error or set(voices) & self.voice_errors:
+                progress = {"state": "error", "message": PREPARATION_ERROR}
+            elif not self.loading:
+                progress = {"state": "idle", "message": "Kokoro model or selected voices have not loaded yet."}
+            else:
+                progress = dict(self.progress)
             return {"ok": True, "ready": ready, "loaded": sorted(self.pipelines),
                     "voices": sorted(self.voices), "idle": int(self.idle_seconds()), **progress}
 
@@ -111,9 +120,11 @@ class ModelManager:
         with self.lock:
             self.touch()
             self.requested.update(voices)
-            if not self.loading and (not self.error or retry):
-                if self.weights is None or self.requested - self.voices:
-                    self.error = False
+            if retry:
+                self.error = False
+                self.voice_errors.difference_update(voices)
+            if not self.loading and not self.error:
+                if self.weights is None or self.requested - self.voices - self.voice_errors:
                     self.loading = True
                     self.progress = {"state": "loading", "message": "Preparing Kokoro model…"}
                     threading.Thread(target=self._prepare, daemon=True).start()
@@ -164,15 +175,21 @@ class ModelManager:
                     self.weights = weights
             while True:
                 with self.lock:
-                    pending = sorted(self.requested - self.voices)
+                    pending = sorted(self.requested - self.voices - self.voice_errors)
                     if not pending:
                         self.loading = False
                         self._stage("ready", "Kokoro model and selected voices are ready.")
                         return
                 for voice in pending:
-                    self._load_voice(voice)
-                    with self.lock:
-                        self.voices.add(voice)
+                    try:
+                        self._load_voice(voice)
+                        with self.lock:
+                            self.voices.add(voice)
+                    except Exception:
+                        import traceback
+                        traceback.print_exc()
+                        with self.lock:
+                            self.voice_errors.add(voice)
         except Exception:
             import traceback
             traceback.print_exc()
@@ -180,7 +197,7 @@ class ModelManager:
                 self.loading = False
                 self.error = True
                 # Do not expose signed download URLs, tokens, or local paths.
-                self._stage("error", "Kokoro model or voice could not load. Check your connection and retry model loading.")
+                self._stage("error", PREPARATION_ERROR)
 
     def touch(self):
         self.last_activity = time.time()

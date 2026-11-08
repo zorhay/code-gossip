@@ -84,6 +84,74 @@ def test_voice_failure_does_not_discard_ready_voices(monkeypatch):
     assert manager.status(['bf_emma'])['state'] == 'error'
 
 
+@pytest.mark.parametrize('retry', [False, True])
+def test_failed_voice_does_not_block_a_different_voice(monkeypatch, retry):
+    manager = daemon.ModelManager()
+    manager.weights = object()
+    manager.voices.add('af_heart')
+
+    def load(voice):
+        if voice == 'af_bella':
+            raise OSError('Bella file unavailable')
+
+    loader = Mock(side_effect=load)
+    monkeypatch.setattr(manager, '_load_voice', loader)
+    monkeypatch.setattr(manager, '_load_model', Mock(side_effect=AssertionError('Model is already loaded')))
+    manager.prepare(['af_bella'])
+    finish(manager)
+    manager.prepare(['am_adam'], retry=retry)
+    finish(manager)
+    assert manager.status(['am_adam'])['ready']
+    assert manager.status(['af_heart'])['ready']
+    assert manager.status(['af_bella'])['state'] == 'error'
+    assert [call.args[0] for call in loader.call_args_list] == ['af_bella', 'am_adam']
+
+
+def test_failed_voice_does_not_abort_other_queued_voices(monkeypatch):
+    manager = daemon.ModelManager()
+    manager.weights = object()
+    started, release = threading.Event(), threading.Event()
+
+    def load(voice):
+        if voice == 'af_bella':
+            started.set()
+            assert release.wait(3)
+            raise OSError('Bella file unavailable')
+
+    monkeypatch.setattr(manager, '_load_voice', load)
+    try:
+        manager.prepare(['af_bella'])
+        assert started.wait(1)
+        manager.prepare(['am_adam'])
+    finally:
+        release.set()
+        finish(manager)
+    assert manager.status(['am_adam'])['ready']
+    assert manager.status(['af_bella', 'am_adam'])['state'] == 'error'
+
+
+def test_retry_only_reloads_requested_failed_voices(monkeypatch):
+    manager = daemon.ModelManager()
+    manager.weights = object()
+    loader = Mock(side_effect=OSError('Voice unavailable'))
+    monkeypatch.setattr(manager, '_load_voice', loader)
+    manager.prepare(['af_bella', 'am_adam'])
+    finish(manager)
+    assert manager.status(['af_bella'])['state'] == 'error'
+    assert manager.status(['am_adam'])['state'] == 'error'
+    loader.reset_mock()
+    loader.side_effect = None
+    manager.prepare(['am_adam'], retry=True)
+    finish(manager)
+    loader.assert_called_once_with('am_adam')
+    assert manager.status(['am_adam'])['ready']
+    assert manager.status(['af_bella'])['state'] == 'error'
+    manager.prepare(['af_bella'])
+    manager.prepare(['am_adam'], retry=True)
+    finish(manager)
+    loader.assert_called_once_with('am_adam')
+
+
 def test_speak_returns_loading_without_waiting_for_inference(monkeypatch):
     manager = daemon.ModelManager()
     manager.loading = True

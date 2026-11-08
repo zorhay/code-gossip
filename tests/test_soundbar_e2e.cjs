@@ -131,7 +131,7 @@ async function until(check, description) {
         assert.equal((await status()).effects_profile, 'default', 'Browsing does not save');
         assert.equal(await page.locator('#panel-effects .panel-head .pill.success').count(), 0);
         assert.equal(await page.locator('#panel-effects [data-act=save],#panel-effects [data-act=discard]').count(), 0);
-        assert.equal(await page.locator('#activateSelection').textContent(), 'Use Effects');
+        assert.equal(await page.locator('#activateSelection').textContent(), 'Use profile');
         await page.locator('#activateSelection').click();
         await until(async () => (await status()).effects_profile === 'paper', 'activated Effects profile');
         if(!dev){
@@ -217,13 +217,13 @@ async function until(check, description) {
         await page.locator('#closeDrawer').click();
         await page.locator('#tab-phrases').click();
         assert.equal((await status()).phrases.subagent_start[0][0], 'Saved integration draft');
-        await page.getByRole('button', {name:'Use Phrases', exact:true}).click();
+        await page.getByRole('button', {name:'Use profile', exact:true}).click();
         await until(async () => (await status()).voice_profile === 'senior' && (await status()).voice_on, 'activated Phrases');
         assert.equal((await status()).effects_on, false);
         await page.locator('#soundOn').uncheck();
         await until(async () => !(await status()).voice_on, 'muted Phrases');
         await page.locator('#tab-effects').click();
-        await page.getByRole('button', {name:'Use Effects', exact:true}).click();
+        await page.getByRole('button', {name:'Use profile', exact:true}).click();
         await until(async () => (await status()).soundbar_mode === 'effects', 'selected Effects while muted');
         assert.equal((await status()).effects_on, false, 'Using another mode preserves mute');
         await page.locator('#soundOn').check();
