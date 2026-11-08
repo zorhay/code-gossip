@@ -175,6 +175,32 @@ async function until(check, description) {
         await page.locator('#model').fill('saved-without-activation');
         await page.locator('#model').press('Tab');
         await until(async () => (await status()).narrator_model === 'saved-without-activation', 'immediately saved model');
+        // Use the real masked status and config APIs, with fake credentials and
+        // intercepted model discovery so this regression never contacts a provider.
+        await page.route('**/api/narrator-models', route => route.fulfill({json:{ok:true,models:[],supported:true}}));
+        const preferences = () => JSON.parse(fs.readFileSync(path.join(runtime,'configs/config.json')));
+        const originalKey = 'dummy-release-regression-key';
+        await page.locator('#sampleKey').fill(originalKey);
+        await page.locator('#sampleKey').press('Tab');
+        await until(() => preferences().narrator_api_key === originalKey, 'saved fake credential');
+        await page.reload();
+        await page.locator('#tab-ai').click();
+        await page.locator('#panel-ai .strip [data-drawer=provider]').click();
+        assert.equal((await status()).narrator_api_key, 'dumm...-key');
+        assert.equal(await page.locator('#sampleKey').inputValue(), '');
+        const modelSave = page.waitForRequest(request => request.url().endsWith('/api/config') && request.postDataJSON().narrator_model === 'after-reload-model');
+        await page.locator('#model').fill('after-reload-model');
+        await page.locator('#model').press('Tab');
+        assert(!Object.hasOwn((await modelSave).postDataJSON(), 'narrator_api_key'), 'Model-only saves must omit the masked credential');
+        await until(() => preferences().narrator_model === 'after-reload-model', 'saved model after reload');
+        assert.equal(preferences().narrator_api_key, originalKey);
+        await page.locator('#sampleKey').fill('replacement-dummy-key');
+        await page.locator('#sampleKey').press('Tab');
+        await until(() => preferences().narrator_api_key === 'replacement-dummy-key', 'explicit credential replacement');
+        // An omitted key preserves it; an explicit empty key still clears it.
+        await page.evaluate(() => api('/api/config', {narrator_api_key:''}));
+        await until(() => preferences().narrator_api_key === '', 'explicit credential removal');
+        await page.unroute('**/api/narrator-models');
         await page.locator('#closeDrawer').click();
         await page.locator('#panel-ai .strip [data-drawer=speech]').click();
         await page.selectOption('#phraseEngine', 'kokoro');
@@ -229,6 +255,7 @@ async function until(check, description) {
         assert.deepEqual(errors, []);
         console.log(`${dev ? 'Dev' : 'Normal'} end-to-end passed: install, custom audio across reinstalls/update, browser opening, reuse, explicit activation, setup drafts, UI shutdown, reopen, partial/full uninstall.`);
       } catch (error) {
+        console.error(error);
         console.error('Installed UI:', await page.locator('body').innerText().catch(() => 'unavailable'));
         for (const file of ['version_state/operation.json', 'version_state/update.log', 'state/panel.log']) {
           const target = path.join(runtime, file);
