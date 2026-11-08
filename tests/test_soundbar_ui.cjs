@@ -28,6 +28,7 @@ const server = http.createServer((req,res)=>{
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const browser=await chromium.launch({headless:true,...(process.env.CHROMIUM_PATH?{executablePath:process.env.CHROMIUM_PATH}:{})});
  try{
+  await require('./soundbar_kokoro_cache_checks.cjs')(browser, `http://127.0.0.1:${server.address().port}`, state);
   const page=await browser.newPage({viewport:{width:1280,height:900}});
   const errors=[],writes=[],previews=[],checks=[],modelRequests=[];let saveGate=null,releaseSave;let modelGate=null,releaseModels,failModels=false;let failGeneration=false,failSave=false,failShutdown=true,installations=0,checkGate=null,releaseCheck,failCheck=false;
   let configGate=null,releaseConfig,checkError='Check failed',modelState={ok:true,message:'Kokoro model and selected voices are ready.',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
@@ -589,7 +590,7 @@ const server = http.createServer((req,res)=>{
   assert(await page.locator('#checkStatus-aiSpeech').isVisible());
   assert.equal(await page.locator('#speechCheck').innerText(),'Check','Automatic progress polling never flashes Checking');
   releaseCheck();checkGate=null;
-  await page.waitForFunction(()=>[...setupChecks.values()].every(check=>!check.requesting));
+  await page.waitForFunction(()=>[...setupChecks.values(),...kokoroChecks.values()].every(check=>!check.requesting));
   const beforeModelPreview=previews.length;
   await page.reload();
   await page.locator('#tab-phrases').click();
@@ -620,7 +621,7 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => !document.getElementById('previewMainAgent').disabled);
   assert(await page.locator('#modelDownloadProgress').isHidden());
   assert(await page.locator('#phraseRows [data-preview]').first().isEnabled());
-  await page.waitForFunction(()=>[...setupChecks.values()].every(check=>!check.requesting && check.status!=='loading'));
+  await page.waitForFunction(()=>[...setupChecks.values(),...kokoroChecks.values()].every(check=>!check.requesting && check.status!=='loading'));
   const afterModelReady=checks.length;
   await page.clock.pauseAt(new Date(await page.evaluate(()=>Date.now()+1000)));
   await page.clock.runFor(30000);
@@ -1186,5 +1187,6 @@ const server = http.createServer((req,res)=>{
   assert(await page.locator('#closedDialog').isVisible());
   assert.deepEqual(errors, []);
   console.log('Soundbar UI passed: compact layout, save versus use, themes, draft checks, previews, models, Kokoro, mute, updates, shutdown.');
- }finally{await browser.close();server.closeAllConnections();server.close();}
+ }catch(error){console.error(error);throw error;}
+ finally{await browser.close();server.closeAllConnections();server.close();}
 })().catch(error=>{console.error(error);server.closeAllConnections();server.close();process.exitCode=1;});

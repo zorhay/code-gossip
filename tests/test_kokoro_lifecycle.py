@@ -97,11 +97,15 @@ print(narrate._ensure_kokoro_daemon(), flush=True)
         try:
             yield root, start, health, launches
         finally:
+            managed_pids = {process.pid for process in processes}
             for process in processes:
                 if process.poll() is None:
                     process.terminate()
             # Helpers launch detached daemons, which still belong to this fixture.
             for pid in launches():
+                # A second SIGTERM can interrupt the daemon's finally/cleanup.
+                if pid in managed_pids:
+                    continue
                 try:
                     os.kill(pid, signal.SIGTERM)
                 except ProcessLookupError:
