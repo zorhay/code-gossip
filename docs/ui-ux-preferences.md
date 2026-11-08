@@ -30,6 +30,7 @@ The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.
 
 ## Playback and asynchronous feedback
 
+- Profile-level Play buttons audition a short example session and highlight each playing event using the existing event tiles. Show the auditioned pack without activating or saving it. Event-level Play stays a single cue. Do not add session buttons, progress panels, or other UI elements; browsing away cancels the remaining cues after the current sound.
 - Change the clicked preview button's icon while audio plays, then restore the play icon on completion or failure. Use a separate loading indication while AI text is being generated. Preserve the active indication through rerenders and tab changes, tied to the requested content and voices. Browsing another style, changing a voice, or editing/removing a phrase must not mark different content as playing.
 - Keep the latest engine, voice, or provider selection visible while earlier saves finish. Apply responses in order without allowing an older response to overwrite a newer edit; failed requests must also respect newer edits.
 - Preserve keyboard focus across every section during background saves and readiness polling, including lists, filters, and action buttons. Keep unchanged controls mounted; restore focus to the same logical control when its markup changes.

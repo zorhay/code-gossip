@@ -12,7 +12,7 @@ const state = {
  effects_profiles: Object.fromEntries(Object.keys(manifest.effects).map(key => [key, {}])),
  narrator_styles: read('configs/narrator_styles.defaults.json'),
  narrator_providers: {codex_cli:{name:'Codex CLI',needs_key:false,default_model:''},claude_cli:{name:'Claude CLI',needs_key:false,default_model:'haiku'},openai:{name:'OpenAI',needs_key:true,default_model:'model'}},
- phrases: read('configs/phrases.defaults.json'), events: ['edit','subagent_start','subagent_stop','stop'],
+ phrases: read('configs/phrases.defaults.json'), events: ['session_start','read','edit','test','subagent_start','subagent_stop','stop'],
  voices: [{name:'Tara',locale:'en_US'},{name:'Aman',locale:'en_US'},{name:'Samantha',locale:'en_US'}],
  kokoro_voices: [{id:'af_heart',name:'Heart'},{id:'af_bella',name:'Bella'},{id:'am_adam',name:'Adam'}],
  preview_catalog:Object.fromEntries(Object.entries(manifest).map(([layer,profiles])=>[layer,Object.fromEntries(Object.entries(profiles).map(([name,profile])=>[name,Object.fromEntries(Object.entries(profile.events).map(([event,spec])=>[event,(spec.sequence||spec.files?.map(file=>[file])||[[spec.file||'Synthesized cue']]).map(files=>files.join(' → '))]))]))])),
@@ -32,7 +32,7 @@ const server = http.createServer((req,res)=>{
   const errors=[],writes=[],previews=[],checks=[],modelRequests=[];let saveGate=null,releaseSave;let modelGate=null,releaseModels,failModels=false;let failGeneration=false,failSave=false,failShutdown=true,installations=0,checkGate=null,releaseCheck,failCheck=false;
   let configGate=null,releaseConfig,checkError='Check failed',modelState={ok:true,message:'Kokoro model and selected voices are ready.',model:{state:'ready',ready:true,voices:['af_heart','af_bella','am_adam']}};
   let setupRequests=0, statusRequests=0, checkStarted=null;
-  let previewGate=null,releasePreview,generationGate=null,releaseGeneration,failPreview=false;
+  let previewGate=null,releasePreview,previewStarted=null,generationGate=null,releaseGeneration,failPreview=false;
   let versionState={installed:'0.8.0',available:false,release:null,checked_at:1,development:false,running:false,phase:'idle',message:''},updateChecks=0,updateStarts=0,failUpdateCheck=false;
   page.on('pageerror',e=>{errors.push(e.message);console.error('Browser error:',e.message);});
   await page.route('**/api/**',async route=>{
@@ -52,7 +52,7 @@ const server = http.createServer((req,res)=>{
      if(body.phrases)state.phrases=body.phrases;
     }
    }else if(endpoint==='/api/config') {const body=req.postDataJSON();writes.push(body);if(configGate)await configGate;if(failSave)reply={ok:false,error:'Save failed'};else Object.assign(state,body);}
-   else if(endpoint==='/api/draft-preview'){const body=req.postDataJSON();previews.push(body);if(body.action==='generate'&&generationGate)await generationGate;else if(previewGate)await previewGate;reply=failPreview?{ok:false,message:'Playback failed'}:failGeneration&&body.action==='generate'?{ok:false,message:'Generation failed'}:{ok:true,text:'Preview result'};}
+   else if(endpoint==='/api/draft-preview'){const body=req.postDataJSON();previews.push(body);previewStarted?.(body);if(body.action==='generate'&&generationGate)await generationGate;else if(previewGate)await previewGate;reply=failPreview?{ok:false,message:'Playback failed'}:failGeneration&&body.action==='generate'?{ok:false,message:'Generation failed'}:{ok:true,text:'Preview result'};}
    else if(endpoint==='/api/narrator-models'){const body=req.postDataJSON();modelRequests.push(body);if(modelGate)await modelGate;reply=failModels?{ok:false,message:'Could not load models'}:['claude_cli','codex_cli'].includes(body.config.narrator_provider)?{ok:true,models:[],supported:false,message:(body.config.narrator_provider==='codex_cli'?'Codex CLI':'Claude CLI')+' has no live model list.'}:{ok:true,models:['live-model-a','live-model-b'],supported:true};}
    else if(endpoint==='/api/draft-check'){const body=req.postDataJSON();checks.push(body);checkStarted?.();if(checkGate)await checkGate;reply=failCheck?{ok:false,message:checkError}:body.scope==='speech' && body.config.tts_engine==='kokoro'?modelState:{ok:true,message:'Ready'};}
    else if(endpoint==='/api/kokoro-install'){installations++;state.setup.kokoro=true;state.setup.installing=false;state.setup.installStatus='done';reply={ok:true,status:'done'};}
@@ -176,9 +176,56 @@ const server = http.createServer((req,res)=>{
   releasePreview(); previewGate=null;
   await page.waitForFunction(() => !document.getElementById('now').classList.contains('is-playing'));
   assert.equal(await packPreview.locator('use').getAttribute('href'), '#i-play');
-  assert.equal(previews.length, beforePackSample + 1, 'A ready pack can be auditioned even when the selected pack is unavailable');
+  assert.equal(previews.length, beforePackSample + 1, 'Leaving a profile session cancels its remaining cues');
   assert.equal(previews.at(-1).config.effects_profile, 'default');
   await page.locator('#packList label', {hasText:'System sounds'}).click();
+
+  // Profile playback follows the Pages session, using only existing controls.
+  const sessionEvents=read('../docs/demo-commentary.json').events;
+  const sessionStatus=await page.locator('#statusText').innerText(), sessionWrites=writes.length;
+  for (const [theme,width] of [['amber',1280],['mint',390]]) {
+   await page.evaluate(theme=>applyTheme(theme),theme);
+   await page.setViewportSize({width,height:900});
+   await page.locator('#filters-effects [data-filter="effects:Work"]').click();
+   let finishCue;
+   for (const [index,event] of sessionEvents.entries()) {
+    const started=new Promise(resolve=>{previewStarted=resolve;});
+    previewGate=new Promise(resolve=>{releasePreview=resolve;});
+    if (!index) await page.getByRole('button',{name:'Play a Paper sample',exact:true}).click();
+    else finishCue();
+    const request=await started;
+    finishCue=releasePreview;
+    assert.equal(request.event,event);
+    assert.equal(request.config.effects_profile,'paper');
+    assert.equal(await page.locator('#packList input:checked').inputValue(),'paper');
+    assert.equal(await page.locator('#filters-effects [aria-pressed=true]').innerText(),'All');
+    assert.deepEqual(await page.locator('#effectsEvents .is-playing').evaluateAll(nodes=>nodes.map(node=>node.dataset.event)),[event]);
+    assert.equal(await page.getByRole('button',{name:'Play a Paper sample',exact:true}).locator('use').getAttribute('href'),'#i-wave');
+    await page.evaluate(()=>render());
+    assert.equal(await page.locator('#effectsEvents .is-playing').getAttribute('data-event'),event,'Rerenders preserve the current session cue');
+    assert.equal(await page.locator('#statusText').innerText(),sessionStatus,'Auditioning never activates a pack');
+   }
+   previewStarted=null;previewGate=null;finishCue();
+   await page.waitForFunction(()=>!mediaBusy);
+   assert.equal(await page.locator('[data-preview].is-playing').count(),0);
+   assert.equal(await page.locator('#demoSession,#demoStop,#demoProgress').count(),0,'Installed Soundbar gains no session UI');
+  }
+  assert.equal(writes.length,sessionWrites,'Profile sessions do not save settings');
+  await page.setViewportSize({width:1280,height:900});
+  await page.evaluate(()=>applyTheme('amber'));
+  const sparseStart=previews.length;
+  await page.getByRole('button',{name:'Play a Attention sample',exact:true}).click();
+  await page.waitForFunction(()=>!mediaBusy);
+  assert.deepEqual(previews.slice(sparseStart).map(request=>request.event),['stop'],'Sparse packs skip unmapped session events');
+  failPreview=true;
+  const failedSession=previews.length;
+  await page.getByRole('button',{name:'Play a Paper sample',exact:true}).click();
+  await page.waitForFunction(()=>!mediaBusy);
+  assert.equal(previews.length,failedSession+1,'A failed cue stops the session');
+  assert.equal(await page.locator('[data-preview].is-playing').count(),0,'Failure clears all session highlights');
+  failPreview=false;
+  await page.evaluate(()=>clearError());
+  await page.locator('#packList input[value="default"]').evaluate(node=>node.click());
 
   await page.locator('#tab-ai').click();
   await page.locator('#panel-ai .strip [data-drawer=provider]').click();

@@ -14,6 +14,7 @@ const GROUPS = [
  ['Memory',['pre_compact','compact']],
 ];
 const PACK_ORDER = ['default','wood-thrush','paper','construction','minimal','sci-fi','submarine','attention','silent'];
+const PROFILE_SESSION_EVENTS = ['session_start','read','edit','test','stop'];
 const PACK_META = {
  default:{desc:'Classic macOS alert sounds. Nothing to install.', kind:'macOS sounds'},
  'wood-thrush':{desc:'A birdsong melody that evolves as the session goes on.', kind:'Generated'},
@@ -488,7 +489,7 @@ function renderPacks() {
   const meta = PACK_META[id] || {kind:'Custom'}, effect = setup.effects?.[id] || {}, count = Object.keys(catalog('effects', id)).length;
   const selected = state.pack === id, inUse = modeInUse('effects') && saved.effects_profile === id;
   const sample = catalog('effects', id).edit ? 'edit' : Object.keys(catalog('effects', id))[0];
-  return `<div class="list-row ${selected ? 'selected' : ''}"><label><input type="radio" name="pack" value="${esc(id)}" ${selected ? 'checked' : ''}><span class="row-main"><span class="row-title">${esc(packName(id))}${inUse ? '<span class="pill success sm">In use</span>' : ''}</span><span class="row-meta">${esc(meta.kind)} · ${count ? count + ' events' : 'silent'}${effect.sox ? ' · SoX' : ''}</span></span></label>${sample ? `<button class="play-btn" type="button" data-preview="effects" data-pack="${esc(id)}" data-event="${esc(sample)}" data-variant="0" aria-label="Play a ${esc(packName(id))} sample">${icon('play')}</button>` : ''}</div>`;
+  return `<div class="list-row ${selected ? 'selected' : ''}"><label><input type="radio" name="pack" value="${esc(id)}" ${selected ? 'checked' : ''}><span class="row-main"><span class="row-title">${esc(packName(id))}${inUse ? '<span class="pill success sm">In use</span>' : ''}</span><span class="row-meta">${esc(meta.kind)} · ${count ? count + ' events' : 'silent'}${effect.sox ? ' · SoX' : ''}</span></span></label>${sample ? `<button class="play-btn" type="button" data-preview="effects" data-pack="${esc(id)}" data-session aria-label="Play a ${esc(packName(id))} sample">${icon('play')}</button>` : ''}</div>`;
  }).join(''));
 }
 function renderEffectsDetail() {
@@ -672,6 +673,7 @@ function openDrawer(kind) {
 }
 function selectTab(mode) {
  if (!TABS[mode] || state.viewMode === mode) { if (TABS[mode]) renderTabs(); return; }
+ cancelProfileSession();
  if (demo) demo.stop();
  state.viewMode = mode;
  render();
@@ -808,7 +810,10 @@ function renderSampleLabel() {
 function renderPreviewState() {
  renderSampleLabel();
  document.querySelectorAll('[data-preview]').forEach(button => {
-  const active = activePreview?.key === previewKey(button);
+  const session = activePreview?.session;
+  const sessionEvent = !!session && !session.cancelled && button.matches('.ev-tile') &&
+   button.dataset.preview === session.mode && button.dataset.pack === session.pack && button.dataset.event === session.event;
+  const active = activePreview?.key === previewKey(button) || sessionEvent;
   const playing = active && activePreview.phase === 'playing';
   button.classList.toggle('is-playing', playing);
   button.classList.toggle('is-generating', active && !playing);
@@ -844,18 +849,52 @@ async function mediaAction(button, work, phase='playing') {
  }
 }
 async function preview(mode, button) {
+ if (mediaBusy) return;
  const role = button?.dataset.role || null;
  if (mode === 'ai' && !role) { await playCommentarySample(button); return; }
  const pack = button?.dataset.pack;
  const readiness = mode === 'phrases' || mode === 'ai' ? speechReadiness(mode) : setupReadiness(mode, pack);
  if (pack && !setup.effects?.[pack]?.ready) { openDrawer('effects'); showError(setup.effects?.[pack]?.message || 'Audio unavailable'); return; }
  if (!readiness.ready) { openDrawer(blockerDrawer(mode)); return; }
+ if (button?.hasAttribute('data-session')) { await playProfileSession(mode, pack, button); return; }
  const event = button?.dataset.event || (mode === 'phrases' ? state.phraseEvent : 'edit');
  const variant = variantFor(button, mode);
  const config = pack ? {effects_profile:pack} : draftConfig(mode);
  const body = {mode, config, role, event, variant};
  if (mode === 'phrases' && !role) body.phrases = {[event]: state.phrases[event]};
  await mediaAction(button, () => api('/api/draft-preview', body));
+}
+function cancelProfileSession() {
+ if (activePreview?.session) activePreview.session.cancelled = true;
+}
+async function playProfileSession(mode, pack, button) {
+ const available = catalog(mode, pack);
+ const sequence = PROFILE_SESSION_EVENTS.filter(event => available[event]?.length);
+ const events = sequence.length ? sequence : Object.keys(available).slice(0, 5);
+ // Show the auditioned pack, without changing the active profile or saved settings.
+ state.pack = pack;
+ filters[mode] = 'All';
+ render();
+ await mediaAction(button, async () => {
+  const session = activePreview.session = {mode, pack, event:null, cancelled:false};
+  const token = demo?.playbackToken();
+  for (const [index, event] of events.entries()) {
+   if (session.cancelled || demo && token !== demo.playbackToken()) break;
+   session.event = event;
+   renderPreviewState();
+   const container = $('effectsEvents');
+   const tile = [...container.querySelectorAll('.ev-tile')].find(node => node.dataset.event === event);
+   if (tile) {
+    const bounds = container.getBoundingClientRect(), cue = tile.getBoundingClientRect();
+    if (cue.top < bounds.top) container.scrollTop += cue.top - bounds.top;
+    else if (cue.bottom > bounds.bottom) container.scrollTop += cue.bottom - bounds.bottom;
+   }
+   await api('/api/draft-preview', {mode, config:{effects_profile:pack}, event, variant:0});
+   session.event = null;
+   renderPreviewState();
+   if (index < events.length - 1 && !session.cancelled) await new Promise(resolve => setTimeout(resolve, 400));
+  }
+ });
 }
 async function playCommentarySample(button) {
  if (!speechReadiness('ai').ready) { openDrawer('speech'); return; }
@@ -1101,7 +1140,7 @@ function wire() {
   catch (error) { showError(error.message); }
   finally { savingVolume = false; $('volume').value = state.volume; $('volumeValue').textContent = state.volume + '%'; renderChrome(); }
  };
- $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; state.pack = event.target.value; render(); });
+ $('packList').addEventListener('change', event => { if (event.target.name !== 'pack') return; cancelProfileSession(); state.pack = event.target.value; render(); });
  $('styleList').addEventListener('change', event => { if (event.target.name !== 'style') return; state.style = event.target.value; generatedSample = null; renderStyles(); renderSample(); renderChrome(); });
  $('phraseEngine').onchange = () => { state[state.viewMode === 'ai' ? 'engine' : 'phraseEngine'] = $('phraseEngine').value; render(); if (state.viewMode === 'ai') persistAISettings('speech'); };
  $('mainAgentVoice').onchange = () => { state.phraseVoices[state.phraseEngine].main = $('mainAgentVoice').value; render(); };

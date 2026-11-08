@@ -122,5 +122,5 @@ window.soundbarDemo = (() => {
   window.addEventListener('pagehide', stop);
   document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
  }
- return {request, stop, session, ready};
+ return {request, stop, session, ready, playbackToken:() => generation};
 })();

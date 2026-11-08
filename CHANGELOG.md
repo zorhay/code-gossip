@@ -6,6 +6,7 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ### Changed
 
+- Sound-pack Play buttons run a short example session and highlight each playing event using the existing controls. Event previews remain single cues.
 - AI commentary adds Codex CLI using existing Codex sign-in, optional model selection, ephemeral requests, and protection against narrating its own hooks.
 - Kokoro installation shows recent package activity and elapsed time in Soundbar, retains output after failures, and allows 20 minutes for package setup on slower connections.
 - Soundbar separates Save/Discard below each editor from Use in the header. AI speech and provider settings save as they change, preserving phrase drafts and restoring settings after failed writes.

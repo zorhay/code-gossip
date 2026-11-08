@@ -37,7 +37,7 @@ const server = http.createServer((req,res) => {
    window.Audio = function(src) {
     const audio = new NativeAudio(src);
     window.lastAudio = audio;
-    for (const event of ['playing','ended','pause','error']) audio.addEventListener(event, () => window.audioLog.push({event,src:audio.src,volume:audio.volume,muted:audio.muted}));
+    for (const event of ['playing','ended','pause','error']) audio.addEventListener(event, () => window.audioLog.push({event,src:audio.src,volume:audio.volume,muted:audio.muted,highlighted:[...document.querySelectorAll('.ev-tile.is-playing')].map(node=>node.dataset.event)}));
     return audio;
    };
   });
@@ -62,9 +62,14 @@ const server = http.createServer((req,res) => {
   if (metadata.tag !== 'development') assert((await page.locator('#install-command').textContent()).includes(`--release ${metadata.tag} --all`));
 
   // A full real recording reaches ended; subsequent previews and failure recovery work.
-  await page.locator('[data-preview=effects][data-pack=default]').first().click();
+  const profileSessionStart=await page.evaluate(()=>audioLog.length);
+  await page.locator('#packList [data-preview=effects][data-pack=default]').click();
   await page.waitForFunction(() => audioLog.some(x=>x.event==='ended'));
   await idle();
+  const profileSession=await page.evaluate(start=>audioLog.slice(start).filter(item=>item.event==='playing'),profileSessionStart);
+  assert.deepEqual(profileSession.map(item=>item.src.split('/').at(-1)),data.commentary.events.map(event=>data.sounds[`effects/default/${event}/0`]));
+  assert.deepEqual(profileSession.map(item=>item.highlighted),data.commentary.events.map(event=>[event]),'Profile buttons highlight every cue in their session');
+  assert.equal(await page.locator('#effectsEvents .is-playing').count(),0);
   const wood = data.status.effects_profiles['wood-thrush'];
   let melodyNotes = [];
   const melodyFile = event => {
