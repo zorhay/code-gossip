@@ -267,18 +267,18 @@ function checkPresentation(key) {
  const pending = provider && !cli ? 'Connecting…' : 'Checking…';
  const success = provider ? (cli ? 'Detected' : 'Connected') : 'Ready';
  let prerequisite = null;
- if (provider && !hasProviderKey()) prerequisite = {message:'API key required', tone:'warning'};
+ if (provider && !hasProviderKey()) prerequisite = {message:'Key required', tone:'warning'};
  if (key === 'effects' || key === 'clips') {
   const resource = key === 'effects' ? setup.effects?.[state.pack] : setup.clips?.generals;
-  if (!resource?.ready) prerequisite = {message:resource?.message || 'Audio unavailable', tone:resource?.missing?.length ? 'error' : 'warning'};
+  if (!resource?.ready) prerequisite = {message:resource?.missing?.length ? 'Missing files' : resource?.sox ? 'Install SoX' : 'Unavailable', tone:resource?.missing?.length ? 'error' : 'warning'};
  }
  if (key === 'phrases' || key === 'aiSpeech') {
   const installation = speechInstallation(speechEngine(checkModes[key]));
-  if (!installation.available) prerequisite = installation;
+  if (!installation.available) prerequisite = {...installation, message:installation.message === 'Installation failed' ? 'Install failed' : installation.message};
   else {
    const mode = checkModes[key], engine = speechEngine(mode);
    const voices = mode === 'phrases' ? Object.values(state.phraseVoices[engine]) : [state.voices[engine]];
-   if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) prerequisite = {message:'Choose installed voices', tone:'warning'};
+   if (voices.some(voice => !(voiceChoices[engine] || []).some(([id]) => id === voice))) prerequisite = {message:'Choose voices', tone:'warning'};
   }
  }
  const result = {message:status === 'checked' ? success : status === 'failed' ? 'Check failed' : status === 'checking' ? pending : provider && !cli ? 'Not checked' : 'Not checked', tone:status === 'checked' ? 'success' : status === 'failed' ? 'error' : 'warning'};
@@ -293,8 +293,14 @@ function paintStatus(node, view) {
  const tone = {success:'ok', warning:'warn', error:'err'}[view.tone] || '';
  node.className = 'status' + (tone ? ' ' + tone : '');
  node.dataset.tone = view.tone || 'neutral';
- node.textContent = view.message;
- node.hidden = !!(view.checking && !view.prerequisite);
+ if (node.hasAttribute('data-status-for')) setSizedText(node, view.message, 'Downloading…', 'Choose voices');
+ else node.textContent = view.message;
+ // An in-flight check must not collapse its slot and move adjacent controls.
+ node.hidden = false;
+ node.style.visibility = view.checking && !view.prerequisite ? 'hidden' : '';
+}
+function setSizedText(node, text, widthLabel, alternate='') {
+ setMarkup(node, `<span class="label-slot" data-width-label="${esc(widthLabel)}" data-alternate-label="${esc(alternate)}"><span>${esc(text)}</span></span>`);
 }
 function modeCheckKeys() {
  if (state.viewMode === 'ai') return needsKey() ? ['aiSpeech'] : ['aiSpeech', 'ai'];
@@ -407,6 +413,7 @@ function renderNow() {
  $('now').classList.toggle('muted', !state.enabled);
  $('now').classList.toggle('is-playing', mediaBusy);
  $('statusText').innerHTML = `<span class="label-slot" data-width-label="${demo ? 'Preview' : 'In use'}" data-alternate-label="Muted"><span>${state.enabled ? demo ? 'Preview' : 'In use' : 'Muted'}</span></span> · ${esc(selectionLabel(demo ? selectionDraft() : activeSelection))}`;
+ $('now').title = 'Show the mode in use: ' + selectionLabel(demo ? selectionDraft() : activeSelection);
  $('powerLabel').textContent = state.enabled ? 'Sound on' : 'Sound off';
  $('soundOn').checked = state.enabled;
  $('soundOn').disabled = busy || !demo && mediaBusy || savingSound;
@@ -483,6 +490,7 @@ function renderEffectsDetail() {
  $('packDesc').textContent = meta.desc || 'Custom sound pack.';
  $('packChips').innerHTML = `<span class="chip">${esc(meta.kind || 'Audio')}</span>${effect.sox ? '<span class="chip">Uses SoX</span>' : ''}`;
  $('effectsSource').textContent = `${packName(state.pack)} · ${packSource(state.pack)}`;
+ $('effectsSource').title = $('effectsSource').textContent;
  $('drawerPack').textContent = packName(state.pack);
  $('drawerSource').textContent = packSource(state.pack);
  $('effectsFiles').textContent = effect.missing?.length ? 'Missing: ' + effect.missing.join(', ') : effect.ready ? 'All sounds present' : (effect.message || 'Audio unavailable');
@@ -601,7 +609,7 @@ function renderSpeech() {
  const repair = ['phrases','aiSpeech'].some(key => setupChecks[key]?.status === 'failed' && !setupChecks[key]?.model && setupChecks[key]?.identity === checkIdentity(key));
  $('installKokoro').hidden = !kokoro || (setup.kokoro && !repair) || !!setup.installing;
  $('installKokoro').disabled = !!setup.installing;
- $('installKokoro').textContent = setup.installStatus === 'error' ? 'Retry installation' : repair ? 'Repair installation' : 'Install Kokoro';
+ setSizedText($('installKokoro'), setup.installStatus === 'error' ? 'Retry installation' : repair ? 'Repair installation' : 'Install Kokoro', 'Repair installation');
 }
 function renderChecks() {
  for (const key of Object.keys(checkModes)) {
@@ -609,7 +617,8 @@ function renderChecks() {
   document.querySelectorAll(`[data-status-for="${key}"]`).forEach(node => paintStatus(node, view));
   const button = checkButton(key);
   if ((key === 'phrases' || key === 'aiSpeech') && key !== speechKey()) continue;
-  button.textContent = view.checking ? view.pending : view.action;
+  setSizedText(button, view.checking ? view.pending : view.action,
+   key === 'ai' ? 'Check connection' : ['phrases','aiSpeech'].includes(key) ? 'Retry model loading' : 'Checking…');
   button.disabled = !!(view.checking || view.prerequisite && key !== 'effects' && key !== 'clips');
   button.setAttribute('aria-busy', String(!!view.checking));
   button.dataset.status = view.checking ? 'checking' : view.status;
@@ -637,6 +646,7 @@ function showProvider() {
  $('providerHint').textContent = providerNote();
  const name = saved.narrator_providers[state.provider]?.name || state.provider;
  $('stripProvider').textContent = name + (state.model ? ' · ' + state.model : '');
+ $('stripProvider').title = $('stripProvider').textContent;
  renderModelList();
 }
 function openDrawer(kind) {
@@ -954,11 +964,11 @@ function renderVersions() {
  $('releaseNotes').hidden = !versions.release;
  if (versions.release) $('releaseNotes').href = versions.release.notes_url;
  $('checkUpdates').disabled = versions.development || running || versionChecking;
- $('checkUpdates').textContent = versionChecking ? 'Checking…' : 'Check for updates';
+ setSizedText($('checkUpdates'), versionChecking ? 'Checking…' : 'Check for updates', 'Check for updates');
  $('checkUpdates').setAttribute('aria-busy', String(versionChecking));
  $('applyUpdate').hidden = versions.development || !versions.available && !needsAttention && !running;
  $('applyUpdate').disabled = running || versionChecking || !!setup?.installing;
- $('applyUpdate').textContent = running ? 'Updating…' : needsAttention ? 'Retry update' : 'Update';
+ setSizedText($('applyUpdate'), running ? 'Updating…' : needsAttention ? 'Retry update' : 'Update', 'Retry update', 'Updating…');
  $('applyUpdate').setAttribute('aria-busy', String(running));
  $('updateResult').textContent = versionError || [versions.message, versions.guidance].filter(Boolean).join(' ');
  $('updateResult').dataset.tone = versionError || needsAttention ? 'error' : running ? 'warning' : 'neutral';

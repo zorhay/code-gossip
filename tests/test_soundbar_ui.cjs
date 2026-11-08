@@ -847,11 +847,77 @@ const server = http.createServer((req,res)=>{
   await page.waitForFunction(() => !setupChecks.aiSpeech.requesting);
   assert(await page.evaluate(() => document.activeElement===window.focusedControl),'A scheduled Kokoro poll preserves focus too');
 
+  // Transient labels must not resize controls or move the surrounding layout.
+  const geometry = selector => page.locator(selector).evaluateAll(nodes => nodes.map(node => {
+   const {x,y,width,height}=node.getBoundingClientRect();
+   return {x:x+scrollX,y:y+scrollY,width,height};
+  }));
+  const headerGeometry='.topbar,.brand,.now,.controls,.power,.volume,.volume output,#volume,#volumeValue,#settingsButton,#helpButton';
+  const stableGeometry=headerGeometry+',#tabs,.tab,.tab > .i,.tab > span:not(.tab-badges),.panel:not([hidden]) .workspace';
+  for (const theme of ['amber','mint']) {
+   await page.evaluate(theme=>applyTheme(theme),theme);
+   for (const width of [1280,901,900,561,560,390,320]) {
+    await page.setViewportSize({width,height:900});
+    for (const mode of ['effects','clips','phrases','ai']) {
+     await page.locator('#tab-'+mode).click();
+     await page.evaluate(() => Promise.all(modeCheckKeys().map(key => checkSetup(key,{automatic:true}))));
+     const before=await geometry(stableGeometry);
+     for (const volume of [0,9,10,99,100,99]) {
+      await page.locator('#volume').evaluate((input,value)=>{input.value=value;input.dispatchEvent(new Event('input'));},String(volume));
+      assert.equal(await page.locator('#volumeValue').innerText(),volume+'%');
+      assert.deepEqual(await geometry(stableGeometry),before,`Volume ${volume}% keeps ${mode}/${theme}/${width} stationary`);
+     }
+     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`No overflow in ${mode}/${theme}/${width}`);
+     const stripSelector=`#panel-${mode} .strip,#panel-${mode} .strip > *,#panel-${mode} .strip [data-status-for]`;
+     const stripBefore=await geometry(stripSelector);
+     for (const [message,checking] of [['Ready',false],['Downloading…',false],['Load failed',false],['Install failed',false],['Choose voices',false],['Key required',false],['Missing files',false],['Checking…',true]]) {
+      await page.locator(`#panel-${mode} .strip [data-status-for]`).evaluateAll((nodes,view)=>nodes.forEach(node=>paintStatus(node,view)),{message,checking,tone:'warning'});
+      assert.deepEqual(await geometry(stripSelector),stripBefore,`${mode} status ${message} keeps strip controls stationary in ${theme}/${width}`);
+     }
+     await page.evaluate(()=>renderChecks());
+    }
+    const headerBefore=await geometry(headerGeometry);
+    const tabBefore=await geometry('#tabs,.tab,.tab > .i,.tab > span:not(.tab-badges)');
+    await page.evaluate(()=>{window.layoutSelection=activeSelection;window.layoutContext=state.context;window.layoutChecked=checkedAI;});
+    for (const selection of [{mode:'effects',pack:'default'},{mode:'clips'},{mode:'phrases'},{mode:'ai',style:'sports'},{mode:'ai',style:'A long custom commentary style name'}]) {
+     await page.evaluate(selection=>{activeSelection=selection;state.context=!state.context;checkedAI=null;renderChrome();},selection);
+     assert.deepEqual(await geometry(headerGeometry),headerBefore,`Active selection does not move header controls in ${theme}/${width}`);
+     assert.deepEqual(await geometry('#tabs,.tab,.tab > .i,.tab > span:not(.tab-badges)'),tabBefore,`Badges do not move tabs or their labels in ${theme}/${width}`);
+    }
+    await page.evaluate(()=>{activeSelection=window.layoutSelection;state.context=window.layoutContext;checkedAI=window.layoutChecked;renderChrome();});
+    const sampleBefore=await geometry('#sampleBtn,#styleTitle');
+    for (const label of ['Play sample','Generating…','Playing…','Replay']) {
+     await page.locator('#sampleLabel').evaluate((node,label)=>{node.textContent=label;},label);
+     assert.deepEqual(await geometry('#sampleBtn,#styleTitle'),sampleBefore,`Sample label ${label} stays stationary in ${theme}/${width}`);
+    }
+    await page.evaluate(()=>renderSample());
+   }
+  }
+  await page.setViewportSize({width:1280,height:900});
+  const volumeBefore=await geometry(headerGeometry);
+  configGate=new Promise(resolve=>{releaseConfig=resolve;});
+  await page.locator('#volume').evaluate(input=>{input.value='100';input.dispatchEvent(new Event('input'));input.dispatchEvent(new Event('change'));});
+  await page.waitForFunction(()=>document.getElementById('volume').disabled);
+  assert.deepEqual(await geometry(headerGeometry),volumeBefore,'Pending volume save does not shift controls');
+  releaseConfig();configGate=null;
+  await page.waitForFunction(()=>!document.getElementById('volume').disabled);
+  assert.deepEqual(await geometry(headerGeometry),volumeBefore,'Saved volume does not shift controls');
+  await page.locator('#settingsButton').click();
+  const gapBefore=await geometry('.range-row,.range-row input,.range-row output');
+  for (const id of ['effectsGap','voiceGap']) {
+   for (const value of ['0','250','9750','10000']) {
+    await page.locator('#'+id).evaluate((node,value)=>{node.value=value;node.dispatchEvent(new Event('input'));},value);
+    assert.deepEqual(await geometry('.range-row,.range-row input,.range-row output'),gapBefore,'Pacing values keep sliders stationary');
+   }
+  }
+  await page.keyboard.press('Escape');
+
   Object.assign(versionState, {available:true, release:{version:'0.9.0', notes_url:'https://github.com/zorhay/code-gossip/releases/tag/0.9.0'}});
   await page.evaluate(() => refreshVersions());
   assert((await page.locator('#versionNotice').innerText()).includes('0.8.0 → 0.9.0'));
   assert.equal(updateStarts, 0);
   await page.locator('#versionNotice').click();
+  const updateControlsBefore = await geometry('.version-row > *');
   failUpdateCheck = true;
   await page.locator('#checkUpdates').click();
   await page.getByText('GitHub is unavailable', {exact:true}).waitFor();
@@ -863,10 +929,12 @@ const server = http.createServer((req,res)=>{
   await page.locator('#applyUpdate').click();
   await page.waitForFunction(() => document.getElementById('applyUpdate').textContent === 'Updating…');
   assert.equal(updateStarts, 1);
+  assert.deepEqual(await geometry('.version-row > *'),updateControlsBefore,'Updating labels do not move neighboring update controls');
   assert(await page.locator('#closeSoundbar').isDisabled());
   Object.assign(versionState, {running:false, phase:'failed', message:'Update failed. Previous version restored.'});
   await page.evaluate(() => refreshVersions());
   assert.equal(await page.locator('#applyUpdate').innerText(), 'Retry update');
+  assert.deepEqual(await geometry('.version-row > *'),updateControlsBefore,'Retry labels keep update controls stationary');
   Object.assign(versionState, {development:true});
   await page.evaluate(() => refreshVersions());
   assert.equal(await page.locator('#applyUpdate').isVisible(), false);
