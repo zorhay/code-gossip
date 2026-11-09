@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Changed
+
+- Settings has clearer groups, larger theme controls, and shorter descriptions. Its header and footer stay visible on small screens, and update feedback keeps the controls in place.
+
 ## [0.14.0] - 2026-11-09
 
 ### Changed

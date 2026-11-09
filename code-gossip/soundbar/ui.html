@@ -271,6 +271,51 @@ dialog {padding:0; border:1px solid var(--line-strong); border-radius:16px; back
 dialog::backdrop {background:rgba(5,5,10,.55); backdrop-filter:blur(2px);}
 dialog.modal {width:min(560px,calc(100vw - 32px));}
 #settingsDialog {inset-block:16px auto; margin-block:0; max-height:calc(100dvh - 32px);}
+#settingsDialog[open] {display:flex; flex-direction:column; overflow:hidden;}
+#settingsBody {min-height:0; overflow:auto; scrollbar-gutter:stable;}
+#settingsDialog .dlg-section {padding:16px 22px;}
+#settingsDialog .dlg-section:last-child {border-bottom:0;}
+#settingsDialog .pref > div {min-width:0;}
+.pref-copy {min-width:0;}
+.pref-copy > span {display:block; margin-top:3px; color:var(--muted); font-size:13px;}
+#settingsDialog .switch {flex-shrink:0; margin-top:3px;}
+#settingsDialog .group-label {color:var(--accent); margin:0 0 12px;}
+.theme-options {display:flex; gap:8px; flex-shrink:0;}
+.theme-options button {display:flex; align-items:center; gap:8px; min-height:36px; padding:6px 12px; border:1px solid var(--muted); border-radius:8px; background:transparent; color:var(--muted); font-size:13px;}
+.theme-options button::before {content:''; width:10px; height:10px; border-radius:50%; background:#e9b052;}
+.theme-options [data-theme-choice=mint]::before {background:#a5f3cb;}
+.theme-options button[aria-pressed=true] {border-color:var(--accent); color:var(--accent);}
+.theme-options button:hover {background:var(--hover);}
+#settingsDialog .range-row {grid-template-columns:88px minmax(0,1fr) 48px;}
+#settingsDialog .range-row input {width:100%; min-width:0; margin:0;}
+#settingsDialog .range-row:has(input:disabled) {opacity:.5;}
+.settings-version {display:flex; align-items:baseline; justify-content:space-between; gap:12px;}
+.settings-version #installedVersion {font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums;}
+#settingsDialog #availableVersion {height:22px; margin:0; font-size:13px;}
+#settingsDialog .version-row {display:grid; grid-template-columns:max-content max-content minmax(0,1fr); gap:10px; align-items:center; margin-top:12px;}
+#settingsDialog .version-row a {justify-self:end;}
+#settingsDialog .version-row > [hidden] {display:block!important; visibility:hidden; pointer-events:none;}
+#settingsDialog .update-feedback {height:44px; margin-top:10px; overflow:auto; overflow-wrap:anywhere;}
+#settingsDialog #updateResult {font-size:12px; color:var(--muted);}
+#settingsDialog #updateResult[data-tone=error] {color:var(--danger);}
+#settingsDialog #updateResult[data-tone=warning] {color:var(--warning);}
+#settingsDialog .update-feedback:has(#updateResult:not(:empty)) #updateExplanation {display:none;}
+#settingsDialog .dlg-foot {flex-shrink:0; border-top:1px solid var(--line);}
+#settingsDialog .dlg-foot > div {min-width:0;}
+#settingsDialog #closeSoundbar {flex-shrink:0;}
+.settings-footnote {display:grid; height:36px; margin-top:4px; overflow:auto;}
+.settings-footnote > p {grid-area:1 / 1;}
+.settings-footnote:has(#closeInstallHint:not([hidden])) > p:first-child {visibility:hidden;}
+@media (max-width:420px) {
+ #settingsDialog .dlg-section {padding:14px 16px;}
+ #settingsDialog .dlg-head,#settingsDialog .dlg-foot {padding-inline:16px;}
+ #appearancePreferences .pref {flex-direction:column; gap:10px;}
+ .theme-options {width:100%;}
+ .theme-options button {flex:1; justify-content:center;}
+ #settingsDialog .version-row {grid-template-columns:minmax(0,1fr) max-content;}
+ #settingsDialog .version-row a {grid-column:1 / -1; justify-self:start;}
+ #settingsDialog .range-row {grid-template-columns:76px minmax(0,1fr) 44px; gap:8px;}
+}
 dialog.drawer {margin:0 0 0 auto; height:100dvh; max-height:100dvh; width:min(440px,100vw); border-radius:0; border-width:0 0 0 1px; display:flex; flex-direction:column;}
 dialog.drawer:not([open]) {display:none;}
 dialog.drawer[open] {animation:slide .18s ease-out;}
@@ -539,26 +584,26 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
 
 <dialog class="modal" id="settingsDialog" aria-labelledby="settingsTitle">
  <div class="dlg-head"><h2 id="settingsTitle">Settings</h2><button class="icon-btn" id="closeSettings" type="button" aria-label="Close settings"><svg class="i"><use href="#i-x"/></svg></button></div>
- <div class="dlg-section"><p class="group-label">Appearance</p>
-  <div class="segmented" role="group" aria-label="Theme"><button type="button" data-theme-choice="amber" aria-pressed="true">Amber</button><button type="button" data-theme-choice="mint" aria-pressed="false">Website mint</button></div>
-  <p class="note theme-note">Saved in this browser.</p>
- </div>
- <div class="dlg-section"><p class="group-label">Pacing</p>
-  <div class="pref"><div><strong>Reduce repeated sounds</strong><p>Space out rapid activity. Approval, error, and completion cues always play.</p></div><span class="switch"><input type="checkbox" id="reduceRepeats" aria-label="Reduce repeated sounds"><span class="track"></span></span></div>
+ <div id="settingsBody">
+ <section class="dlg-section" id="appearancePreferences" aria-labelledby="appearanceTitle"><h3 class="group-label" id="appearanceTitle">Appearance</h3>
+  <div class="pref"><div><strong>Theme</strong><p>Saved in this browser.</p></div><div class="theme-options" role="group" aria-label="Theme"><button type="button" data-theme-choice="amber" aria-pressed="true">Amber</button><button type="button" data-theme-choice="mint" aria-pressed="false">Mint</button></div></div>
+ </section>
+ <section class="dlg-section" aria-labelledby="playbackTitle"><h3 class="group-label" id="playbackTitle">Playback</h3>
+  <label class="pref" for="reduceRepeats"><span class="pref-copy"><strong>Reduce repeated sounds</strong><span id="pacingDescription">Space out activity cues. Critical cues still play.</span></span><span class="switch"><input type="checkbox" id="reduceRepeats" aria-label="Reduce repeated sounds" aria-describedby="pacingDescription"><span class="track"></span></span></label>
   <div class="range-row"><label for="effectsGap">Effects gap</label><input type="range" id="effectsGap" min="0" max="10000" step="250"><output id="effectsGapValue"></output></div>
   <div class="range-row"><label for="voiceGap">Voice gap</label><input type="range" id="voiceGap" min="0" max="10000" step="250"><output id="voiceGapValue"></output></div>
- </div>
- <div class="dlg-section"><p class="group-label">Codex</p>
-  <div class="pref"><div><strong>Approval cues</strong><p>Play a cue when Codex needs your approval. Audio only; permissions are unchanged.</p></div><span class="switch"><input type="checkbox" id="approvalCues" aria-label="Play Codex approval cues"><span class="track"></span></span></div>
- </div>
- <section class="dlg-section" id="versionPreferences"><p class="group-label">Updates</p>
-  <p id="installedVersion">Installed version</p>
+ </section>
+ <section class="dlg-section" aria-labelledby="codexTitle"><h3 class="group-label" id="codexTitle">Codex</h3>
+  <label class="pref" for="approvalCues"><span class="pref-copy"><strong>Approval cues</strong><span id="approvalDescription">Sound when Codex needs approval.</span></span><span class="switch"><input type="checkbox" id="approvalCues" aria-label="Play Codex approval cues" aria-describedby="approvalDescription"><span class="track"></span></span></label>
+ </section>
+ <section class="dlg-section" id="versionPreferences" aria-labelledby="updatesTitle">
+  <div class="settings-version"><h3 class="group-label" id="updatesTitle">Updates</h3><p id="installedVersion">Installed version</p></div>
   <p id="availableVersion"></p>
   <div class="version-row"><button class="btn sm" type="button" id="checkUpdates">Check for updates</button><button class="btn sm" type="button" id="applyUpdate" hidden>Update</button><a id="releaseNotes" target="_blank" rel="noopener noreferrer" hidden>Release notes</a></div>
-  <p id="updateResult" role="status"></p>
-  <p class="note" id="updateExplanation">Updates install only when you choose Update.</p>
+  <div class="update-feedback"><p id="updateResult" role="status"></p><p class="note" id="updateExplanation">Updates install only when you choose Update.</p></div>
  </section>
- <div class="dlg-foot"><div><p>Pacing and approval cues save immediately.</p><p id="closeInstallHint" hidden>Installation is running. You can close this tab; wait for installation to finish before stopping Soundbar.</p></div><button class="btn danger sm" type="button" id="closeSoundbar">Close Soundbar</button></div>
+ </div>
+ <div class="dlg-foot"><div><p>Changes save automatically.</p><div class="settings-footnote"><p>Closing keeps agent sounds on.</p><p id="closeInstallHint" role="status" hidden>Installation in progress.</p></div></div><button class="btn danger sm" type="button" id="closeSoundbar">Close Soundbar</button></div>
 </dialog>
 
 <dialog class="modal" id="closedDialog" aria-labelledby="closedTitle"><div class="dlg-section"><h2 id="closedTitle" tabindex="-1">Soundbar is closed</h2><p class="note">Your agent sounds keep working. You can close this tab.</p><p class="note">To reopen: <code>~/.code-gossip/soundbar/panel.sh</code></p></div></dialog>

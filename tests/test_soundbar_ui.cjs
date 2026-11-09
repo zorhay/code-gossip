@@ -86,6 +86,7 @@ const server = http.createServer((req,res)=>{
   await page.locator('#settingsButton').click();
   await page.locator('[data-theme-choice=amber]').click();
   await page.keyboard.press('Escape');
+  await require('./soundbar_settings_checks.cjs')(page);
 
   // Readiness belongs to this page, including sections and packs not visited yet.
   assert.equal(statusRequests,2,'Reload fetches a fresh setup snapshot');
@@ -1172,7 +1173,8 @@ const server = http.createServer((req,res)=>{
   Object.assign(versionState, {development:true});
   await page.evaluate(() => refreshVersions());
   assert.equal(await page.locator('#applyUpdate').isVisible(), false);
-  assert((await page.locator('#updateExplanation').innerText()).startsWith('Development installation'));
+  assert.equal(await page.locator('#availableVersion').innerText(),'Development installation');
+  assert.equal(await page.locator('#updateExplanation').textContent(),'Update your checkout, then rerun install.sh --dev.');
   Object.assign(versionState, {development:false, available:false, phase:'done', message:'Updated successfully.'});
   await page.evaluate(() => refreshVersions());
   await page.keyboard.press('Escape');
