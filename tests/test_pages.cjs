@@ -270,6 +270,10 @@ const server = http.createServer((req,res) => {
    }
   }
   await page.locator('#settingsButton').click();
+  assert(await page.locator('#appearancePreferences').isVisible());
+  assert.equal(await page.locator('#settingsBody .dlg-section:visible').count(),1,'Demo Settings only exposes appearance');
+  assert.equal(await page.locator('#versionPreferences').isVisible(),false);
+  assert.equal(await page.locator('#closeSoundbar').isVisible(),false);
   await page.locator('[data-theme-choice=mint]').click();
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('html').getAttribute('data-theme'),'mint');

@@ -19,7 +19,7 @@ a {color:var(--accent); text-underline-offset:4px;}
 /* Omit installation-only actions; shared controls keep the app's type and spacing. */
 .help-wrap,.panel-state,#versionNotice,#resetEvent,#addPhrase,.pane-foot,[data-remove],[data-drawer],#checkStatus-ai,.voice-row > .checkbox {display:none!important;}
 .topbar {grid-template-columns:auto minmax(0,1fr) auto 38px;}
-#settingsDialog .dlg-section:not(:nth-child(2)),#settingsDialog .dlg-foot {display:none;}
+#settingsDialog .dlg-section:not(#appearancePreferences),#settingsDialog .dlg-foot {display:none;}
 #phraseRows .row {grid-template-columns:24px minmax(0,1fr) 30px;}
 #phraseRows input[readonly] {cursor:text;}
 .installation {display:grid; grid-template-columns:minmax(0,1fr); gap:18px; padding:58px 0 42px;}

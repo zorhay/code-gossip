@@ -1101,7 +1101,7 @@ function renderVersions() {
  const settingsLabel = $('versionNotice').hidden ? 'Settings' : 'Settings · ' + $('versionNotice').textContent;
  $('settingsButton').setAttribute('aria-label', settingsLabel);
  $('settingsButton').title = settingsLabel;
- $('availableVersion').textContent = versions.development ? 'Updates come from your checkout.' : versions.available ? 'Available: ' + versions.release.version : versions.checked_at ? 'You have the latest stable release.' : 'Updates are checked automatically while Soundbar runs.';
+ $('availableVersion').textContent = versions.development ? 'Development installation' : versions.available ? 'Available: ' + versions.release.version : versions.checked_at ? 'Up to date' : 'Not checked yet';
  $('releaseNotes').hidden = !versions.release;
  if (versions.release) $('releaseNotes').href = versions.release.notes_url;
  $('checkUpdates').disabled = versions.development || running || versionChecking;
@@ -1113,7 +1113,7 @@ function renderVersions() {
  $('applyUpdate').setAttribute('aria-busy', String(running));
  $('updateResult').textContent = versionError || [versions.message, versions.guidance].filter(Boolean).join(' ');
  $('updateResult').dataset.tone = versionError || needsAttention ? 'error' : running ? 'warning' : 'neutral';
- $('updateExplanation').textContent = versions.development ? 'Development installation: update your checkout, then rerun install.sh --dev with your existing agents.' : 'Updates install only when you choose Update. Soundbar restarts; saved preferences are kept.';
+ $('updateExplanation').textContent = versions.development ? 'Update your checkout, then rerun install.sh --dev.' : 'Update restarts Soundbar and keeps your preferences.';
 }
 async function refreshVersions() {
  if (demo) return;

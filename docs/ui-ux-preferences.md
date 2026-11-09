@@ -22,6 +22,7 @@ The accepted CSS baseline in [ui.html](../code-gossip/soundbar/ui.html) is **20.
 
 ## Actions and settings
 
+- Keep Settings in one compact dialog, grouped into Appearance, Playback, Codex, and Updates. Use short descriptions and clear theme choices. Keep the header and footer visible while the body scrolls on small screens; update messages must not move controls. Settings save immediately, and the Pages demo exposes only appearance controls.
 - Keep the GitHub Pages demo close to Soundbar: reuse its control typography, spacing, responsive behavior, playback icons, and status strips. Use existing profile Play controls for sessions, with no separate demo playback toolbar. Keep install information outside the panel and identify prerecorded audio honestly; omit unsupported installation and editing actions.
 - Apply interaction and visual decisions across all Soundbar sections. Use shared behavior for equivalent controls; validate Effects, Clips, Phrases, and AI commentary when changing a common pattern.
 - Label the activation button **Use profile** in every section, using the singular consistently. Keep it beside the section heading. Place **Save** and **Discard** with the edited content, below the editor; in Phrases, put them below the phrase rows. Do not regroup them beside Use profile.
