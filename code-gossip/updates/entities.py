@@ -17,7 +17,7 @@ class Version:
 
     @classmethod
     def parse(cls, value: str) -> "Version":
-        match = re.fullmatch(r"v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", value)
+        match = re.fullmatch(r"v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)", value)
         if not match:
             raise UpdateError(f"Expected a stable major.minor.patch version, got {value!r}.")
         return cls(*map(int, match.groups()))
