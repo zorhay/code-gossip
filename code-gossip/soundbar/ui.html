@@ -224,9 +224,11 @@ label.list-row {padding:9px 12px;}
 .strip-item {display:flex; align-items:center; flex-wrap:wrap; gap:8px 10px; min-width:0; max-width:100%;}
 #stripProvider {width:12ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
 #aiEngineLabel,#phraseEngineLabel {width:13ch;}
-#effectsSource {width:24ch;}
 .strip-label {color:var(--dim); font-weight:600;}
-.strip-detail {color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.strip-detail {color:var(--muted); min-width:0; overflow-wrap:anywhere;}
+.strip:has(.strip-detail) {display:grid; grid-template-columns:max-content max-content minmax(0,1fr) max-content;}
+.strip:has(.strip-detail) .strip-item {display:contents;}
+.strip:has(.strip-detail) .spacer {display:none;}
 .strip .sep {width:1px; height:18px; background:var(--line);}
 .spacer {flex:1;}
 
@@ -367,6 +369,8 @@ dialog.drawer[open] {animation:slide .18s ease-out;}
  #panel-ai .pane-body.pad {flex:none; height:180px;}
 }
 @media (max-width:560px) {
+ .strip-detail {grid-column:1 / -1; grid-row:2;}
+ .strip:has(.strip-detail) > button {grid-column:4; grid-row:1;}
  .topbar {grid-template-columns:minmax(0,1fr) 38px 38px;}
  .topbar > .now {grid-column:1; grid-row:2;}
  .topbar > .controls {grid-column:1 / -1; grid-row:3;}

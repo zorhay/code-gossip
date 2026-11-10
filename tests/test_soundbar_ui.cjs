@@ -1050,6 +1050,7 @@ const server = http.createServer((req,res)=>{
       assert.deepEqual(await geometry(stableGeometry),before,`Volume ${volume}% keeps ${mode}/${theme}/${width} stationary`);
      }
      assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`No overflow in ${mode}/${theme}/${width}`);
+     await require('./setup_description_checks.cjs')(page,mode);
      const stripSelector=`#panel-${mode} .strip,#panel-${mode} .strip > *,#panel-${mode} .strip [data-status-for]`;
      const stripBefore=await geometry(stripSelector);
      for (const [message,checking] of [['Ready',false],['Downloading…',false],['Load failed',false],['Install failed',false],['Choose voices',false],['Key required',false],['Missing files',false],['Checking…',true]]) {
