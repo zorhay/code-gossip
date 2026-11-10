@@ -4,6 +4,10 @@ Notable user-visible changes to Code Gossip. Unreleased entries describe the cur
 
 ## [Unreleased]
 
+### Fixed
+
+- Setup descriptions use the available width and wrap on narrow screens instead of truncating, in both Soundbar and the Pages demo.
+
 ### Changed
 
 - Settings has clearer groups, larger theme controls, and shorter descriptions. Its header and footer stay visible on small screens, and update feedback keeps the controls in place.

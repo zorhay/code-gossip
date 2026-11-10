@@ -244,6 +244,7 @@ const server = http.createServer((req,res) => {
     assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),`No horizontal page overflow: ${theme}/${width}/${mode}`);
     assert(await page.locator('#panel-'+mode+' .workspace').isVisible());
     assert(await page.locator('#panel-'+mode+' .strip').isVisible());
+    await require('./setup_description_checks.cjs')(page,mode);
     const sharedStyles=await page.evaluate(() => {
      const specs={'.brand-mark':['fontSize','letterSpacing'],'.brand-sub':['fontSize'],'.controls':['padding','gap'],'.volume input':['width'],'.volume > .i':['width','height'],'.panel:not([hidden]) h1':['fontSize']};
      const read=()=>Object.fromEntries(Object.entries(specs).map(([selector,properties])=>[selector,properties.map(property=>getComputedStyle(document.querySelector(selector))[property])]));
