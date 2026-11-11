@@ -1,0 +1,12 @@
+flowchart TB
+    H["Codex · Claude Code · Cursor<br/>Native hooks"] --> C["Capture and background<br/>Bounded work · no decisions"]
+    C --> N["Normalize source facts<br/>Classify activity with evidence"]
+    N --> E["Structured events<br/>Subject · transition · outcome · provenance"]
+    E --> S["Reduce local state<br/>Correlate · deduplicate · retain uncertainty"]
+    S --> I["Interpret situations<br/>Deterministic first"]
+    I --> P["Select audio response<br/>Relevance · priority · expiry"]
+    P --> FX["Effects<br/>Independent budget"]
+    P --> VO["Voice<br/>Independent budget"]
+    I -.-> T["Inspectable decision trace"]
+    P -.-> T
+    SB["Soundbar settings"] -.-> P

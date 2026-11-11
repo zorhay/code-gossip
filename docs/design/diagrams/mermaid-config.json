@@ -1,0 +1,26 @@
+{
+  "startOnLoad": false,
+  "theme": "neutral",
+  "look": "classic",
+  "securityLevel": "strict",
+  "deterministicIds": true,
+  "htmlLabels": false,
+  "markdownAutoWrap": false,
+  "flowchart": {
+    "htmlLabels": false,
+    "curve": "linear",
+    "wrappingWidth": 260,
+    "nodeSpacing": 36,
+    "rankSpacing": 42
+  },
+  "sequence": {
+    "wrap": true,
+    "width": 150,
+    "actorMargin": 28,
+    "messageMargin": 36
+  },
+  "themeVariables": {
+    "fontFamily": "Arial, sans-serif",
+    "fontSize": "16px"
+  }
+}
